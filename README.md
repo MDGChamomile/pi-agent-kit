@@ -35,6 +35,8 @@ Resources kept for reference but no longer actively used or maintained.
 
 [`AGENTS.md`](AGENTS.md) contains the global operating preferences used in my Pi environment.
 
+Unlike the lengthy AGENTS.md and CLAUDE.md files commonly used in tools like Codex or Claude Code, this file contains only the minimal, essential instructions designed to maximize the performance and autonomy of modern AI models without imposing unnecessary constraints. Although originally spanning over 100 lines, this streamlined set of instructions is more than sufficient for optimal behavior—feel free to test it out.
+
 ## Use with Pi
 
 > [!WARNING]
