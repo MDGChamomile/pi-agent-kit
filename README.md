@@ -4,38 +4,51 @@ The skills and extensions I use and experiment with personally for the [Pi codin
 
 It is not published as an npm package or maintained as an install-everything Pi package. Skills and extensions remain ordinary files so they are easy to inspect, link, copy, and change.
 
-## Contents
+## Live
+
+Resources currently used and maintained.
 
 ### Skills
 
 | Skill | Purpose | Invoke |
 | --- | --- | --- |
-| [`deep-plan`](skills/deep-plan/SKILL.md) | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` |
-| [`meta-prompt`](skills/meta-prompt/SKILL.md) | Write or improve a compact, ready-to-use prompt | `/skill:meta-prompt` |
-| [`nomore-harness`](skills/nomore-harness/SKILL.md) | Assess whether a proposed Pi Skill or Extension should be added as-is | `/skill:nomore-harness` |
+| [`deep-plan`](live/skills/deep-plan/SKILL.md) | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` |
+| [`nomore-harness`](live/skills/nomore-harness/SKILL.md) | Assess whether a proposed Pi Skill or Extension should be added as-is | `/skill:nomore-harness` |
 
 ### Extensions
 
 | Extension | Purpose |
 | --- | --- |
-| [`git-history`](extensions/git-history/index.ts) | Add `/snapshot` to review and commit changes in the Pi agent directory |
+| [`git-history`](live/extensions/git-history/index.ts) | Add `/snapshot` to review and commit changes in the Pi agent directory |
 
 `/snapshot` shows the Git status and asks for confirmation before staging and committing changes in the configured Pi agent directory. Use it only when that directory is intentionally a Git repository.
+
+## Retired
+
+Resources kept for reference but no longer actively used or maintained.
+
+| Resource | Purpose |
+| --- | --- |
+| [`meta-prompt`](retired/skills/meta-prompt/SKILL.md) | Write or improve a compact, ready-to-use prompt |
+
+## Agent instructions
+
+[`AGENTS.md`](AGENTS.md) contains the global operating preferences used in my Pi environment.
 
 ## Use with Pi
 
 > [!WARNING]
 > Skills can instruct an agent to take actions, and extensions run with your user permissions. Review any resource before enabling it.
 
-Clone the repository, then link only the resources you want. These commands target macOS and Linux.
+Clone the repository, then link only the live resources you want. These commands target macOS and Linux.
 
 ```bash
 git clone https://github.com/MDGChamomile/pi-agent-kit.git
 cd pi-agent-kit
 
 mkdir -p ~/.pi/agent/skills ~/.pi/agent/extensions
-ln -s "$PWD/skills/meta-prompt" ~/.pi/agent/skills/meta-prompt
-ln -s "$PWD/extensions/git-history" ~/.pi/agent/extensions/git-history
+ln -s "$PWD/live/skills/deep-plan" ~/.pi/agent/skills/deep-plan
+ln -s "$PWD/live/extensions/git-history" ~/.pi/agent/extensions/git-history
 ```
 
 Run `/reload` in Pi after changing links. Repository edits are reflected through the links immediately.
