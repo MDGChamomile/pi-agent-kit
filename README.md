@@ -13,7 +13,7 @@ Resources currently used and maintained.
 | Skill | Purpose | Invoke |
 | --- | --- | --- |
 | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` |
-| [`nomore-harness`](live/skills/nomore-harness/SKILL.md) | Assess whether a proposed Pi Skill or Extension should be added as-is | `/skill:nomore-harness` |
+| [`nomore-harness`](live/skills/nomore-harness/SKILL.md) | Assess any proposed repository, package, tool, or agent resource before adopting it into Pi | `/skill:nomore-harness` |
 
 ### Extensions
 
