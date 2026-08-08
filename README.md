@@ -22,12 +22,12 @@ Pi packages run with your user permissions. Review the source before installing 
 | --- | --- | --- |
 | `deep-plan` | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` |
 | `meta-prompt` | Write or improve a compact, ready-to-use prompt | `/skill:meta-prompt` |
+| `nomore-harness` | Assess whether a proposed Pi Skill or Extension should be added as-is | `/skill:nomore-harness` |
 
 ## Extensions
 
 | Extension | Purpose |
 | --- | --- |
-| `welcome` | Show a startup overview with model, resources, and recent sessions |
 | `git-history` | Add `/snapshot` to review and commit changes in the Pi agent directory |
 
 `/snapshot` stages all changes in the configured Pi agent directory only after showing the status and receiving confirmation. Use it only when that directory is an intentional Git repository.
