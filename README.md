@@ -50,6 +50,7 @@ cd pi-agent-kit
 
 mkdir -p ~/.pi/agent/skills ~/.pi/agent/extensions
 ln -s "$PWD/live/skills/deep-plan" ~/.pi/agent/skills/deep-plan
+ln -s "$PWD/live/skills/nomore-harness" ~/.pi/agent/skills/nomore-harness
 ln -s "$PWD/live/extensions/git-history" ~/.pi/agent/extensions/git-history
 ```
 
