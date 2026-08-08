@@ -1,36 +1,76 @@
 # Pi Agent Kit
 
-A curated, open-source collection of skills and extensions for the [Pi coding agent](https://github.com/earendil-works/pi).
+The skills and extensions I use and experiment with personally for the [Pi coding agent](https://github.com/earendil-works/pi). This is a public, source-first collection: read the resources, take what is useful, and adapt it to your own workflow.
 
-## Install
+It is not published as an npm package or maintained as an install-everything Pi package. Skills and extensions remain ordinary files so they are easy to inspect, link, copy, and change.
 
-```bash
-pi install git:github.com/MDGChamomile/pi-agent-kit
-```
+## Contents
 
-Try it without installing:
-
-```bash
-pi -e git:github.com/MDGChamomile/pi-agent-kit
-```
-
-Pi packages run with your user permissions. Review the source before installing or updating.
-
-## Skills
+### Skills
 
 | Skill | Purpose | Invoke |
 | --- | --- | --- |
-| `deep-plan` | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` |
-| `meta-prompt` | Write or improve a compact, ready-to-use prompt | `/skill:meta-prompt` |
-| `nomore-harness` | Assess whether a proposed Pi Skill or Extension should be added as-is | `/skill:nomore-harness` |
+| [`deep-plan`](skills/deep-plan/SKILL.md) | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` |
+| [`meta-prompt`](skills/meta-prompt/SKILL.md) | Write or improve a compact, ready-to-use prompt | `/skill:meta-prompt` |
+| [`nomore-harness`](skills/nomore-harness/SKILL.md) | Assess whether a proposed Pi Skill or Extension should be added as-is | `/skill:nomore-harness` |
 
-## Extensions
+### Extensions
 
 | Extension | Purpose |
 | --- | --- |
-| `git-history` | Add `/snapshot` to review and commit changes in the Pi agent directory |
+| [`git-history`](extensions/git-history/index.ts) | Add `/snapshot` to review and commit changes in the Pi agent directory |
 
-`/snapshot` stages all changes in the configured Pi agent directory only after showing the status and receiving confirmation. Use it only when that directory is an intentional Git repository.
+`/snapshot` shows the Git status and asks for confirmation before staging and committing changes in the configured Pi agent directory. Use it only when that directory is intentionally a Git repository.
+
+## Use with Pi
+
+> [!WARNING]
+> Skills can instruct an agent to take actions, and extensions run with your user permissions. Review any resource before enabling it.
+
+Clone the repository somewhere stable:
+
+```bash
+git clone https://github.com/MDGChamomile/pi-agent-kit.git
+cd pi-agent-kit
+```
+
+Then link only the resources you want into Pi's global discovery directories. The commands below target macOS and Linux.
+
+### Link a skill
+
+```bash
+mkdir -p ~/.pi/agent/skills
+ln -s "$PWD/skills/meta-prompt" ~/.pi/agent/skills/meta-prompt
+```
+
+### Link an extension
+
+```bash
+mkdir -p ~/.pi/agent/extensions
+ln -s "$PWD/extensions/git-history" ~/.pi/agent/extensions/git-history
+```
+
+Run `/reload` in Pi after adding, removing, or changing a link. Edits made in this repository are reflected through the links immediately.
+
+To unlink a resource without deleting its source:
+
+```bash
+rm ~/.pi/agent/skills/meta-prompt
+rm ~/.pi/agent/extensions/git-history
+```
+
+You can also copy a resource instead of linking it when you want an independent version. Copied resources do not receive later repository changes automatically.
+
+## Updating
+
+Pull changes when you choose:
+
+```bash
+cd /path/to/pi-agent-kit
+git pull --ff-only
+```
+
+Review the diff before reloading Pi, especially for extensions.
 
 ## Layout
 
@@ -39,11 +79,11 @@ extensions/   Pi TypeScript extensions
 skills/       Agent Skills-compatible skill directories
 ```
 
-Pi discovers both resource types through the manifest in [`package.json`](package.json).
+Resources under `skills/` and `extensions/` are the source of truth. Supporting references, scripts, and assets stay beside the resource that uses them.
 
 ## Contributing
 
-Issues and pull requests are welcome. Keep additions focused, portable, documented, and free of credentials or machine-specific paths.
+This is an opinionated personal collection, but issues and suggestions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
