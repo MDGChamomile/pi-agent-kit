@@ -23,19 +23,19 @@ Critical decision gates require the `ask_user` tool from [pi-ask-user](https://g
    - **Evidence** — facts established by the repository or another authoritative source;
    - **Decisions** — meanings and preferences confirmed by the user;
    - **Fog** — unresolved in-scope branches whose answers could change the work.
-3. Model the Fog as a living decision tree. Its **frontier** is every unresolved branch whose prerequisites are already settled.
+3. Model the Fog as a living decision tree, including dependencies between unresolved branches.
 
-Inspect far enough to distinguish Evidence from Decisions and expose the first honest frontier; investigate later facts as their branches open. Resolve discoverable facts yourself and reserve questions for user intent, preference-dependent trade-offs, authority, and meanings the repository cannot establish.
+Inspect far enough to distinguish Evidence from Decisions and identify the first unresolved branches whose prerequisites are already settled. Investigate later facts as their branches become answerable. Resolve discoverable facts yourself and reserve questions for user intent, preference-dependent trade-offs, authority, and meanings the repository cannot establish.
 
-## 2. Grill the frontier
+## 2. Resolve the Fog
 
-Continue without a preset question or round limit until the frontier is empty or the user ends the session. After every answer or new piece of evidence, recompute the tree.
+Continue without a preset question or round limit until Same Page is reached or the user ends the session. After every answer or new piece of evidence, recompute which unresolved branches can now be resolved.
 
 ### Critical gates
 
-Use `ask_user`, following its decision-gate protocol, for load-bearing or authority-changing frontier decisions. Keep them one at a time and grounded in evidence.
+Use `ask_user`, following its decision-gate protocol, for load-bearing or authority-changing decisions that are ready to resolve. Keep them one at a time and grounded in evidence.
 
-### Frontier rounds
+### Answerable questions
 
 Once critical prerequisites are settled, present the currently answerable, mutually independent lower-stakes questions as a numbered list in a normal response. Add a recommended answer where it helps. The user may answer naturally by number or in prose.
 
@@ -57,7 +57,7 @@ If the user says to stop, stop asking immediately. Preserve unresolved branches 
 
 ## 3. Reach the Same Page
 
-When the frontier appears empty, silently scan once for overlooked in-scope branches. Ask only if that scan finds live Fog.
+When Same Page appears reached, silently scan once for overlooked branches. Ask only if that scan finds live Fog.
 
 Then read back only the understanding execution depends on:
 
@@ -69,7 +69,7 @@ Then read back only the understanding execution depends on:
 
 State this limit explicitly:
 
-> Frontier empty means every known in-scope branch has been resolved or explicitly gated. It is not proof that no unknown unknown exists.
+> Same Page means every known in-scope branch has been resolved or explicitly gated. It is not proof that no unknown unknown exists.
 
 If this exact understanding has not already been confirmed, use `ask_user` for one final alignment question. A correction reopens only the affected branches. Same Page confirmation unlocks record writing.
 
