@@ -3,6 +3,7 @@ name: deep-plan
 description: Grill a vague repository idea until user and agent reach the same page, then record the result as an execution plan.
 disable-model-invocation: true
 license: MIT
+compatibility: Requires Pi with the ask_user tool provided by pi-ask-user.
 ---
 
 # Deep Plan
@@ -10,6 +11,10 @@ license: MIT
 Move from **Fog → Same Page → Execution Record**.
 
 Use this workflow for one repository change that can be brought to execution readiness in one session. During Fog and Same Page, work read-only. The only allowed mutation is the final Markdown record and its selected directory. The record is an execution guide, not authorization; implementation requires a separate explicit user request.
+
+## Requirement
+
+Critical decision gates require the `ask_user` tool from [pi-ask-user](https://github.com/edlsh/pi-ask-user). Install it with `pi install npm:pi-ask-user` before using this skill. If the tool is unavailable, report the missing dependency and stop before the first critical gate rather than weakening the decision protocol.
 
 ## 1. Inspect and map the Fog
 
