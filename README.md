@@ -27,59 +27,18 @@ It is not published as an npm package or maintained as an install-everything Pi 
 > [!WARNING]
 > Skills can instruct an agent to take actions, and extensions run with your user permissions. Review any resource before enabling it.
 
-Clone the repository somewhere stable:
+Clone the repository, then link only the resources you want. These commands target macOS and Linux.
 
 ```bash
 git clone https://github.com/MDGChamomile/pi-agent-kit.git
 cd pi-agent-kit
-```
 
-Then link only the resources you want into Pi's global discovery directories. The commands below target macOS and Linux.
-
-### Link a skill
-
-```bash
-mkdir -p ~/.pi/agent/skills
+mkdir -p ~/.pi/agent/skills ~/.pi/agent/extensions
 ln -s "$PWD/skills/meta-prompt" ~/.pi/agent/skills/meta-prompt
-```
-
-### Link an extension
-
-```bash
-mkdir -p ~/.pi/agent/extensions
 ln -s "$PWD/extensions/git-history" ~/.pi/agent/extensions/git-history
 ```
 
-Run `/reload` in Pi after adding, removing, or changing a link. Edits made in this repository are reflected through the links immediately.
-
-To unlink a resource without deleting its source:
-
-```bash
-rm ~/.pi/agent/skills/meta-prompt
-rm ~/.pi/agent/extensions/git-history
-```
-
-You can also copy a resource instead of linking it when you want an independent version. Copied resources do not receive later repository changes automatically.
-
-## Updating
-
-Pull changes when you choose:
-
-```bash
-cd /path/to/pi-agent-kit
-git pull --ff-only
-```
-
-Review the diff before reloading Pi, especially for extensions.
-
-## Layout
-
-```text
-extensions/   Pi TypeScript extensions
-skills/       Agent Skills-compatible skill directories
-```
-
-Resources under `skills/` and `extensions/` are the source of truth. Supporting references, scripts, and assets stay beside the resource that uses them.
+Run `/reload` in Pi after changing links. Repository edits are reflected through the links immediately.
 
 ## Contributing
 
