@@ -22,31 +22,24 @@ Apply this workflow separately to each candidate:
 2. Inspect the candidate's complete source, documentation, metadata, dependencies, install or setup behavior, and representative operation when available.
 3. Read the relevant current local Pi documentation. Compare the candidate with Pi built-ins, installed resources, ordinary files or commands, direct use without Pi integration, and adding nothing.
 4. Read [`references/pi-minimalism.md`](references/pi-minimalism.md) and apply every gate plus any type-specific checks that match the candidate.
-5. Resolve discoverable facts yourself. Ask one focused question only when missing user intent could change the verdict; do not ask the user to guess technical facts.
-6. Classify authority risk and issue one as-is verdict. If only a subset is worthwhile, keep the whole candidate's verdict unchanged and name that subset as a smaller alternative; assess it separately only when requested.
+5. Resolve discoverable facts yourself. Ask one focused question only when missing user intent could change the outcome; do not ask the user to guess technical facts.
+6. Classify authority risk and apply the rubric's decision rule to issue one as-is outcome. If only a subset is worthwhile, do not recommend the whole candidate and name that subset as a smaller alternative; assess it separately only when requested.
 
 Prefer candidate source and reproducible behavior over its claims. Use current Pi documentation as the authority for Pi behavior. Treat linked design material in the rubric as a lens, not proof of compatibility, safety, or value.
 
-## Verdicts
-
-Choose exactly one verdict for the candidate as it currently exists:
-
-- **추가 권장** — every gate passes; the candidate adds demonstrated value to the Pi environment, uses the smallest sufficient adoption mechanism, preserves user control, and is acceptable without substantive changes or prerequisite validation.
-- **추가 비권장** — any gate fails; no adoption or a smaller mechanism is sufficient, evidence is missing, authority is disproportionate, or the candidate needs substantive changes or prerequisite validation.
-
-A materially changed candidate is a new candidate for a later review. Do not issue conditional or provisional verdicts.
-
 ## Response
+
+Respond in the user's language. Localize headings, outcome wording, and risk labels naturally; preserve their meaning rather than literal English wording.
 
 Use the candidate name as the heading and keep the decision first:
 
-1. **판정** — exactly `추가 권장` or `추가 비권장`
-2. **이유** — two to four short bullets containing only decision-driving evidence, including the smaller alternative when relevant
-3. **위험** — `일반`, `부작용 주의`, or `권한 경계 고위험`, with one short reason
-4. **재검토** — optional; one concrete piece of new evidence that could change the verdict
+1. **Decision** — recommend adoption, defer the decision, or do not recommend adoption
+2. **Reasons** — two to four short bullets containing only decision-driving evidence, including the smaller alternative when relevant
+3. **Risk** — one authority-risk class from the rubric, with one short reason
+4. **Next evidence** — required for deferral; optional when one concrete result could reverse a negative outcome
 
-For multiple candidates, repeat this structure. Do not add an aggregate verdict unless requested.
+For multiple candidates, repeat this structure. Do not add an aggregate decision unless requested.
 
 ## Completion
 
-The review is complete when every rubric gate has an evidence-backed result, the smallest sufficient alternative and adding nothing have been compared, material authority and side effects have been traced, removability has been checked, and each candidate has exactly one as-is verdict.
+The review is complete when every rubric gate has an evidence-backed result or a deferred gate names its specific blocker and bounded resolution path, the smallest sufficient alternative and adding nothing have been compared, material authority and side effects have been traced, removability has been checked, and each candidate has exactly one as-is outcome.

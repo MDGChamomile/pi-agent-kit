@@ -52,9 +52,9 @@ Keep context, dependencies, maintenance, human review volume, and any recipient 
 
 Classify risk by observed authority:
 
-- **일반** — narrow behavior with no persistent runtime authority or external effect.
-- **부작용 주의** — automatic context or session changes, configuration writes, or bounded shell, filesystem, network, or external access.
-- **권한 경계 고위험** — behavior that can grant, deny, redirect, or bypass execution authority, trust, credentials, provider requests, or destructive/remote-write approval.
+- **Ordinary** — narrow behavior with no persistent runtime authority or external effect.
+- **Side effects require caution** — automatic context or session changes, configuration writes, or bounded shell, filesystem, network, or external access.
+- **High authority-boundary risk** — behavior that can grant, deny, redirect, or bypass execution authority, trust, credentials, provider requests, or destructive/remote-write approval.
 
 **Pass when:** behavior and cost fit within a meaningful human review budget, authority is proportionate, and the user retains understanding and control.
 
@@ -71,7 +71,13 @@ Classify risk by observed authority:
 
 ## Decision rule
 
-Recommend addition only when all four gates pass for the candidate as-is. Minimalism means choosing no more—and no less—than the demonstrated need requires. Generation speed or smaller size never substitutes for human understanding, responsibility, and review.
+- Recommend adoption only when all four gates pass for the candidate as-is.
+- Defer only when no gate is known to fail but a specific decision-critical fact cannot be established after proportionate investigation because of a concrete external blocker. Name the bounded check, trial, user decision, or target-environment evidence that would settle it.
+- Do not recommend adoption when any gate fails, a smaller mechanism is sufficient, authority is disproportionate, substantive changes are required, or the claimed need or value has not earned supporting evidence.
+
+A general lack of evidence is a failed gate, not a reason to defer. Deferral is reserved for a specific blocked verification with a concrete resolution path. Both deferral and non-recommendation mean no adoption now; do not issue conditional recommendations. A materially changed candidate is a new candidate for a later review.
+
+Minimalism means choosing no more—and no less—than the demonstrated need requires. Generation speed or smaller size never substitutes for human understanding, responsibility, and review.
 
 ## Design lenses
 
