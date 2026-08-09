@@ -33,7 +33,7 @@ For a **Skill**:
 - Deliberately trade model invocation's persistent context and trigger uncertainty against user invocation's cognitive cost; check false positives and false negatives when material.
 - Keep one source of truth, disclose branch-only reference on demand, and apply the deletion test to instructions whose behavioral effect is unknown.
 
-For a **repository or package**, inspect every resource and install-time action included in the proposed adoption unit; do not let one useful subdirectory justify the whole bundle. For a **tool or integration**, prefer its stable ordinary interface unless Pi-specific behavior adds demonstrated value. For an **Extension**, enumerate everything it registers, injects, mutates, or intercepts and confirm each runtime capability is necessary.
+For a **repository or package**, inspect the adoption-relevant resources and install-time actions needed to establish material capability, authority, side effects, and maintenance burden; expand to every included resource when high authority or hidden behavior makes the whole bundle decision-relevant. One useful subdirectory does not justify the whole bundle. For a **tool or integration**, prefer its stable ordinary interface unless Pi-specific behavior adds demonstrated value. For an **Extension**, enumerate everything it registers, injects, mutates, or intercepts and confirm each runtime capability is necessary.
 
 **Pass when:** no smaller mechanism delivers the same complete result and every remaining component changes a needed outcome or protects a required boundary.
 
@@ -73,7 +73,7 @@ Classify risk by observed authority:
 
 - Recommend adoption only when all four gates pass for the candidate as-is.
 - Defer only when no gate is known to fail but a specific decision-critical fact cannot be established after proportionate investigation because of a concrete external blocker. Name the bounded check, trial, user decision, or target-environment evidence that would settle it.
-- Do not recommend adoption when any gate fails, a smaller mechanism is sufficient, authority is disproportionate, substantive changes are required, or the claimed need or value has not earned supporting evidence.
+- Do not recommend adoption when any gate fails, a smaller mechanism is sufficient, authority is disproportionate, substantive changes are required, or the claimed need or value has not earned supporting evidence. A conclusive failure ends investigation of other gates unless they could change the authority-risk classification or smallest sufficient alternative.
 
 A general lack of evidence is a failed gate, not a reason to defer. Deferral is reserved for a specific blocked verification with a concrete resolution path. Both deferral and non-recommendation mean no adoption now; do not issue conditional recommendations. A materially changed candidate is a new candidate for a later review.
 

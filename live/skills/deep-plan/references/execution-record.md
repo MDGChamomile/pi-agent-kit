@@ -1,6 +1,6 @@
 # Deep Plan Execution Record
 
-Read this reference only after the grilling loop reaches Same Page or the user ends it. Write one source of truth; do not reproduce the full interview.
+Read this reference only after the grilling loop reaches Same Page. Write one source of truth; do not reproduce the full interview.
 
 ## Destination and filename
 
@@ -26,14 +26,14 @@ Use these sections, combining subsections when that improves clarity.
 
 Record separately:
 
-- `Alignment: Confirmed` or `Grilling stopped by user`;
+- `Alignment: Confirmed`;
 - `Readiness: Ready` or `Blocked` with the blocking Fog;
 - `Execution: Unauthorized`;
 - repository root, branch and HEAD when available, working-tree state, inspected-at timestamp, applicable instruction files, material evidence, and known gaps.
 
 ### Shared Understanding
 
-Preserve the confirmed Same Page readback, or the latest resolved understanding when grilling stopped. Add only:
+Preserve the confirmed Same Page readback. Add only:
 
 - the basis for confirmed decisions;
 - accepted assumptions with invalidation conditions;
@@ -63,6 +63,6 @@ Require the executor to re-read current instructions and compare live state with
 
 Keep the record executor-neutral. If the executor's tools, sandbox, permissions, context, verification, or report-back requirements materially change the contract, read `execution-handoff.md` and add only those deltas.
 
-## Readback
+## Completion condition
 
-Before reporting completion, verify that the record preserves every confirmed decision, accepted assumption, unresolved blocking branch, completion condition, step proof, gate, and stop condition. Keep secrets, credentials, private records, and sensitive repository content out of the record.
+The completed record preserves every confirmed decision, accepted assumption, unresolved blocking branch, completion condition, step proof, gate, and stop condition. It excludes secrets, credentials, private records, and sensitive repository content.

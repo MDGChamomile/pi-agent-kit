@@ -14,7 +14,7 @@ Use this workflow for one repository change that can be brought to execution rea
 
 ## Requirement
 
-Critical decision gates require the `ask_user` tool from [pi-ask-user](https://github.com/edlsh/pi-ask-user). Install it with `pi install npm:pi-ask-user` before using this skill. If the tool is unavailable, report the missing dependency and stop before the first critical gate rather than weakening the decision protocol.
+Critical decision gates require the `ask_user` tool from [pi-ask-user](https://github.com/edlsh/pi-ask-user). Install it with `pi install npm:pi-ask-user` before using this skill. If the tool is unavailable, report the missing dependency at the first critical gate and end with that gate recorded as unresolved.
 
 ## 1. Inspect and map the Fog
 
@@ -29,7 +29,7 @@ Inspect far enough to distinguish Evidence from Decisions and identify the first
 
 ## 2. Resolve the Fog
 
-Continue without a preset question or round limit until Same Page is reached or the user ends the session. After every answer or new piece of evidence, recompute which unresolved branches can now be resolved.
+Continue without a preset question or round limit until Same Page is reached. After every answer or new piece of evidence, recompute which unresolved branches can now be resolved.
 
 ### Critical gates
 
@@ -39,9 +39,9 @@ Use `ask_user`, following its decision-gate protocol, for load-bearing or author
 
 Once critical prerequisites are settled, present the currently answerable, mutually independent lower-stakes questions as a numbered list in a normal response. Add a recommended answer where it helps. The user may answer naturally by number or in prose.
 
-A question whose answer depends on another open question belongs to a later round. Promote a newly exposed critical decision to `ask_user`; investigate a newly exposed fact yourself.
+Resolve prerequisite branches first, then present the dependent questions they make answerable. Promote a newly exposed critical decision to `ask_user`; investigate a newly exposed fact yourself.
 
-A question earns its turn only when plausible answers could change behavior, scope, interfaces, risk, execution order, or completion evidence. Be **relentless on live Fog and silent on settled ground**: close resolved branches, reopen only branches invalidated by new information, and never manufacture questions to prolong the session.
+Each question closes a live branch whose answer could change behavior, scope, interfaces, risk, execution order, or completion evidence. Be **relentless on live Fog and silent on settled ground**: keep resolved branches closed until new evidence invalidates their basis.
 
 A branch is resolved only when it is:
 
@@ -53,11 +53,9 @@ A branch is resolved only when it is:
 
 When discussion cannot settle a branch, identify the evidence or mechanism that can. Record that dependency instead of asking the user to guess. If the work no longer fits one session, surface the scope problem and record the required split or multi-session handoff rather than absorbing it into this workflow.
 
-If the user says to stop, stop asking immediately. Preserve unresolved branches and their execution impact; blocking Fog prevents the record from being marked ready.
-
 ## 3. Reach the Same Page
 
-When Same Page appears reached, silently scan once for overlooked branches. Ask only if that scan finds live Fog.
+Same Page is reached when every known in-scope branch is resolved, explicitly gated, or placed out of scope.
 
 Then read back only the understanding execution depends on:
 
@@ -75,6 +73,6 @@ If this exact understanding has not already been confirmed, use `ask_user` for o
 
 ## 4. Write the Execution Record
 
-After Same Page is confirmed—or after the user ends grilling—read `references/execution-record.md` and write one Markdown record.
+After Same Page is confirmed, read `references/execution-record.md` and write one Markdown record.
 
-Apply the reference's readback, report the path, alignment state, readiness, and execution status, then stop without implementing.
+Apply the reference's completion condition, report the path, alignment state, readiness, and execution status, then stop without implementing.
