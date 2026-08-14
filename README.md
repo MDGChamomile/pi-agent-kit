@@ -24,7 +24,7 @@ Resources kept for reference but no longer actively used or maintained.
 | [`meta-prompt`](retired/skills/meta-prompt/SKILL.md) | Write or improve a compact, ready-to-use prompt |
 | [`nomore-harness`](retired/skills/nomore-harness/SKILL.md) | Review proposed additions to a Pi environment before adoption |
 
-`git-history` was retired because its stage-all flow could commit changes beyond the intended review boundary. `nomore-harness` was retired after comparison showed that reading `PRINCIPLE.md` in a natural-language review produced the same decisions at lower cost.
+`git-history` was retired because its stage-all flow could commit changes beyond the intended review boundary.
 
 ## Agent instructions
 
