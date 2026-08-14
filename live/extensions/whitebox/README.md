@@ -27,7 +27,7 @@ Use a disposable checkout with no important uncommitted files. Use a separate vi
 - Linux
 - Node.js 22.19 or newer
 - Pi coding agent (tested with 0.84.2)
-- `/usr/bin/bwrap` and `/usr/bin/flock`
+- `/usr/bin/bwrap` with `--disable-userns` support (Bubblewrap 0.8.0 or newer) and `/usr/bin/flock`
 - `bash`, `python3`, `git`, `make`, `cc`, and `c++` under `/usr/bin`
 - A normal Git repository root with a real `.git` directory; worktrees are not supported
 - Unprivileged user namespaces enabled

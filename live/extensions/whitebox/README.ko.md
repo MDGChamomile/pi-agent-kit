@@ -27,7 +27,7 @@ Whitebox가 격리하는 대상은 프로젝트 명령과 위 여섯 파일 도�
 - Linux
 - Node.js 22.19 이상
 - Pi coding agent 0.84.2에서 검증
-- `/usr/bin/bwrap`과 `/usr/bin/flock`
+- `--disable-userns`를 지원하는 `/usr/bin/bwrap`(Bubblewrap 0.8.0 이상)과 `/usr/bin/flock`
 - `/usr/bin` 아래의 `bash`, `python3`, `git`, `make`, `cc`, `c++`
 - 실제 `.git` 폴더가 있는 일반 Git 저장소 루트; worktree는 지원하지 않음
 - 비특권 사용자 네임스페이스 활성화

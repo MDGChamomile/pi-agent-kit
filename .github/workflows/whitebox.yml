@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
       run:
@@ -30,5 +30,7 @@ jobs:
       - name: Install system requirements
         run: sudo apt-get update && sudo apt-get install -y bubblewrap build-essential git python3 util-linux
         working-directory: .
+      - name: Install tested Pi runtime
+        run: npm install --global @earendil-works/pi-coding-agent@0.84.2
       - run: npm ci
       - run: npm test
