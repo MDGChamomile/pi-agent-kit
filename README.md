@@ -13,6 +13,7 @@ Resources currently used and maintained.
 | Skill | Purpose | Invoke |
 | --- | --- | --- |
 | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` |
+| [`session-search`](live/skills/session-search/README.md) | Aggregate counts, errors, and tool or skill usage across local Pi sessions | `/skill:session-search` |
 
 ### Extensions
 
