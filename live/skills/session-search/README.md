@@ -9,10 +9,11 @@ Use Pi's built-in `/resume` command instead when you only need to find, open, or
 - Reads session JSONL files without changing them or building an index.
 - Searches only sessions whose recorded working directory exactly matches the current directory by default.
 - Excludes the active session by default when `PI_SESSION_FILE` is set.
-- Returns bounded evidence snippets and applies best-effort masking before truncation.
+- Returns a path-free aggregate summary by default.
+- Returns bounded, best-effort-masked evidence only with `--include-evidence`.
 - Uses only the Python standard library and makes no network requests.
 
-Session data is inherently sensitive. Masking cannot recognize every credential or personal detail, and output includes local file paths and session identifiers. Review output before sharing it, prefer `--summary-only` when snippets are unnecessary, and never send raw session data to an external service.
+Session data is inherently sensitive. In an agent workflow, local tool output becomes context for the active model and may therefore reach a remote model provider. A cross-session request authorizes the default aggregate only. Use `--include-evidence` only after the user explicitly approves sending masked snippets, local paths, session identifiers, and warning paths to that provider. Masking cannot recognize every credential or personal detail.
 
 ## Requirements
 
@@ -43,11 +44,14 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --help
 Examples:
 
 ```bash
-# Count matching events in sessions for the current project without snippets
+# Count matching events in sessions for the current project (safe default)
+python3 scripts/session_search.py --query timeout
+
+# Explicitly request the same path-free summary mode
 python3 scripts/session_search.py --query timeout --summary-only
 
-# Find tool errors from the last seven days
-python3 scripts/session_search.py --days 7 --error --tool bash
+# Include representative evidence after explicit disclosure approval
+python3 scripts/session_search.py --days 7 --error --tool bash --include-evidence
 
 # Compare direct invocations with SKILL.md reads across all projects
 python3 scripts/session_search.py --all-projects --skill deep-plan
@@ -57,12 +61,12 @@ Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--ski
 
 The command emits one JSON object containing:
 
-- `scope`: the selected project and time range
+- `scope`: path-free project selection and time range by default; the exact cwd only with `--include-evidence`
 - `summary`: scan and match counts grouped by role, tool, and skill
-- `results`: bounded representative evidence, newest first
-- `warnings`: unreadable or malformed input encountered during the scan
+- `results`: empty by default; bounded representative evidence, newest first, with `--include-evidence`
+- `warnings`: counts by kind by default; file paths only with `--include-evidence`
 
-A direct skill invocation and a read of that skill's `SKILL.md` are reported separately. Reading instructions alone is not evidence that the skill was used.
+`--summary-only` remains as an explicit alias for the safe default. `--include-evidence` is mutually exclusive with it. A direct skill invocation and a read of that skill's `SKILL.md` are reported separately. Reading instructions alone is not evidence that the skill was used.
 
 ## Known limitations
 

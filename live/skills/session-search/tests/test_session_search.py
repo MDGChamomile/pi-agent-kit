@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -138,16 +139,24 @@ class SessionSearchTests(unittest.TestCase):
         ])
 
     def test_default_cwd_current_exclusion_and_literal_filter(self):
-        with fixture_tree() as (root, project_a, _, _, _, current):
+        with fixture_tree() as (root, project_a, _, primary, _, current):
             with patch.dict(os.environ, {"PI_SESSION_FILE": str(current)}):
                 result = session_search.aggregate(self.args(root, project_a, "--query", "failure"), now=self.NOW)
         self.assertEqual(result["status"], "ok")
+        self.assertFalse(result["evidence_included"])
         self.assertEqual(result["summary"]["files_selected"], 1)
         self.assertEqual(result["summary"]["current_session_files_excluded"], 1)
         self.assertEqual(result["summary"]["matched_sessions"], 1)
         self.assertEqual(result["summary"]["matched_entries"], 2)
-        self.assertNotIn("current only marker", json.dumps(result))
-        self.assertNotIn("another project", json.dumps(result))
+        self.assertEqual(result["results"], [])
+        serialized = json.dumps(result)
+        self.assertNotIn(str(project_a), serialized)
+        self.assertNotIn(str(primary), serialized)
+        self.assertNotIn("session-a", serialized)
+        self.assertNotIn("Repeated FAILURE", serialized)
+        self.assertNotIn("current only marker", serialized)
+        self.assertNotIn("another project", serialized)
+        self.assertNotIn("items", result["warnings"])
 
     def test_all_projects_and_current_inclusion(self):
         with fixture_tree() as (root, project_a, _, _, _, current):
@@ -164,14 +173,18 @@ class SessionSearchTests(unittest.TestCase):
     def test_period_is_based_on_entry_timestamp(self):
         with fixture_tree() as (root, project_a, _, _, _, current):
             with patch.dict(os.environ, {"PI_SESSION_FILE": str(current)}):
-                result = session_search.aggregate(self.args(root, project_a, "--days", "2", "--query", "failure"), now=self.NOW)
+                result = session_search.aggregate(self.args(
+                    root, project_a, "--include-evidence", "--days", "2", "--query", "failure"
+                ), now=self.NOW)
         self.assertEqual(result["summary"]["matched_entries"], 1)
         self.assertEqual(result["results"][0]["entry_id"], "b3")
 
     def test_tool_error_filter_and_latest_branch_marker(self):
         with fixture_tree() as (root, project_a, _, _, _, current):
             with patch.dict(os.environ, {"PI_SESSION_FILE": str(current)}):
-                result = session_search.aggregate(self.args(root, project_a, "--error", "--tool", "BASH"), now=self.NOW)
+                result = session_search.aggregate(self.args(
+                    root, project_a, "--include-evidence", "--error", "--tool", "BASH"
+                ), now=self.NOW)
         self.assertEqual(result["summary"]["tool_errors"], {"bash": 1})
         self.assertEqual(result["summary"]["matched_events"], 1)
         self.assertTrue(result["results"][0]["on_latest_leaf"])
@@ -180,7 +193,9 @@ class SessionSearchTests(unittest.TestCase):
     def test_direct_skill_and_file_read_are_separate(self):
         with fixture_tree() as (root, project_a, _, _, _, current):
             with patch.dict(os.environ, {"PI_SESSION_FILE": str(current)}):
-                result = session_search.aggregate(self.args(root, project_a, "--skill", "alpha"), now=self.NOW)
+                result = session_search.aggregate(self.args(
+                    root, project_a, "--include-evidence", "--skill", "alpha"
+                ), now=self.NOW)
         self.assertEqual(result["summary"]["direct_skill_calls"], {"alpha": 1})
         self.assertEqual(result["summary"]["skill_file_reads"], {"alpha": 1})
         events = {item["event"]: item for item in result["results"]}
@@ -190,8 +205,13 @@ class SessionSearchTests(unittest.TestCase):
     def test_masking_happens_before_output(self):
         with fixture_tree() as (root, project_a, _, _, _, current):
             with patch.dict(os.environ, {"PI_SESSION_FILE": str(current)}):
-                result = session_search.aggregate(self.args(root, project_a, "--skill", "alpha"), now=self.NOW)
+                result = session_search.aggregate(self.args(
+                    root, project_a, "--include-evidence", "--skill", "alpha"
+                ), now=self.NOW)
         serialized = json.dumps(result)
+        self.assertTrue(result["evidence_included"])
+        self.assertEqual(result["scope"]["cwd"], str(project_a.resolve()))
+        self.assertIn("session-a", serialized)
         self.assertNotIn("TOPSECRET123456", serialized)
         self.assertNotIn("KEY_SHOULD_HIDE_123", serialized)
         self.assertIn("REDACTED", serialized)
@@ -214,15 +234,19 @@ class SessionSearchTests(unittest.TestCase):
         with fixture_tree() as (root, project_a, _, primary, _, current):
             before = primary.stat().st_mtime_ns
             with patch.dict(os.environ, {"PI_SESSION_FILE": str(current)}):
-                limited = session_search.aggregate(self.args(root, project_a, "--limit", "1"), now=self.NOW)
+                limited = session_search.aggregate(self.args(
+                    root, project_a, "--include-evidence", "--limit", "1"
+                ), now=self.NOW)
                 summary_only = session_search.aggregate(self.args(root, project_a, "--summary-only"), now=self.NOW)
                 no_match = session_search.aggregate(self.args(root, project_a, "--query", "never-present"), now=self.NOW)
             after = primary.stat().st_mtime_ns
         self.assertEqual(limited["summary"]["results_returned"], 1)
         self.assertTrue(limited["summary"]["truncated"])
         self.assertEqual(summary_only["results"], [])
+        self.assertFalse(summary_only["evidence_included"])
         self.assertEqual(no_match["summary"]["matched_entries"], 0)
         self.assertGreaterEqual(limited["warnings"]["count"], 1)
+        self.assertIn("items", limited["warnings"])
         self.assertEqual(before, after)
 
     def test_empty_session_root_returns_zero_counts(self):
@@ -238,6 +262,11 @@ class SessionSearchTests(unittest.TestCase):
         parsed = session_search.parse_timestamp("2026-08-15T00:00:00")
         self.assertEqual(parsed, self.NOW)
         self.assertEqual(parsed.tzinfo, timezone.utc)
+
+    def test_evidence_and_summary_only_flags_are_mutually_exclusive(self):
+        parser = session_search.build_parser()
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args(["--include-evidence", "--summary-only"])
 
     def test_negative_days_and_limit_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp:

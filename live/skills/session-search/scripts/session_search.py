@@ -228,8 +228,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--error", action="store_true", help="include only error events")
     parser.add_argument("--skill", action="append", default=[], help="direct-invocation or skill-file-read name; repeat for alternatives")
     parser.add_argument("--include-current", action="store_true", help="include PI_SESSION_FILE (excluded by default)")
-    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help=f"maximum evidence results (default: {DEFAULT_LIMIT})")
-    parser.add_argument("--summary-only", action="store_true", help="omit representative evidence results")
+    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help=f"maximum evidence results with --include-evidence (default: {DEFAULT_LIMIT})")
+    evidence = parser.add_mutually_exclusive_group()
+    evidence.add_argument(
+        "--include-evidence",
+        action="store_true",
+        help="include masked snippets, session identifiers, and local paths; requires explicit user consent in agent workflows",
+    )
+    evidence.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="explicitly select the path-free summary output (the default; retained for compatibility)",
+    )
     parser.add_argument("--sessions-root", type=Path, default=DEFAULT_SESSIONS_ROOT, help=argparse.SUPPRESS)
     return parser
 
@@ -312,7 +322,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         raise RuntimeError("all candidate session files were unreadable or invalid")
 
     matched_events.sort(key=lambda item: parse_timestamp(item.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-    result_limit = 0 if args.summary_only else args.limit
+    result_limit = args.limit if args.include_evidence else 0
     result_events = matched_events[:result_limit]
     summary = {
         "files_discovered": len(files),
@@ -332,17 +342,25 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         "direct_skill_calls": dict(sorted(direct_calls.items())),
         "skill_file_reads": dict(sorted(skill_reads.items())),
     }
+    warning_counts = Counter(item["kind"] for item in warnings)
+    warning_output: dict[str, Any] = {
+        "count": len(warnings),
+        "by_kind": dict(sorted(warning_counts.items())),
+    }
+    if args.include_evidence:
+        warning_output["items"] = warnings
     return {
         "status": "ok",
+        "evidence_included": args.include_evidence,
         "scope": {
-            "cwd": None if args.all_projects else target_cwd,
+            "cwd": target_cwd if args.include_evidence and not args.all_projects else None,
             "all_projects": args.all_projects,
             "days": args.days,
             "include_current": args.include_current,
         },
         "summary": summary,
         "results": [result_view(event) for event in result_events],
-        "warnings": {"count": len(warnings), "items": warnings},
+        "warnings": warning_output,
     }
 
 
