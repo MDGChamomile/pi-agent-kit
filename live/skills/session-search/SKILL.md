@@ -14,7 +14,7 @@ Use this skill only when a request needs factual aggregation across multiple Pi 
 1. Resolve paths relative to this `SKILL.md`, then run `python3 <skill-directory>/scripts/session_search.py --help` to read the current CLI contract.
 2. Translate the user's stated scope and filters into CLI options. With no explicit scope, retain the script's current-working-directory default. The default output is a path-free aggregate summary; `--summary-only` is an explicit compatibility alias for that default.
 3. Run the script locally. It reads session JSONL files without modifying them or creating an index.
-4. Interpret the returned JSON as evidence, not as an automatic judgment. Keep direct skill invocations separate from reads of a skill's `SKILL.md`; a file read alone does not establish use.
+4. Interpret the returned JSON as evidence, not as an automatic judgment. Direct invocation means a user-role message matching Pi's complete skill envelope; keep it separate from reads of a skill's `SKILL.md`, mentions, and quoted XML.
 5. Report only what is needed to answer the request. Use `--include-evidence` only after the user explicitly approves sending masked snippets, local paths, and session identifiers to the active model provider.
 
 ## Privacy

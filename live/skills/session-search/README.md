@@ -64,16 +64,16 @@ The command emits one JSON object containing:
 - `scope`: path-free project selection and time range by default; the exact cwd only with `--include-evidence`
 - `summary`: scan and match counts grouped by role, tool, and skill
 - `results`: empty by default; bounded representative evidence, newest first, with `--include-evidence`
-- `warnings`: counts by kind by default; file paths only with `--include-evidence`
+- `warnings`: deduplicated counts by kind by default; up to 100 file-path details with `--include-evidence`
 
-`--summary-only` remains as an explicit alias for the safe default. `--include-evidence` is mutually exclusive with it. A direct skill invocation and a read of that skill's `SKILL.md` are reported separately. Reading instructions alone is not evidence that the skill was used.
+`--summary-only` remains as an explicit alias for the safe default. `--include-evidence` is mutually exclusive with it. A direct skill invocation is counted only for a user message matching Pi's complete skill envelope; it is reported separately from a read of that skill's `SKILL.md`. Reading instructions, quoting the XML, or mentioning a skill is not evidence that the skill was invoked.
 
 ## Known limitations
 
 - Searches are case-insensitive literal matches, not regular expressions or semantic search.
 - Counts describe recorded events and entries, not inferred tasks or outcomes.
 - The latest branch marker is inferred from the parent chain of the last recorded entry.
-- Every invocation scans the selected JSONL files; there is no persistent index.
+- Every invocation scans the selected JSONL files twice—once for branch metadata and once for events; there is no persistent index. Memory remains bounded by compact per-session branch metadata, aggregate counters, warning caps, and the requested result limit.
 - Secret masking is deliberately best-effort and is not a data-loss-prevention guarantee.
 
 ## Tests

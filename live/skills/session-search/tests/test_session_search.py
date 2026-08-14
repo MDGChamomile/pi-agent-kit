@@ -71,7 +71,9 @@ def fixture_tree():
                     None,
                     "2026-08-10T00:00:00Z",
                     "user",
-                    '<skill name="alpha">\nInvestigate failures token=TOPSECRET123456',
+                    '<skill name="alpha" location="/tmp/skills/alpha/SKILL.md">\n'
+                    'References are relative to /tmp/skills/alpha.\n\n'
+                    'Investigate failures token=TOPSECRET123456\n</skill>',
                 ),
                 message(
                     "a2",
@@ -202,6 +204,21 @@ class SessionSearchTests(unittest.TestCase):
         self.assertFalse(events["skill_file_read"]["on_latest_leaf"])
         self.assertIn("direct_skills", events["message"])
 
+    def test_direct_skill_detection_requires_user_role_and_full_pi_envelope(self):
+        envelope = (
+            '<skill name="alpha" location="/tmp/skills/alpha/SKILL.md">\n'
+            'References are relative to /tmp/skills/alpha.\n\n'
+            'Instructions\n</skill>\n\nuser arguments'
+        )
+        session = {"session_id": "session", "file": "/tmp/session.jsonl"}
+        generic_user = message("u1", None, "2026-08-10T00:00:00Z", "user", 'Discuss <skill name="alpha">')
+        assistant_example = message("a1", None, "2026-08-10T00:00:00Z", "assistant", envelope)
+        direct_user = message("u2", None, "2026-08-10T00:00:00Z", "user", envelope)
+
+        self.assertEqual(session_search.events_for_entry(generic_user, session, True)[0]["direct_skills"], [])
+        self.assertEqual(session_search.events_for_entry(assistant_example, session, True)[0]["direct_skills"], [])
+        self.assertEqual(session_search.events_for_entry(direct_user, session, True)[0]["direct_skills"], ["alpha"])
+
     def test_masking_happens_before_output(self):
         with fixture_tree() as (root, project_a, _, _, _, current):
             with patch.dict(os.environ, {"PI_SESSION_FILE": str(current)}):
@@ -248,6 +265,53 @@ class SessionSearchTests(unittest.TestCase):
         self.assertGreaterEqual(limited["warnings"]["count"], 1)
         self.assertIn("items", limited["warnings"])
         self.assertEqual(before, after)
+
+    def test_bounded_results_keep_only_newest_matches(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            root = base / "sessions"
+            project = base / "project"
+            project.mkdir()
+            entries = [
+                message(
+                    f"e{index}",
+                    f"e{index - 1}" if index else None,
+                    f"2026-08-{index + 1:02d}T00:00:00Z",
+                    "user",
+                    f"match {index}",
+                )
+                for index in range(10)
+            ]
+            write_session(root / "bounded.jsonl", header("bounded", project), entries)
+            result = session_search.aggregate(self.args(
+                root, project, "--include-evidence", "--query", "match", "--limit", "3"
+            ), now=self.NOW)
+        self.assertEqual(result["summary"]["matched_events"], 10)
+        self.assertEqual(result["summary"]["results_returned"], 3)
+        self.assertEqual([item["entry_id"] for item in result["results"]], ["e9", "e8", "e7"])
+
+    def test_warning_details_are_deduplicated_and_capped(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            root = base / "sessions"
+            project = base / "project"
+            project.mkdir()
+            write_session(root / "valid.jsonl", header("valid", project), [])
+            for index in range(session_search.MAX_WARNING_ITEMS + 5):
+                path = root / f"broken-{index}.jsonl"
+                path.write_text("invalid\n", encoding="utf-8")
+            repeated = root / "repeated.jsonl"
+            repeated.write_text("invalid\ninvalid\n", encoding="utf-8")
+            parser = session_search.build_parser()
+            result = session_search.aggregate(parser.parse_args([
+                "--sessions-root", str(root), "--all-projects", "--include-evidence"
+            ]), now=self.NOW)
+        self.assertEqual(result["warnings"]["count"], session_search.MAX_WARNING_ITEMS + 6)
+        self.assertEqual(len(result["warnings"]["items"]), session_search.MAX_WARNING_ITEMS)
+        self.assertTrue(result["warnings"]["truncated"])
+        self.assertEqual(result["warnings"]["by_kind"], {
+            "invalid_header": session_search.MAX_WARNING_ITEMS + 6
+        })
 
     def test_empty_session_root_returns_zero_counts(self):
         with tempfile.TemporaryDirectory() as temp:

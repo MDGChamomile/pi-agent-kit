@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import heapq
 import json
 import os
 import re
@@ -11,12 +12,18 @@ import sys
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 DEFAULT_LIMIT = 20
 DEFAULT_SESSIONS_ROOT = Path.home() / ".pi" / "agent" / "sessions"
 MAX_EVIDENCE_CHARS = 300
-SKILL_TAG_RE = re.compile(r'<skill\s+name=["\']([^"\']+)["\']', re.IGNORECASE)
+MAX_WARNING_ITEMS = 100
+SKILL_ENVELOPE_RE = re.compile(
+    r'\A<skill name="([^"\r\n]+)" location="[^"\r\n]+">\r?\n'
+    r'References are relative to [^\r\n]+\.\r?\n\r?\n'
+    r'.*\r?\n</skill>(?:\r?\n\r?\n.*)?\Z',
+    re.DOTALL,
+)
 SKILL_FILE_RE = re.compile(r"(?:^|[/\\])skills[/\\]([^/\\]+)[/\\]SKILL\.md$", re.IGNORECASE)
 
 # Mask before truncation so a secret crossing the truncation boundary cannot leak.
@@ -69,7 +76,8 @@ def text_content(content: Any) -> str:
 
 
 def direct_skills(text: str) -> list[str]:
-    return [match.group(1) for match in SKILL_TAG_RE.finditer(text)]
+    match = SKILL_ENVELOPE_RE.fullmatch(text)
+    return [match.group(1)] if match else []
 
 
 def skill_read_name(tool_name: str, arguments: Any) -> str | None:
@@ -82,15 +90,11 @@ def skill_read_name(tool_name: str, arguments: Any) -> str | None:
     return match.group(1) if match else None
 
 
-def latest_leaf_path(entries: list[dict[str, Any]]) -> set[str]:
-    by_id = {entry["id"]: entry for entry in entries if isinstance(entry.get("id"), str)}
-    if not by_id:
-        return set()
-    leaf_id = next((entry.get("id") for entry in reversed(entries) if isinstance(entry.get("id"), str)), None)
+def latest_leaf_path(parent_by_id: dict[str, Any], leaf_id: str | None) -> set[str]:
     result: set[str] = set()
-    while isinstance(leaf_id, str) and leaf_id in by_id and leaf_id not in result:
+    while isinstance(leaf_id, str) and leaf_id in parent_by_id and leaf_id not in result:
         result.add(leaf_id)
-        leaf_id = by_id[leaf_id].get("parentId")
+        leaf_id = parent_by_id[leaf_id]
     return result
 
 
@@ -123,7 +127,7 @@ def events_for_entry(entry: dict[str, Any], session: dict[str, str], on_leaf: bo
     }
     events: list[dict[str, Any]] = []
     text = text_content(message.get("content"))
-    skills = direct_skills(text)
+    skills = direct_skills(text) if role == "user" else []
     if (text or skills) and role != "toolResult":
         events.append({
             **base,
@@ -172,35 +176,99 @@ def events_for_entry(entry: dict[str, Any], session: dict[str, str], on_leaf: bo
     return events
 
 
-def warning(path: Path, kind: str) -> dict[str, str]:
-    return {"path": str(path), "kind": kind}
+class WarningCollector:
+    def __init__(self) -> None:
+        self._count = 0
+        self._counts: Counter[str] = Counter()
+        self._items: list[dict[str, str]] = []
+        self._current_path: str | None = None
+        self._current_kinds: set[str] = set()
+
+    def begin_file(self, path: Path) -> None:
+        self._current_path = str(path)
+        self._current_kinds.clear()
+
+    def add(self, path: Path, kind: str) -> None:
+        path_text = str(path)
+        if path_text != self._current_path:
+            self.begin_file(path)
+        if kind in self._current_kinds:
+            return
+        self._current_kinds.add(kind)
+        self._count += 1
+        self._counts[kind] += 1
+        if len(self._items) < MAX_WARNING_ITEMS:
+            self._items.append({"path": path_text, "kind": kind})
+
+    @property
+    def count(self) -> int:
+        return self._count
+
+    def output(self, include_items: bool) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "count": self.count,
+            "by_kind": dict(sorted(self._counts.items())),
+        }
+        if include_items:
+            result["items"] = list(self._items)
+            result["truncated"] = self.count > len(self._items)
+        return result
 
 
-def read_session(path: Path) -> tuple[dict[str, Any] | None, list[dict[str, Any]], list[dict[str, str]]]:
-    warnings: list[dict[str, str]] = []
-    entries: list[dict[str, Any]] = []
+def read_session_metadata(
+    path: Path,
+    warnings: WarningCollector,
+) -> tuple[dict[str, Any] | None, int, set[str]]:
+    entry_count = 0
+    parent_by_id: dict[str, Any] = {}
+    leaf_id: str | None = None
     try:
         with path.open("r", encoding="utf-8") as handle:
             first = handle.readline()
             try:
                 header = json.loads(first)
             except (json.JSONDecodeError, TypeError):
-                return None, [], [warning(path, "invalid_header")]
+                warnings.add(path, "invalid_header")
+                return None, 0, set()
             if not isinstance(header, dict) or header.get("type") != "session":
-                return None, [], [warning(path, "invalid_header")]
+                warnings.add(path, "invalid_header")
+                return None, 0, set()
             for line in handle:
                 try:
                     entry = json.loads(line)
                 except (json.JSONDecodeError, TypeError):
-                    warnings.append(warning(path, "invalid_json_line"))
+                    warnings.add(path, "invalid_json_line")
+                    continue
+                if not isinstance(entry, dict):
+                    warnings.add(path, "invalid_entry")
+                    continue
+                entry_count += 1
+                entry_id = entry.get("id")
+                if isinstance(entry_id, str):
+                    parent_by_id[entry_id] = entry.get("parentId")
+                    leaf_id = entry_id
+    except (OSError, UnicodeError):
+        warnings.add(path, "unreadable_file")
+        return None, 0, set()
+    return header, entry_count, latest_leaf_path(parent_by_id, leaf_id)
+
+
+def iter_session_entries(path: Path, warnings: WarningCollector) -> Iterator[dict[str, Any]]:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            handle.readline()
+            for line in handle:
+                try:
+                    entry = json.loads(line)
+                except (json.JSONDecodeError, TypeError):
+                    warnings.add(path, "invalid_json_line")
                     continue
                 if isinstance(entry, dict):
-                    entries.append(entry)
+                    yield entry
                 else:
-                    warnings.append(warning(path, "invalid_entry"))
+                    warnings.add(path, "invalid_entry")
     except (OSError, UnicodeError):
-        return None, [], [warning(path, "unreadable_file")]
-    return header, entries, warnings
+        warnings.add(path, "unreadable_file")
 
 
 def result_view(event: dict[str, Any]) -> dict[str, Any]:
@@ -261,30 +329,34 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     if args.limit < 0:
         raise ValueError("--limit must be non-negative")
 
-    files = sorted(root.rglob("*.jsonl"))
-    warnings: list[dict[str, str]] = []
-    matched_events: list[dict[str, Any]] = []
-    matched_entry_keys: set[tuple[str, Any]] = set()
-    matched_sessions: set[str] = set()
+    warnings = WarningCollector()
+    result_limit = args.limit if args.include_evidence else 0
+    result_heap: list[tuple[datetime, int, dict[str, Any]]] = []
+    result_sequence = 0
     roles: Counter[str] = Counter()
     tool_calls: Counter[str] = Counter()
     tool_errors: Counter[str] = Counter()
     direct_calls: Counter[str] = Counter()
     skill_reads: Counter[str] = Counter()
+    files_discovered = 0
     selected_files = 0
     scanned_entries = 0
     eligible_entries = 0
+    matched_sessions = 0
+    matched_entries = 0
+    matched_events = 0
     excluded_current = 0
     attempted_files = 0
     readable_headers = 0
 
-    for path in files:
+    for path in root.rglob("*.jsonl"):
+        files_discovered += 1
         if not args.include_current and current and normalized_path(path) == current:
             excluded_current += 1
             continue
         attempted_files += 1
-        header, entries, file_warnings = read_session(path)
-        warnings.extend(file_warnings)
+        warnings.begin_file(path)
+        header, entry_count, leaf_path = read_session_metadata(path, warnings)
         if header is None:
             continue
         readable_headers += 1
@@ -292,24 +364,24 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         if not args.all_projects and (not isinstance(header_cwd, str) or normalized_path(header_cwd) != target_cwd):
             continue
         selected_files += 1
-        scanned_entries += len(entries)
-        leaf_path = latest_leaf_path(entries)
-        session_id = str(header.get("id", ""))
-        session = {"session_id": session_id, "file": str(path)}
-        for entry in entries:
+        scanned_entries += entry_count
+        session = {"session_id": str(header.get("id", "")), "file": str(path)}
+        session_matched = False
+        for entry in iter_session_entries(path, warnings):
             timestamp = parse_timestamp(entry.get("timestamp"))
             if cutoff is not None and (timestamp is None or timestamp < cutoff):
                 continue
             eligible_entries += 1
+            entry_matched = False
             for event in events_for_entry(entry, session, entry.get("id") in leaf_path):
                 if not event_matches(event, args):
                     continue
-                matched_events.append(event)
-                entry_key = (str(path), entry.get("id"))
-                if entry_key not in matched_entry_keys:
+                matched_events += 1
+                if not entry_matched:
+                    entry_matched = True
+                    session_matched = True
+                    matched_entries += 1
                     roles[event["role"]] += 1
-                matched_entry_keys.add(entry_key)
-                matched_sessions.add(str(path))
                 if event["event"] in {"tool_call", "skill_file_read"} and event.get("tool_name"):
                     tool_calls[event["tool_name"]] += 1
                 if event.get("is_error") and event.get("tool_name"):
@@ -318,37 +390,45 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                 if event.get("skill_file_read"):
                     skill_reads[event["skill_file_read"]] += 1
 
+                result_sequence += 1
+                result_key = parse_timestamp(event.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc)
+                heap_key = (result_key, result_sequence)
+                if result_limit and (
+                    len(result_heap) < result_limit or heap_key > result_heap[0][:2]
+                ):
+                    item = (result_key, result_sequence, result_view(event))
+                    if len(result_heap) < result_limit:
+                        heapq.heappush(result_heap, item)
+                    else:
+                        heapq.heapreplace(result_heap, item)
+        if session_matched:
+            matched_sessions += 1
+
     if attempted_files and not readable_headers:
         raise RuntimeError("all candidate session files were unreadable or invalid")
 
-    matched_events.sort(key=lambda item: parse_timestamp(item.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-    result_limit = args.limit if args.include_evidence else 0
-    result_events = matched_events[:result_limit]
+    result_events = [
+        item[2]
+        for item in sorted(result_heap, key=lambda item: (item[0], item[1]), reverse=True)
+    ]
     summary = {
-        "files_discovered": len(files),
+        "files_discovered": files_discovered,
         "files_selected": selected_files,
         "current_session_files_excluded": excluded_current,
         "entries_scanned": scanned_entries,
         "entries_eligible": eligible_entries,
-        "matched_sessions": len(matched_sessions),
-        "matched_entries": len(matched_entry_keys),
-        "matched_events": len(matched_events),
+        "matched_sessions": matched_sessions,
+        "matched_entries": matched_entries,
+        "matched_events": matched_events,
         "results_returned": len(result_events),
         "result_limit": result_limit,
-        "truncated": len(matched_events) > len(result_events),
+        "truncated": matched_events > len(result_events),
         "roles": dict(sorted(roles.items())),
         "tool_calls": dict(sorted(tool_calls.items())),
         "tool_errors": dict(sorted(tool_errors.items())),
         "direct_skill_calls": dict(sorted(direct_calls.items())),
         "skill_file_reads": dict(sorted(skill_reads.items())),
     }
-    warning_counts = Counter(item["kind"] for item in warnings)
-    warning_output: dict[str, Any] = {
-        "count": len(warnings),
-        "by_kind": dict(sorted(warning_counts.items())),
-    }
-    if args.include_evidence:
-        warning_output["items"] = warnings
     return {
         "status": "ok",
         "evidence_included": args.include_evidence,
@@ -359,8 +439,8 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             "include_current": args.include_current,
         },
         "summary": summary,
-        "results": [result_view(event) for event in result_events],
-        "warnings": warning_output,
+        "results": result_events,
+        "warnings": warnings.output(args.include_evidence),
     }
 
 
