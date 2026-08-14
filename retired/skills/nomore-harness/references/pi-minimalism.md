@@ -4,18 +4,21 @@ Use this rubric to decide whether any proposed repository, package, tool, Skill,
 
 Pi minimalism is a small, predictable core plus explicit user-space extension—not feature deprivation. A candidate should not be rejected merely because Pi keeps it out of core; it should be rejected when the need is unproven or the mechanism is duplicative, hidden, or larger than the outcome requires. Understand the problem fully before simplifying, and seek the smallest **complete** mechanism. Never trade away correctness, security, privacy, data integrity, concurrency protection, accessibility, or explicit requirements for a smaller artifact.
 
+Set the adoption goal, non-discoverable context, hard boundaries, and success criteria. Treat this rubric as decision criteria, not a required investigation sequence. Leave the investigation and implementation path to the model unless the path is itself part of the requirement.
+
 ## 1. Earn its existence
 
-- Name the recurring observed failure, its root cause rather than its symptom, and the result that would prove improvement.
-- Reject speculative future needs: YAGNI applies until evidence shows the capability is needed.
+- Name the demonstrated need and the result that would prove it has been met.
+- Ground the need in at least one of: a recurring observed failure and its root cause; an explicit requirement or non-discoverable domain constraint; or a credible risk whose single-failure cost justifies preventive control.
+- Reject speculative future needs: YAGNI applies when none of those grounds is supported by proportionate evidence.
 - Compare against adding nothing. Modern models already perform many general coding and reasoning procedures without another harness element.
 - Separate additive, non-discoverable intent or domain knowledge from generic advice and facts the model can inspect itself.
 
-**Pass when:** the problem is real and recurring, the success condition is observable, and absence of the candidate causes a material gap.
+**Pass when:** the candidate closes a material gap or enforces a required boundary, the success condition is observable, and the need is supported by observed failure, an explicit requirement, or proportionate risk evidence.
 
 ## 2. Use the smallest sufficient mechanism
 
-Apply the **hourglass** test: useful harnesses enrich the input with intent and hard boundaries, leave exploration and execution choices thin, then enforce truth and consequential actions with deterministic checks or explicit authority gates. Procedural steering must answer an observed recurring failure; it does not earn a place merely by making the workflow look thorough.
+Apply the **hourglass** test: useful harnesses enrich the input with intent and hard boundaries, leave exploration and execution choices thin, then enforce truth and consequential actions with deterministic checks or explicit authority gates. Procedural steering earns a place only when the path is itself a requirement, it addresses a demonstrated failure, or it protects against a credible high-cost risk. Otherwise state the goal, context, boundaries, and success criteria, then leave the route open to the model.
 
 After understanding the task and environment, stop at the first mechanism that fully preserves the required outcome:
 
@@ -33,7 +36,7 @@ For a **Skill**:
 - Deliberately trade model invocation's persistent context and trigger uncertainty against user invocation's cognitive cost; check false positives and false negatives when material.
 - Keep one source of truth, disclose branch-only reference on demand, and apply the deletion test to instructions whose behavioral effect is unknown.
 
-For a **repository or package**, inspect every resource and install-time action included in the proposed adoption unit; do not let one useful subdirectory justify the whole bundle. For a **tool or integration**, prefer its stable ordinary interface unless Pi-specific behavior adds demonstrated value. For an **Extension**, enumerate everything it registers, injects, mutates, or intercepts and confirm each runtime capability is necessary.
+For a **repository or package**, inspect the adoption-relevant resources and install-time actions needed to establish material capability, authority, side effects, and maintenance burden; expand to every included resource when high authority or hidden behavior makes the whole bundle decision-relevant. One useful subdirectory does not justify the whole bundle. For a **tool or integration**, prefer its stable ordinary interface unless Pi-specific behavior adds demonstrated value. For an **Extension**, enumerate everything it registers, injects, mutates, or intercepts and confirm each runtime capability is necessary.
 
 **Pass when:** no smaller mechanism delivers the same complete result and every remaining component changes a needed outcome or protects a required boundary.
 
@@ -58,24 +61,28 @@ Classify risk by observed authority:
 
 **Pass when:** behavior and cost fit within a meaningful human review budget, authority is proportionate, and the user retains understanding and control.
 
-## 4. Prove value and keep an exit
+## 4. Prove value proportionately and keep an exit
 
-- Compare proportionate representative tasks with and without the candidate; use deterministic checks where possible.
-- For prose rules, use deletion or single-variable ablation to show that behavior changes. For runtime mechanisms, verify lifecycle and failure behavior through the real Pi entry point.
+Use the lightest evidence that can establish the claimed value and boundary:
+
+- For a static, low-authority artifact, inspect its unique information and use a deletion test when its behavioral effect is uncertain.
+- For a behavioral claim, use a proportionate comparison or single-variable ablation.
+- For runtime or high-authority mechanisms, verify lifecycle, failure behavior, observability, and rollback through the real Pi entry point.
+- For preventive controls, verify that the mechanism enforces the stated invariant; do not require a prior incident merely to justify a credible high-cost boundary.
 - Observe the outcomes material to the claim: success, regressions, tool use, context cost, latency, human intervention, and boundary adherence.
 - Check provenance, license, compatibility, dependencies, install behavior, ownership, and maintenance burden.
 - Record why the candidate exists, where it applies, supporting evidence, and the condition for expansion, re-evaluation, or removal.
 - Require a bounded disable and removal path with no unexplained persistent state.
 
-**Pass when:** evidence supports the claimed benefit strongly enough for its cost and risk, failures are observable, and the candidate can be removed safely.
+**Pass when:** proportionate evidence supports the claimed benefit or required boundary strongly enough for its cost and risk, failures are observable, and the candidate can be removed safely.
 
 ## Decision rule
 
 - Recommend adoption only when all four gates pass for the candidate as-is.
 - Defer only when no gate is known to fail but a specific decision-critical fact cannot be established after proportionate investigation because of a concrete external blocker. Name the bounded check, trial, user decision, or target-environment evidence that would settle it.
-- Do not recommend adoption when any gate fails, a smaller mechanism is sufficient, authority is disproportionate, substantive changes are required, or the claimed need or value has not earned supporting evidence.
+- Do not recommend adoption when any gate fails, a smaller mechanism is sufficient, authority is disproportionate, substantive changes are required, or the claimed need or value has not earned supporting evidence. A conclusive failure ends investigation of other gates unless they could change the authority-risk classification or smallest sufficient alternative.
 
-A general lack of evidence is a failed gate, not a reason to defer. Deferral is reserved for a specific blocked verification with a concrete resolution path. Both deferral and non-recommendation mean no adoption now; do not issue conditional recommendations. A materially changed candidate is a new candidate for a later review.
+A general lack of evidence for a claimed benefit is a failed gate, not a reason to defer. The absence of a prior incident does not invalidate an explicit requirement or a credible high-cost risk; support those with proportionate requirement, threat, or invariant evidence instead. Deferral is reserved for a specific blocked verification with a concrete resolution path. Both deferral and non-recommendation mean no adoption now; do not issue conditional recommendations. A materially changed candidate is a new candidate for a later review.
 
 Minimalism means choosing no more—and no less—than the demonstrated need requires. Generation speed or smaller size never substitutes for human understanding, responsibility, and review.
 

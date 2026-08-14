@@ -13,7 +13,6 @@ Resources currently used and maintained.
 | Skill | Purpose | Invoke |
 | --- | --- | --- |
 | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` |
-| [`nomore-harness`](live/skills/nomore-harness/SKILL.md) | Assess any proposed repository, package, tool, or agent resource before adopting it into Pi | `/skill:nomore-harness` |
 
 ## Retired
 
@@ -23,8 +22,9 @@ Resources kept for reference but no longer actively used or maintained.
 | --- | --- |
 | [`git-history`](retired/extensions/git-history/index.ts) | Add `/snapshot` to review and commit changes in the Pi agent directory |
 | [`meta-prompt`](retired/skills/meta-prompt/SKILL.md) | Write or improve a compact, ready-to-use prompt |
+| [`nomore-harness`](retired/skills/nomore-harness/SKILL.md) | Review proposed additions to a Pi environment before adoption |
 
-`git-history` was retired because its stage-all flow could commit changes beyond the intended review boundary.
+`git-history` was retired because its stage-all flow could commit changes beyond the intended review boundary. `nomore-harness` was retired after comparison showed that reading `PRINCIPLE.md` in a natural-language review produced the same decisions at lower cost.
 
 ## Agent instructions
 
@@ -45,7 +45,6 @@ cd pi-agent-kit
 
 mkdir -p ~/.pi/agent/skills
 ln -s "$PWD/live/skills/deep-plan" ~/.pi/agent/skills/deep-plan
-ln -s "$PWD/live/skills/nomore-harness" ~/.pi/agent/skills/nomore-harness
 ```
 
 Run `/reload` in Pi after changing links. Repository edits are reflected through the links immediately.
