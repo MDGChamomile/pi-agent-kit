@@ -1,0 +1,53 @@
+{
+  "name": "pi-whitebox",
+  "version": "0.1.0",
+  "description": "A strict offline Bubblewrap boundary for running untrusted project commands with Pi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MDGChamomile/pi-agent-kit.git",
+    "directory": "live/extensions/whitebox"
+  },
+  "homepage": "https://github.com/MDGChamomile/pi-agent-kit/tree/main/live/extensions/whitebox",
+  "bugs": "https://github.com/MDGChamomile/pi-agent-kit/issues",
+  "type": "module",
+  "os": [
+    "linux"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "sandbox",
+    "bubblewrap"
+  ],
+  "bin": {
+    "piw": "./bin/piw.mjs"
+  },
+  "files": [
+    "bin/",
+    "file-boundary.ts",
+    "file-worker.ts",
+    "index.ts",
+    "README.md",
+    "README.ko.md",
+    "sandbox.test.ts",
+    "sandbox.ts"
+  ],
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "scripts": {
+    "test": "node --experimental-strip-types --test sandbox.test.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.2"
+  }
+}

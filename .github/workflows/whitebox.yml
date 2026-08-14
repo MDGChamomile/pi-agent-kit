@@ -1,0 +1,34 @@
+name: whitebox
+
+on:
+  push:
+    paths:
+      - "live/extensions/whitebox/**"
+      - ".github/workflows/whitebox.yml"
+  pull_request:
+    paths:
+      - "live/extensions/whitebox/**"
+      - ".github/workflows/whitebox.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: live/extensions/whitebox
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.0"
+          cache: npm
+          cache-dependency-path: live/extensions/whitebox/package-lock.json
+      - name: Install system requirements
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap build-essential git python3 util-linux
+        working-directory: .
+      - run: npm ci
+      - run: npm test

@@ -14,6 +14,12 @@ Resources currently used and maintained.
 | --- | --- | --- |
 | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` |
 
+### Extensions
+
+| Extension | Purpose | Platform |
+| --- | --- | --- |
+| [`whitebox`](live/extensions/whitebox/README.md) | Run project commands and Pi file tools inside a strict offline Bubblewrap boundary | Linux |
+
 ## Retired
 
 Resources kept for reference but no longer actively used or maintained.
