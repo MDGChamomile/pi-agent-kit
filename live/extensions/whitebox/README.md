@@ -64,13 +64,13 @@ Additional command-line arguments are forwarded to Pi. Explicitly loading anothe
 
 ## Supported work
 
-Good fits:
+**Good fits:**
 
 - tests, builds, linters, and project scripts
 - existing Node.js and Python tooling
 - read-only Git inspection such as `git status`, `git diff`, and `git log`
 
-Not supported:
+**Not supported:**
 
 - network access or package downloads
 - commands needing host credentials
@@ -82,7 +82,7 @@ The default command timeout is 120 seconds and the maximum is 900 seconds. Captu
 ## Security notes
 
 - The workspace is writable and can be damaged or deleted.
-- Project `AGENTS.md` files may still be read by Pi. Add `--no-context-files` only if you understand that it also disables your global context instructions.
+- Project context files such as `AGENTS.md` may still be read by Pi and influence model behavior. Add `--no-context-files` only if you understand that it also disables your global context instructions.
 - Read-only host runtime files under `/usr` and selected identity/runtime files under `/etc` are visible inside the sandbox so supported tools can run.
 - CPU, memory, and workspace disk exhaustion are not fully controlled.
 - Whitebox reduces risk; it is not a substitute for an independently isolated host.
@@ -95,7 +95,7 @@ npm test
 
 The full suite creates temporary Git workspaces and checks filesystem, network, environment, namespace, lifecycle, file-tool, and actual Pi entry-point boundaries. It does not execute code from an external project.
 
-GitHub-hosted runners do not permit the network-namespace operation required by Whitebox. CI therefore runs `npm run test:portable` for the 13 policy and extension-wiring tests; `npm test` remains the required full integration check on a supported Linux host.
+GitHub-hosted runners do not permit the network-namespace operation required by Whitebox. CI therefore runs `npm run test:portable` for the portable policy and extension-wiring tests; `npm test` remains the required full integration check on a supported Linux host.
 
 ## License
 
