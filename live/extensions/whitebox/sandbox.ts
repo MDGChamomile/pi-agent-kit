@@ -31,6 +31,13 @@ export const HOME_SIZE_BYTES = 128 * 1024 * 1024;
 export const RUN_SIZE_BYTES = 16 * 1024 * 1024;
 
 const TEMP_PREFIX = "pi-whitebox-";
+const LOCK_ACQUIRE_WRAPPER = [
+  "import os, sys",
+  "marker = sys.argv[1]",
+  "fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)",
+  "os.close(fd)",
+  "os.execv(sys.argv[2], sys.argv[2:])",
+].join("\n");
 const PI_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
 const DEFAULT_PI_PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.resolve(PI_PACKAGE_NAME))));
 const REQUIRED_USR_TOOLS = [
@@ -551,7 +558,11 @@ export function buildBwrapArgs(policy: SandboxPolicy, command: string): string[]
   return args;
 }
 
-export function buildFlockArgs(policy: SandboxPolicy, command: string): string[] {
+export function buildFlockArgs(
+  policy: SandboxPolicy,
+  command: string,
+  acquisitionMarker: string,
+): string[] {
   return [
     "--exclusive",
     "--nonblock",
@@ -559,6 +570,10 @@ export function buildFlockArgs(policy: SandboxPolicy, command: string): string[]
     String(LOCK_CONFLICT_EXIT_CODE),
     "--close",
     policy.workspace,
+    "/usr/bin/python3",
+    "-c",
+    LOCK_ACQUIRE_WRAPPER,
+    acquisitionMarker,
     policy.bwrapPath,
     ...buildBwrapArgs(policy, command),
   ];
@@ -666,7 +681,8 @@ export async function runSandbox(
   if (options.signal?.aborted) throw new Error("Whitebox run was cancelled before start");
   await validateWorkspaceBoundary(policy.workspace);
 
-  const flockArgs = buildFlockArgs(policy, options.command);
+  const acquisitionMarker = join(options.tempStore.root, `lock-acquired-${randomUUID()}`);
+  const flockArgs = buildFlockArgs(policy, options.command, acquisitionMarker);
   const startedAt = Date.now();
   const child = spawn(policy.flockPath, flockArgs, {
     cwd: "/",
@@ -730,13 +746,16 @@ export async function runSandbox(
   timeoutTimer = setTimeout(() => requestStop("timeout"), timeoutSeconds * 1000);
   timeoutTimer.unref?.();
 
+  let lockAcquired = false;
   const closed = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolveClose, reject) => {
     child.once("error", reject);
     child.once("close", (code, signal) => resolveClose({ code, signal }));
-  }).finally(() => {
+  }).finally(async () => {
     if (timeoutTimer) clearTimeout(timeoutTimer);
     if (killTimer) clearTimeout(killTimer);
     options.signal?.removeEventListener("abort", onAbort);
+    lockAcquired = await pathExists(acquisitionMarker);
+    await rm(acquisitionMarker, { force: true });
   });
 
   const rawBuffer = Buffer.concat(captured, capturedBytes);
@@ -754,7 +773,7 @@ export async function runSandbox(
 
   let termination: SandboxTermination;
   if (stopReason) termination = stopReason;
-  else if (closed.code === LOCK_CONFLICT_EXIT_CODE) termination = "lock_conflict";
+  else if (!lockAcquired && closed.code === LOCK_CONFLICT_EXIT_CODE) termination = "lock_conflict";
   else if (closed.signal) termination = "signal";
   else termination = "exit";
 

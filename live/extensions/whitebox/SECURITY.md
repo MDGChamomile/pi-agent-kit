@@ -38,6 +38,6 @@ Symlinks, hard links, nested mounts, IPC nodes, root `.git` writes, process desc
 
 ## Reporting a suspected vulnerability
 
-Do not publish exploit details, credentials, or sensitive host information in a public issue. Private vulnerability reporting is not currently enabled for this repository. Until a private channel is available, open a minimal issue titled `Security contact request` without technical details so the maintainer can arrange a private follow-up.
+Do not publish exploit details, credentials, or sensitive host information in a public issue. Use GitHub's [private vulnerability reporting](https://github.com/MDGChamomile/pi-agent-kit/security/advisories/new) to send a confidential report to the maintainer.
 
 Non-sensitive defects and hardening suggestions may be reported through the normal issue tracker.

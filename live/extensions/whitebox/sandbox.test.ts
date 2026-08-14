@@ -410,10 +410,12 @@ describe("pure policy and argument construction", () => {
       );
       assert.ok(workspaceBind > 0 && gitBind > workspaceBind && rootReadonly > gitBind);
 
-      const flockArgs = buildFlockArgs(policy, command);
+      const acquisitionMarker = "/tmp/whitebox-lock-acquired";
+      const flockArgs = buildFlockArgs(policy, command, acquisitionMarker);
       assert.ok(flockArgs.includes("--close"));
       assert.equal(flockArgs[flockArgs.indexOf("--conflict-exit-code") + 1], String(LOCK_CONFLICT_EXIT_CODE));
-      assert.equal(flockArgs[flockArgs.indexOf(policy.workspace) + 1], "/usr/bin/bwrap");
+      assert.equal(flockArgs[flockArgs.indexOf(policy.workspace) + 1], "/usr/bin/python3");
+      assert.equal(flockArgs[flockArgs.indexOf(acquisitionMarker) + 1], "/usr/bin/bwrap");
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
@@ -792,6 +794,14 @@ printf 'BOUNDARY_OK\\n'`;
       assert.equal(nonzero.termination, "exit");
       assert.equal(nonzero.exitCode, 7);
       assert.match(nonzero.output.content, /expected failure/);
+
+      const exit75 = await runSandbox(policy, {
+        command: `exit ${LOCK_CONFLICT_EXIT_CODE}`,
+        timeoutSeconds: 5,
+        tempStore: store,
+      });
+      assert.equal(exit75.termination, "exit");
+      assert.equal(exit75.exitCode, LOCK_CONFLICT_EXIT_CODE);
 
       const controlled = await runSandbox(policy, {
         command: "printf '\\033[31mred'",
