@@ -32,23 +32,6 @@ Resources kept for reference but no longer actively used or maintained.
 
 Unlike the lengthy AGENTS.md and CLAUDE.md files commonly used in tools like Codex or Claude Code, this file contains only the minimal, essential instructions designed to maximize the performance and autonomy of modern AI models without imposing unnecessary constraints. Although originally spanning over 100 lines, this streamlined set of instructions is more than sufficient for optimal behavior—feel free to test it out.
 
-## Use with Pi
-
-> [!WARNING]
-> Skills can instruct an agent to take actions, and extensions run with your user permissions. Review any resource before enabling it.
-
-Clone the repository, then link only the live resources you want. These commands target macOS and Linux.
-
-```bash
-git clone https://github.com/MDGChamomile/pi-agent-kit.git
-cd pi-agent-kit
-
-mkdir -p ~/.pi/agent/skills
-ln -s "$PWD/live/skills/deep-plan" ~/.pi/agent/skills/deep-plan
-```
-
-Run `/reload` in Pi after changing links. Repository edits are reflected through the links immediately.
-
 ## Contributing
 
 This is an opinionated personal collection, but issues and suggestions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
