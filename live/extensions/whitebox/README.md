@@ -93,7 +93,9 @@ The default command timeout is 120 seconds and the maximum is 900 seconds. Captu
 npm test
 ```
 
-The suite creates temporary Git workspaces and checks filesystem, network, environment, namespace, lifecycle, file-tool, and actual Pi entry-point boundaries. It does not execute code from an external project.
+The full suite creates temporary Git workspaces and checks filesystem, network, environment, namespace, lifecycle, file-tool, and actual Pi entry-point boundaries. It does not execute code from an external project.
+
+GitHub-hosted runners do not permit the network-namespace operation required by Whitebox. CI therefore runs `npm run test:portable` for the 13 policy and extension-wiring tests; `npm test` remains the required full integration check on a supported Linux host.
 
 ## License
 

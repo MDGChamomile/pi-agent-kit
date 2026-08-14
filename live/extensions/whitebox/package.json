@@ -42,7 +42,8 @@
     ]
   },
   "scripts": {
-    "test": "node --experimental-strip-types --test sandbox.test.ts"
+    "test": "node --experimental-strip-types --test sandbox.test.ts",
+    "test:portable": "node --experimental-strip-types --test --test-name-pattern='^(pure policy and argument construction|Pi extension wiring with a fake API)$' sandbox.test.ts"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
