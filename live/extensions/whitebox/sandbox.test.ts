@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import {
   access,
+  chmod,
   link,
   mkdir,
   mkdtemp,
@@ -19,6 +20,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { resolvePiEntrypoint } from "./bin/resolve-pi.mjs";
 import { createWhiteboxExtension, type WhiteboxDependencies } from "./index.ts";
 import {
   FILE_TOOL_NAMES,
@@ -270,6 +272,68 @@ describe("pure policy and argument construction", () => {
     }
   });
 
+  test("piw resolves Pi outside the workspace and prefers the current Node distribution", async () => {
+    const root = await mkdtemp(join(tmpdir(), "whitebox-test-piw-path-"));
+    const workspace = join(root, "workspace");
+    const runtimeBin = join(root, "runtime", "bin");
+    const projectBin = join(workspace, "node_modules", ".bin");
+    const externalBin = join(root, "external-bin");
+    try {
+      await Promise.all([
+        mkdir(workspace, { recursive: true }),
+        mkdir(runtimeBin, { recursive: true }),
+        mkdir(projectBin, { recursive: true }),
+        mkdir(externalBin, { recursive: true }),
+      ]);
+      const trustedPi = join(runtimeBin, "pi");
+      const projectPi = join(projectBin, "pi");
+      const externalPi = join(externalBin, "pi");
+      const makePiCandidate = async (candidate: string, packageRoot: string) => {
+        const entrypoint = join(packageRoot, "dist", "cli.js");
+        await mkdir(dirname(entrypoint), { recursive: true });
+        await writeFile(join(packageRoot, "package.json"), JSON.stringify({
+          name: "@earendil-works/pi-coding-agent",
+        }));
+        await writeFile(entrypoint, "#!/usr/bin/env node\n");
+        await chmod(entrypoint, 0o755);
+        await symlink(entrypoint, candidate);
+        return entrypoint;
+      };
+      const trustedEntrypoint = await makePiCandidate(
+        trustedPi,
+        join(root, "runtime", "lib", "node_modules", "@earendil-works", "pi-coding-agent"),
+      );
+      await makePiCandidate(
+        projectPi,
+        join(workspace, "fake-package", "@earendil-works", "pi-coding-agent"),
+      );
+      const externalEntrypoint = await makePiCandidate(
+        externalPi,
+        join(root, "external-package", "@earendil-works", "pi-coding-agent"),
+      );
+
+      assert.equal(resolvePiEntrypoint({
+        cwd: workspace,
+        execPath: join(runtimeBin, "node"),
+        pathValue: projectBin,
+      }), await realpath(trustedEntrypoint));
+
+      await rm(trustedPi);
+      assert.throws(() => resolvePiEntrypoint({
+        cwd: workspace,
+        execPath: join(runtimeBin, "node"),
+        pathValue: projectBin,
+      }), /outside the current workspace/);
+      assert.equal(resolvePiEntrypoint({
+        cwd: workspace,
+        execPath: join(runtimeBin, "node"),
+        pathValue: `${projectBin}:${externalBin}`,
+      }), await realpath(externalEntrypoint));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("workspace and .git validation reject broad roots and symlink .git", async () => {
     await assert.rejects(() => prepareSandbox("/"), /too broad|sensitive root/);
     const fixture = await makeFixture("symlink-git");
@@ -325,6 +389,20 @@ describe("pure policy and argument construction", () => {
       assert.deepEqual(args.slice(-6), ["--", "/bin/bash", "--noprofile", "--norc", "-c", command]);
       assert.ok(args.indexOf("--clearenv") >= 0);
       assert.equal(args.some((value) => value.startsWith("PI_") || value.startsWith("SSH_")), false);
+      assert.equal(
+        args.some((value, index) => value === "--ro-bind" && args[index + 1] === policy.nodeRoot),
+        false,
+        "the complete host Node prefix must not be exposed",
+      );
+      assert.ok(args.includes(join(policy.nodeRoot, "bin", "node")));
+      assert.ok(args.includes(join(policy.nodeRoot, "lib", "node_modules", "npm")));
+      assert.ok(args.includes(join(
+        policy.nodeRoot,
+        "lib",
+        "node_modules",
+        "@earendil-works",
+        "pi-coding-agent",
+      )));
 
       const workspaceBind = args.findIndex(
         (value, index) => value === "--bind" && args[index + 1] === policy.workspace,
@@ -647,6 +725,9 @@ PY
 node --version
 npm --version
 npx --version
+[ ! -e /opt/node/README.md ]
+[ ! -e /opt/node/lib/node_modules/corepack ]
+[ -r /opt/node/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.js ]
 if npm view whitebox-offline-probe-package-019ff6 >/tmp/npm-view.out 2>/tmp/npm-view.err; then exit 45; fi
 python3 --version
 git status --short

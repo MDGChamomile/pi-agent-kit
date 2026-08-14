@@ -137,6 +137,39 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
+function nodeRuntimePaths(nodeRoot: string) {
+  return {
+    executable: join(nodeRoot, "bin", "node"),
+    includeRoot: join(nodeRoot, "include"),
+    npmRoot: join(nodeRoot, "lib", "node_modules", "npm"),
+    piPackageRoot: join(nodeRoot, "lib", "node_modules", "@earendil-works", "pi-coding-agent"),
+  };
+}
+
+async function assertRuntimeDirectory(nodeRoot: string, path: string, label: string): Promise<void> {
+  const info = await lstat(path).catch(() => undefined);
+  if (!info?.isDirectory() || info.isSymbolicLink()) {
+    throw new Error(`${label} must be a directory: ${path}`);
+  }
+  const canonical = await realpath(path);
+  if (!isWithin(nodeRoot, canonical)) {
+    throw new Error(`${label} must stay inside the Node distribution: ${path} -> ${canonical}`);
+  }
+}
+
+async function validateNodeRuntime(nodeRoot: string): Promise<void> {
+  const runtime = nodeRuntimePaths(nodeRoot);
+  await assertExecutable(runtime.executable, "node");
+  await Promise.all([
+    assertRuntimeDirectory(nodeRoot, runtime.includeRoot, "Node headers"),
+    assertRuntimeDirectory(nodeRoot, runtime.npmRoot, "npm runtime"),
+    assertRuntimeDirectory(nodeRoot, runtime.piPackageRoot, "Pi runtime"),
+  ]);
+  await access(join(runtime.piPackageRoot, "dist", "index.js"), fsConstants.R_OK).catch(() => {
+    throw new Error(`Pi SDK entry point is unavailable under the Node distribution: ${runtime.piPackageRoot}`);
+  });
+}
+
 export function validateTimeoutSeconds(value: number | undefined): number {
   const timeout = value ?? DEFAULT_TIMEOUT_SECONDS;
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > MAX_TIMEOUT_SECONDS) {
@@ -348,6 +381,7 @@ export async function prepareSandbox(
 
   await Promise.all(REQUIRED_USR_TOOLS.map((path) => assertExecutable(path, basename(path))));
   const nodeRoot = await findNodeDistributionRoot(options.nodeExecPath ?? process.execPath);
+  await validateNodeRuntime(nodeRoot);
   const { workspace, gitDir } = await validateWorkspace(
     cwd,
     options.homeDir ?? homedir(),
@@ -446,7 +480,19 @@ export function buildBwrapBaseArgs(policy: SandboxPolicy): string[] {
   for (const [name, value] of INNER_ENV) args.push("--setenv", name, value);
 
   args.push("--ro-bind", "/usr", "/usr");
-  args.push("--ro-bind", policy.nodeRoot, "/opt/node");
+  const nodeRuntime = nodeRuntimePaths(policy.nodeRoot);
+  args.push("--dir", "/opt/node/bin");
+  args.push("--dir", "/opt/node/lib/node_modules/@earendil-works");
+  args.push("--ro-bind", nodeRuntime.executable, "/opt/node/bin/node");
+  args.push("--ro-bind", nodeRuntime.includeRoot, "/opt/node/include");
+  args.push("--ro-bind", nodeRuntime.npmRoot, "/opt/node/lib/node_modules/npm");
+  args.push(
+    "--ro-bind",
+    nodeRuntime.piPackageRoot,
+    "/opt/node/lib/node_modules/@earendil-works/pi-coding-agent",
+  );
+  args.push("--symlink", "../lib/node_modules/npm/bin/npm-cli.js", "/opt/node/bin/npm");
+  args.push("--symlink", "../lib/node_modules/npm/bin/npx-cli.js", "/opt/node/bin/npx");
   for (const link of policy.usrMergeLinks) args.push("--symlink", link.target, link.destination);
   for (const path of policy.etcMounts) args.push("--ro-bind", path, path);
 

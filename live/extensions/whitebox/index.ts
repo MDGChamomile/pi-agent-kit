@@ -366,7 +366,7 @@ export function createWhiteboxExtension(
           executionMode: "sequential",
           description:
             "Run a command in the current Git workspace through strict Bubblewrap isolation. " +
-            "The workspace may be modified, root .git is read-only, network and host credentials are unavailable, " +
+            "The workspace may be modified, root .git is read-only, network and host credentials outside the workspace are unavailable, " +
             `and output is capped at 10MiB. Timeout defaults to ${DEFAULT_TIMEOUT_SECONDS}s.`,
           promptSnippet: "Run external project commands in the strict offline Whitebox sandbox",
           promptGuidelines: [
@@ -452,7 +452,8 @@ export function createWhiteboxExtension(
         state = "ready";
         ctx.ui.setStatus(STATUS_KEY, "Whitebox: files + commands workspace-only · .git RO · net off");
         ctx.ui.notify(
-          `Whitebox ready. ${policySummary(policy, DEFAULT_TIMEOUT_SECONDS)}. The workspace can still be damaged.`,
+          `Whitebox ready. ${policySummary(policy, DEFAULT_TIMEOUT_SECONDS)}. ` +
+            "The workspace can be damaged, and its contents remain visible to Pi and the model.",
           "warning",
         );
       } catch (error) {

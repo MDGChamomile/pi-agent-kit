@@ -12,7 +12,7 @@ In Whitebox mode:
 
 - `whitebox_run` executes commands with the current Git workspace mounted read/write.
 - The root `.git` directory is mounted read-only.
-- Network, the host home directory, Pi sessions, credentials, and inherited environment variables are unavailable to sandboxed commands.
+- Sandboxed commands receive no network, inherited environment variables, Pi sessions, or host credentials. They can access the workspace and the read-only runtime mounts listed below, but not the rest of the host home directory.
 - Pi's `read`, `write`, `edit`, `grep`, `find`, and `ls` tools are confined to the workspace.
 - Host Bash and user `!` / `!!` commands are blocked.
 - Time, output, and concurrent execution are bounded.
@@ -20,7 +20,7 @@ In Whitebox mode:
 
 Whitebox isolates project commands and those six file tools. It does **not** sandbox the entire Pi process, the model connection, other explicitly loaded extensions, or the writable project itself.
 
-Use a disposable checkout with no important uncommitted files. Use a separate virtual machine for strongly malicious or resource-exhaustion workloads.
+Use a disposable checkout with no important uncommitted files or secrets. Use a separate virtual machine for strongly malicious or resource-exhaustion workloads.
 
 ## Requirements
 
@@ -43,7 +43,7 @@ npm install
 npm link
 ```
 
-This installs the `piw` launcher. Pi must already be available on `PATH`.
+This installs the `piw` launcher. Pi must already be installed alongside the current Node distribution or available on `PATH`. The launcher refuses to start a Pi entry point resolved inside the workspace.
 
 ## Run
 
@@ -82,8 +82,9 @@ The default command timeout is 120 seconds and the maximum is 900 seconds. Captu
 ## Security notes
 
 - The workspace is writable and can be damaged or deleted.
+- Everything in the workspace is readable by sandboxed commands and Pi's file tools and may be sent over the model connection. Whitebox is not a confidentiality boundary for project contents.
 - Project context files such as `AGENTS.md` may still be read by Pi and influence model behavior. Add `--no-context-files` only if you understand that it also disables your global context instructions.
-- Read-only host runtime files under `/usr` and selected identity/runtime files under `/etc` are visible inside the sandbox so supported tools can run.
+- Read-only host files under `/usr`, selected identity/runtime files under `/etc`, and a curated Node/npm/Pi runtime under `/opt/node` are visible inside the sandbox so supported tools can run. Other globally installed Node packages are not mounted.
 - CPU, memory, and workspace disk exhaustion are not fully controlled.
 - Whitebox reduces risk; it is not a substitute for an independently isolated host.
 
