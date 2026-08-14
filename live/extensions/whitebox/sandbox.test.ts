@@ -125,6 +125,7 @@ const FAKE_POLICY: SandboxPolicy = {
   workspace: "/tmp/fake-workspace",
   gitDir: "/tmp/fake-workspace/.git",
   nodeRoot: "/opt/fake-node",
+  piPackageRoot: "/opt/fake-pi-package",
   bwrapPath: "/usr/bin/bwrap",
   flockPath: "/usr/bin/flock",
   etcMounts: ["/etc/passwd"],
@@ -396,13 +397,7 @@ describe("pure policy and argument construction", () => {
       );
       assert.ok(args.includes(join(policy.nodeRoot, "bin", "node")));
       assert.ok(args.includes(join(policy.nodeRoot, "lib", "node_modules", "npm")));
-      assert.ok(args.includes(join(
-        policy.nodeRoot,
-        "lib",
-        "node_modules",
-        "@earendil-works",
-        "pi-coding-agent",
-      )));
+      assert.ok(args.includes(policy.piPackageRoot));
 
       const workspaceBind = args.findIndex(
         (value, index) => value === "--bind" && args[index + 1] === policy.workspace,

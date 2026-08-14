@@ -86,6 +86,8 @@ pi --no-extensions -e <whitebox>/index.ts --no-skills --no-approve --whitebox
 - CPU, 메모리, 작업공간 디스크 고갈을 완전히 통제하지 않습니다.
 - Whitebox는 위험을 줄이지만 독립적으로 격리된 호스트를 대체하지 않습니다.
 
+위협 모델과 취약점 제보 방법은 [SECURITY.md](SECURITY.md)를 참고하세요.
+
 ## 테스트
 
 ```bash

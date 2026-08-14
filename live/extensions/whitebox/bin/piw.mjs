@@ -19,7 +19,8 @@ let piEntrypoint;
 try {
   piEntrypoint = resolvePiEntrypoint();
 } catch (error) {
-  console.error(`piw could not start Pi: ${error.message}`);
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`piw could not start Pi: ${message}`);
   process.exitCode = 127;
 }
 

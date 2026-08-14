@@ -88,6 +88,8 @@ The default command timeout is 120 seconds and the maximum is 900 seconds. Captu
 - CPU, memory, and workspace disk exhaustion are not fully controlled.
 - Whitebox reduces risk; it is not a substitute for an independently isolated host.
 
+See [SECURITY.md](SECURITY.md) for the threat model and vulnerability-reporting guidance.
+
 ## Test
 
 ```bash

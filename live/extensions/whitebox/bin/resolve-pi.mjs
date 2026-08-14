@@ -1,11 +1,13 @@
 import { accessSync, constants as fsConstants, readFileSync, realpathSync, statSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
+/** @param {string} parent @param {string} child */
 function isWithin(parent, child) {
   const rel = relative(parent, child);
   return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
 }
 
+/** @param {string} path */
 function piEntrypoint(path) {
   try {
     accessSync(path, fsConstants.R_OK | fsConstants.X_OK);

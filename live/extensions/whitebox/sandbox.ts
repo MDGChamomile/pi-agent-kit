@@ -16,6 +16,7 @@ import {
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const BWRAP_PATH = "/usr/bin/bwrap";
 export const FLOCK_PATH = "/usr/bin/flock";
@@ -30,6 +31,8 @@ export const HOME_SIZE_BYTES = 128 * 1024 * 1024;
 export const RUN_SIZE_BYTES = 16 * 1024 * 1024;
 
 const TEMP_PREFIX = "pi-whitebox-";
+const PI_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
+const DEFAULT_PI_PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.resolve(PI_PACKAGE_NAME))));
 const REQUIRED_USR_TOOLS = [
   "/usr/bin/bash",
   "/usr/bin/python3",
@@ -51,6 +54,7 @@ export interface SandboxPolicy {
   workspace: string;
   gitDir: string;
   nodeRoot: string;
+  piPackageRoot: string;
   bwrapPath: string;
   flockPath: string;
   etcMounts: string[];
@@ -62,6 +66,7 @@ export interface PrepareSandboxOptions {
   bwrapPath?: string;
   flockPath?: string;
   nodeExecPath?: string;
+  piPackageRoot?: string;
   homeDir?: string;
   agentDir?: string;
   requireUserNamespaces?: boolean;
@@ -142,7 +147,6 @@ function nodeRuntimePaths(nodeRoot: string) {
     executable: join(nodeRoot, "bin", "node"),
     includeRoot: join(nodeRoot, "include"),
     npmRoot: join(nodeRoot, "lib", "node_modules", "npm"),
-    piPackageRoot: join(nodeRoot, "lib", "node_modules", "@earendil-works", "pi-coding-agent"),
   };
 }
 
@@ -163,11 +167,29 @@ async function validateNodeRuntime(nodeRoot: string): Promise<void> {
   await Promise.all([
     assertRuntimeDirectory(nodeRoot, runtime.includeRoot, "Node headers"),
     assertRuntimeDirectory(nodeRoot, runtime.npmRoot, "npm runtime"),
-    assertRuntimeDirectory(nodeRoot, runtime.piPackageRoot, "Pi runtime"),
   ]);
-  await access(join(runtime.piPackageRoot, "dist", "index.js"), fsConstants.R_OK).catch(() => {
-    throw new Error(`Pi SDK entry point is unavailable under the Node distribution: ${runtime.piPackageRoot}`);
+}
+
+async function validatePiPackageRoot(path: string): Promise<string> {
+  const canonical = await realpath(resolve(path)).catch(() => {
+    throw new Error(`Pi package is unavailable: ${path}`);
   });
+  const info = await lstat(canonical);
+  if (!info.isDirectory()) throw new Error(`Pi package must be a directory: ${canonical}`);
+  const manifestPath = join(canonical, "package.json");
+  let manifest: { name?: unknown };
+  try {
+    manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  } catch {
+    throw new Error(`Pi package manifest is unavailable or invalid: ${manifestPath}`);
+  }
+  if (manifest.name !== PI_PACKAGE_NAME) {
+    throw new Error(`Unexpected Pi package at ${canonical}`);
+  }
+  await access(join(canonical, "dist", "index.js"), fsConstants.R_OK).catch(() => {
+    throw new Error(`Pi SDK entry point is unavailable: ${canonical}`);
+  });
+  return canonical;
 }
 
 export function validateTimeoutSeconds(value: number | undefined): number {
@@ -382,6 +404,7 @@ export async function prepareSandbox(
   await Promise.all(REQUIRED_USR_TOOLS.map((path) => assertExecutable(path, basename(path))));
   const nodeRoot = await findNodeDistributionRoot(options.nodeExecPath ?? process.execPath);
   await validateNodeRuntime(nodeRoot);
+  const piPackageRoot = await validatePiPackageRoot(options.piPackageRoot ?? DEFAULT_PI_PACKAGE_ROOT);
   const { workspace, gitDir } = await validateWorkspace(
     cwd,
     options.homeDir ?? homedir(),
@@ -389,6 +412,9 @@ export async function prepareSandbox(
   );
   if (isWithin(workspace, nodeRoot) || isWithin(nodeRoot, workspace)) {
     throw new Error("Workspace and the Pi Node distribution must not overlap");
+  }
+  if (isWithin(workspace, piPackageRoot) || isWithin(piPackageRoot, workspace)) {
+    throw new Error("Workspace and the Pi package must not overlap");
   }
   await validateWorkspaceBoundary(workspace);
 
@@ -419,6 +445,7 @@ export async function prepareSandbox(
     workspace,
     gitDir,
     nodeRoot,
+    piPackageRoot,
     bwrapPath,
     flockPath,
     etcMounts,
@@ -488,7 +515,7 @@ export function buildBwrapBaseArgs(policy: SandboxPolicy): string[] {
   args.push("--ro-bind", nodeRuntime.npmRoot, "/opt/node/lib/node_modules/npm");
   args.push(
     "--ro-bind",
-    nodeRuntime.piPackageRoot,
+    policy.piPackageRoot,
     "/opt/node/lib/node_modules/@earendil-works/pi-coding-agent",
   );
   args.push("--symlink", "../lib/node_modules/npm/bin/npm-cli.js", "/opt/node/bin/npm");

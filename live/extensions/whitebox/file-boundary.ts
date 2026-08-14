@@ -301,6 +301,12 @@ export async function runBoundaryFileTool(
     throw error;
   }
 
+  if (!child.stdin || !child.stdout || !child.stderr) {
+    terminateProcessGroup(child.pid, "SIGKILL");
+    await captureHandle?.close();
+    throw new Error("Whitebox file worker pipes are unavailable");
+  }
+
   const stdout: Buffer[] = [];
   const stderr: Buffer[] = [];
   let stdoutBytes = 0;

@@ -1,6 +1,7 @@
 {
   "name": "pi-whitebox",
   "version": "0.1.0",
+  "private": true,
   "description": "A strict offline Bubblewrap boundary for running untrusted project commands with Pi",
   "license": "MIT",
   "repository": {
@@ -33,8 +34,10 @@
     "index.ts",
     "README.md",
     "README.ko.md",
+    "SECURITY.md",
     "sandbox.test.ts",
-    "sandbox.ts"
+    "sandbox.ts",
+    "tsconfig.json"
   ],
   "pi": {
     "extensions": [
@@ -42,6 +45,7 @@
     ]
   },
   "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
     "test": "node --experimental-strip-types --test sandbox.test.ts",
     "test:portable": "node --experimental-strip-types --test --test-name-pattern='^(pure policy and argument construction|Pi extension wiring with a fake API)$' sandbox.test.ts"
   },
@@ -49,6 +53,8 @@
     "@earendil-works/pi-coding-agent": "*"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "0.84.2"
+    "@earendil-works/pi-coding-agent": "0.84.2",
+    "@types/node": "22.20.1",
+    "typescript": "5.9.3"
   }
 }
