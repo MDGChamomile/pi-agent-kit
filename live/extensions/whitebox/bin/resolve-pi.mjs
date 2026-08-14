@@ -1,29 +1,50 @@
 import { accessSync, constants as fsConstants, readFileSync, realpathSync, statSync } from "node:fs";
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
+export const PI_PACKAGE_ROOT_ENV = "PI_WHITEBOX_PI_PACKAGE_ROOT";
+
 /** @param {string} parent @param {string} child */
 function isWithin(parent, child) {
   const rel = relative(parent, child);
   return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
 }
 
+/** @param {string} first @param {string} second */
+export function pathsOverlap(first, second) {
+  return isWithin(first, second) || isWithin(second, first);
+}
+
+/**
+ * @param {string} cwd
+ * @param {string} trustedPath
+ * @param {string} label
+ */
+export function assertTrustedPathOutsideWorkspace(cwd, trustedPath, label) {
+  const workspace = realpathSync(cwd);
+  const canonicalTrustedPath = realpathSync(trustedPath);
+  if (pathsOverlap(workspace, canonicalTrustedPath)) {
+    throw new Error(`current workspace and ${label} must not overlap`);
+  }
+  return { workspace, trustedPath: canonicalTrustedPath };
+}
+
 /** @param {string} path */
-function piEntrypoint(path) {
+function piRuntime(path) {
   try {
     accessSync(path, fsConstants.R_OK | fsConstants.X_OK);
-    const canonical = realpathSync(path);
-    if (!statSync(canonical).isFile()) return undefined;
-    const packageRoot = dirname(dirname(canonical));
-    if (dirname(canonical) !== join(packageRoot, "dist")) return undefined;
+    const entrypoint = realpathSync(path);
+    if (!statSync(entrypoint).isFile()) return undefined;
+    const packageRoot = dirname(dirname(entrypoint));
+    if (dirname(entrypoint) !== join(packageRoot, "dist")) return undefined;
     const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
     if (manifest.name !== "@earendil-works/pi-coding-agent") return undefined;
-    return canonical;
+    return Object.freeze({ entrypoint, packageRoot });
   } catch {
     return undefined;
   }
 }
 
-export function resolvePiEntrypoint({
+export function resolvePiRuntime({
   cwd = process.cwd(),
   execPath = process.execPath,
   pathValue = process.env.PATH ?? "",
@@ -38,12 +59,16 @@ export function resolvePiEntrypoint({
 
   const checked = new Set();
   for (const candidate of candidates) {
-    const canonical = piEntrypoint(candidate);
-    if (!canonical || checked.has(canonical)) continue;
-    checked.add(canonical);
-    if (isWithin(workspace, canonical)) continue;
-    return canonical;
+    const runtime = piRuntime(candidate);
+    if (!runtime || checked.has(runtime.entrypoint)) continue;
+    checked.add(runtime.entrypoint);
+    if (pathsOverlap(workspace, runtime.packageRoot)) continue;
+    return runtime;
   }
 
-  throw new Error("could not find an executable Pi entry point outside the current workspace");
+  throw new Error("could not find an executable Pi package outside the current workspace");
+}
+
+export function resolvePiEntrypoint(options = {}) {
+  return resolvePiRuntime(options).entrypoint;
 }

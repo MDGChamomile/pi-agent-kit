@@ -14,12 +14,13 @@ When started through `piw`, Whitebox is designed to:
 - expose only the writable project workspace, a read-only root `.git` directory, temporary filesystems, and the documented read-only runtimes;
 - confine Pi's `read`, `write`, `edit`, `grep`, `find`, and `ls` tools to the workspace;
 - block host Bash and user `!` / `!!` commands;
-- fail closed when startup, tool ownership, path, namespace, or runtime checks fail; and
+- fail closed when startup, trusted-source overlap, tool ownership, path, namespace, or runtime checks fail;
+- use the same canonical Pi package for the host process and sandbox file worker; and
 - bound command time, captured output, temporary storage, and concurrent workspace execution.
 
 ## Trusted components
 
-Whitebox trusts the host kernel, Bubblewrap, `flock`, the Pi process, the model provider connection, the selected Node/npm/Pi runtime files, and any additional extension the user explicitly loads. These components run outside or form part of the Whitebox boundary.
+Whitebox trusts the host kernel, Bubblewrap, `flock`, the Pi process, the model provider connection, the selected Node/npm/Pi runtime files, the Whitebox extension source, and any additional extension the user explicitly loads. These components run outside or form part of the Whitebox boundary. The launcher rejects a workspace that overlaps the Whitebox source or selected Pi package so sandboxed commands cannot rewrite code trusted by a later run.
 
 ## Out of scope
 

@@ -16,7 +16,7 @@ In Whitebox mode:
 - Pi's `read`, `write`, `edit`, `grep`, `find`, and `ls` tools are confined to the workspace.
 - Host Bash and user `!` / `!!` commands are blocked.
 - Time, output, and concurrent execution are bounded.
-- Startup and tool-ownership checks fail closed.
+- Startup, trusted-source overlap, runtime identity, and tool-ownership checks fail closed.
 
 Whitebox isolates project commands and those six file tools. It does **not** sandbox the entire Pi process, the model connection, other explicitly loaded extensions, or the writable project itself.
 
@@ -43,7 +43,7 @@ npm install
 npm link
 ```
 
-This installs the `piw` launcher. Pi must already be installed alongside the current Node distribution or available on `PATH`. The launcher refuses to start a Pi entry point resolved inside the workspace.
+This installs the `piw` launcher. Pi must already be installed alongside the current Node distribution or available on `PATH`. The launcher refuses to start when the selected Pi package or the Whitebox extension source overlaps the workspace. Keep the linked Whitebox checkout outside projects you inspect; use a separate installed copy if you need to inspect this repository itself.
 
 ## Run
 
@@ -60,7 +60,7 @@ The launcher deliberately starts Pi with only Whitebox loaded:
 pi --no-extensions -e <whitebox>/index.ts --no-skills --no-approve --whitebox
 ```
 
-Additional command-line arguments are forwarded to Pi. Explicitly loading another extension expands the trusted boundary because extensions run with host permissions.
+Additional command-line arguments are forwarded to Pi. Explicitly loading another extension expands the trusted boundary because extensions run with host permissions. The launcher pins the sandbox worker to the same canonical Pi package that it starts; it does not pin Pi to one hard-coded version.
 
 ## Supported work
 

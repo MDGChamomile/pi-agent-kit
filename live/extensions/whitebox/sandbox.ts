@@ -39,7 +39,8 @@ const LOCK_ACQUIRE_WRAPPER = [
   "os.execv(sys.argv[2], sys.argv[2:])",
 ].join("\n");
 const PI_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
-const DEFAULT_PI_PACKAGE_ROOT = dirname(dirname(fileURLToPath(import.meta.resolve(PI_PACKAGE_NAME))));
+const PI_PACKAGE_ROOT_ENV = "PI_WHITEBOX_PI_PACKAGE_ROOT";
+const EXTENSION_ROOT = dirname(fileURLToPath(import.meta.url));
 const REQUIRED_USR_TOOLS = [
   "/usr/bin/bash",
   "/usr/bin/python3",
@@ -74,6 +75,7 @@ export interface PrepareSandboxOptions {
   flockPath?: string;
   nodeExecPath?: string;
   piPackageRoot?: string;
+  extensionRoot?: string;
   homeDir?: string;
   agentDir?: string;
   requireUserNamespaces?: boolean;
@@ -175,6 +177,15 @@ async function validateNodeRuntime(nodeRoot: string): Promise<void> {
     assertRuntimeDirectory(nodeRoot, runtime.includeRoot, "Node headers"),
     assertRuntimeDirectory(nodeRoot, runtime.npmRoot, "npm runtime"),
   ]);
+}
+
+async function validateExtensionRoot(path: string): Promise<string> {
+  const canonical = await realpath(resolve(path)).catch(() => {
+    throw new Error(`Whitebox extension source is unavailable: ${path}`);
+  });
+  const info = await lstat(canonical);
+  if (!info.isDirectory()) throw new Error(`Whitebox extension source must be a directory: ${canonical}`);
+  return canonical;
 }
 
 async function validatePiPackageRoot(path: string): Promise<string> {
@@ -411,7 +422,12 @@ export async function prepareSandbox(
   await Promise.all(REQUIRED_USR_TOOLS.map((path) => assertExecutable(path, basename(path))));
   const nodeRoot = await findNodeDistributionRoot(options.nodeExecPath ?? process.execPath);
   await validateNodeRuntime(nodeRoot);
-  const piPackageRoot = await validatePiPackageRoot(options.piPackageRoot ?? DEFAULT_PI_PACKAGE_ROOT);
+  const requestedPiPackageRoot = options.piPackageRoot ?? process.env[PI_PACKAGE_ROOT_ENV];
+  if (!requestedPiPackageRoot) {
+    throw new Error("Whitebox requires the Pi package selected by the piw launcher");
+  }
+  const piPackageRoot = await validatePiPackageRoot(requestedPiPackageRoot);
+  const extensionRoot = await validateExtensionRoot(options.extensionRoot ?? EXTENSION_ROOT);
   const { workspace, gitDir } = await validateWorkspace(
     cwd,
     options.homeDir ?? homedir(),
@@ -422,6 +438,9 @@ export async function prepareSandbox(
   }
   if (isWithin(workspace, piPackageRoot) || isWithin(piPackageRoot, workspace)) {
     throw new Error("Workspace and the Pi package must not overlap");
+  }
+  if (isWithin(workspace, extensionRoot) || isWithin(extensionRoot, workspace)) {
+    throw new Error("Workspace and the Whitebox extension source must not overlap");
   }
   await validateWorkspaceBoundary(workspace);
 

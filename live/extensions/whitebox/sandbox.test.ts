@@ -20,7 +20,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { resolvePiEntrypoint } from "./bin/resolve-pi.mjs";
+import {
+  assertTrustedPathOutsideWorkspace,
+  PI_PACKAGE_ROOT_ENV,
+  resolvePiEntrypoint,
+  resolvePiRuntime,
+} from "./bin/resolve-pi.mjs";
 import { createWhiteboxExtension, type WhiteboxDependencies } from "./index.ts";
 import {
   FILE_TOOL_NAMES,
@@ -54,6 +59,16 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const INDEX_PATH = join(HERE, "index.ts");
+const TEST_PI_PACKAGE_ROOT = dirname(dirname(fileURLToPath(
+  import.meta.resolve("@earendil-works/pi-coding-agent"),
+)));
+
+function prepareTestSandbox(
+  cwd: string,
+  options: Parameters<typeof prepareSandbox>[1] = {},
+): ReturnType<typeof prepareSandbox> {
+  return prepareSandbox(cwd, { piPackageRoot: TEST_PI_PACKAGE_ROOT, ...options });
+}
 
 async function makeFixture(label: string): Promise<{
   root: string;
@@ -313,11 +328,18 @@ describe("pure policy and argument construction", () => {
         join(root, "external-package", "@earendil-works", "pi-coding-agent"),
       );
 
+      const trustedRuntime = resolvePiRuntime({
+        cwd: workspace,
+        execPath: join(runtimeBin, "node"),
+        pathValue: projectBin,
+      });
+      assert.equal(trustedRuntime.entrypoint, await realpath(trustedEntrypoint));
+      assert.equal(trustedRuntime.packageRoot, dirname(dirname(await realpath(trustedEntrypoint))));
       assert.equal(resolvePiEntrypoint({
         cwd: workspace,
         execPath: join(runtimeBin, "node"),
         pathValue: projectBin,
-      }), await realpath(trustedEntrypoint));
+      }), trustedRuntime.entrypoint);
 
       await rm(trustedPi);
       assert.throws(() => resolvePiEntrypoint({
@@ -335,13 +357,35 @@ describe("pure policy and argument construction", () => {
     }
   });
 
+  test("workspace and trusted runtime paths cannot overlap", async () => {
+    const fixture = await makeFixture("trusted-overlap");
+    try {
+      const nestedExtension = join(fixture.workspace, "trusted-extension");
+      await mkdir(nestedExtension);
+      assert.throws(
+        () => assertTrustedPathOutsideWorkspace(fixture.workspace, nestedExtension, "test extension"),
+        /must not overlap/,
+      );
+      await assert.rejects(
+        () => prepareTestSandbox(fixture.workspace, { extensionRoot: nestedExtension }),
+        /extension source must not overlap/,
+      );
+      await assert.rejects(
+        () => prepareTestSandbox(fixture.workspace, { extensionRoot: fixture.root }),
+        /extension source must not overlap/,
+      );
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
   test("workspace and .git validation reject broad roots and symlink .git", async () => {
-    await assert.rejects(() => prepareSandbox("/"), /too broad|sensitive root/);
+    await assert.rejects(() => prepareTestSandbox("/"), /too broad|sensitive root/);
     const fixture = await makeFixture("symlink-git");
     try {
       await rm(join(fixture.workspace, ".git"), { recursive: true });
       await symlink(fixture.sibling, join(fixture.workspace, ".git"));
-      await assert.rejects(() => prepareSandbox(fixture.workspace), /normal root \.git/);
+      await assert.rejects(() => prepareTestSandbox(fixture.workspace), /normal root \.git/);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
@@ -356,7 +400,7 @@ describe("pure policy and argument construction", () => {
         server.once("error", reject);
         server.listen(socketPath, resolveListen);
       });
-      await assert.rejects(() => prepareSandbox(fixture.workspace), /unsupported IPC or device node/);
+      await assert.rejects(() => prepareTestSandbox(fixture.workspace), /unsupported IPC or device node/);
     } finally {
       await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
       await rm(fixture.root, { recursive: true, force: true });
@@ -368,14 +412,14 @@ describe("pure policy and argument construction", () => {
     try {
       const outsideAlias = join(fixture.workspace, "hardlink-secret");
       await link(join(fixture.sibling, "secret.txt"), outsideAlias);
-      await assert.rejects(() => prepareSandbox(fixture.workspace), /hard-linked regular file/);
+      await assert.rejects(() => prepareTestSandbox(fixture.workspace), /hard-linked regular file/);
       await rm(outsideAlias);
 
       await link(join(fixture.workspace, "source.txt"), join(fixture.workspace, "source-copy.txt"));
-      await prepareSandbox(fixture.workspace);
+      await prepareTestSandbox(fixture.workspace);
 
       await link(join(fixture.workspace, ".git", "config"), join(fixture.workspace, "git-config-alias"));
-      await assert.rejects(() => prepareSandbox(fixture.workspace), /bypasses the read-only \.git mount/);
+      await assert.rejects(() => prepareTestSandbox(fixture.workspace), /bypasses the read-only \.git mount/);
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
@@ -384,7 +428,7 @@ describe("pure policy and argument construction", () => {
   test("command remains one inner Bash argument and mount order is fail-closed", async () => {
     const fixture = await makeFixture("argv");
     try {
-      const policy = await prepareSandbox(fixture.workspace, { homeDir: fixture.fakeHome });
+      const policy = await prepareTestSandbox(fixture.workspace, { homeDir: fixture.fakeHome });
       const command = `printf '%s\\n' \"a; touch /host-escape\"; printf done`;
       const args = buildBwrapArgs(policy, command);
       assert.deepEqual(args.slice(-6), ["--", "/bin/bash", "--noprofile", "--norc", "-c", command]);
@@ -586,7 +630,7 @@ describe("actual Bubblewrap integration", () => {
     const fixture = await makeFixture("file-tools");
     const store = await createTempStore();
     try {
-      const policy = await prepareSandbox(fixture.workspace, { homeDir: fixture.fakeHome });
+      const policy = await prepareTestSandbox(fixture.workspace, { homeDir: fixture.fakeHome });
       const run = (toolName: (typeof FILE_TOOL_NAMES)[number], params: Record<string, unknown>) =>
         runBoundaryFileTool(policy, { toolName, params, modelSupportsImages: false });
 
@@ -676,7 +720,7 @@ describe("actual Bubblewrap integration", () => {
     const fixture = await makeFixture("boundary");
     const store = await createTempStore();
     try {
-      const policy = await prepareSandbox(fixture.workspace, {
+      const policy = await prepareTestSandbox(fixture.workspace, {
         homeDir: fixture.fakeHome,
         agentDir: join(fixture.fakeHome, ".pi", "agent"),
       });
@@ -784,7 +828,7 @@ printf 'BOUNDARY_OK\\n'`;
     const store = await createTempStore();
     try {
       assert.equal((await stat(store.root)).mode & 0o777, 0o700);
-      const policy = await prepareSandbox(fixture.workspace, { homeDir: fixture.fakeHome });
+      const policy = await prepareTestSandbox(fixture.workspace, { homeDir: fixture.fakeHome });
 
       const nonzero = await runSandbox(policy, {
         command: "printf 'expected failure\\n'; exit 7",
@@ -940,7 +984,11 @@ export default function(pi) {
   ];
   const child = spawn("pi", args, {
     cwd: options.fixture.workspace,
-    env: { ...process.env, PI_OFFLINE: "1" },
+    env: {
+      ...process.env,
+      PI_OFFLINE: "1",
+      [PI_PACKAGE_ROOT_ENV]: TEST_PI_PACKAGE_ROOT,
+    },
     stdio: ["pipe", "pipe", "pipe"],
   });
   let stdout = "";
@@ -1030,7 +1078,10 @@ describe("actual Pi entry point", () => {
         noContextFiles: true,
         extensionFactories: [{
           name: "whitebox-sdk-test",
-          factory: createWhiteboxExtension({ argv: ["--no-approve", "--whitebox"] }),
+          factory: createWhiteboxExtension({
+            argv: ["--no-approve", "--whitebox"],
+            prepareSandbox: (cwd) => prepareTestSandbox(cwd),
+          }),
         }],
       });
       await loader.reload();
