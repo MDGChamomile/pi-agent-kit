@@ -10,7 +10,7 @@ compatibility: Requires Pi with the ask_user tool provided by pi-ask-user.
 
 Move from **Fog → Same Page → Execution Record**.
 
-Use this workflow for one repository change that can be brought to execution readiness in one session. During Fog and Same Page, work read-only. The only allowed mutation is the final Markdown record and its destination directory. Unless the user explicitly selects another destination for that run, store records under `records/` relative to this skill. The record is an execution guide, not authorization; implementation requires a separate explicit user request.
+Use this workflow for one repository change that can be brought to execution readiness in one session. Scale the interview to the live Fog, not to a minimum question count: an already concrete request may need no discovery questions before the Same Page readback. During Fog and Same Page, work read-only. The only allowed mutation is the final Markdown record and its destination directory. Unless the user explicitly selects another destination for that run, store records under `records/` relative to this skill. The record is an execution guide, not authorization; implementation requires a separate explicit user request.
 
 ## Requirement
 
@@ -27,9 +27,11 @@ Critical decision gates require the `ask_user` tool from [pi-ask-user](https://g
 
 Inspect far enough to distinguish Evidence from Decisions and identify the first unresolved branches whose prerequisites are already settled. Investigate later facts as their branches become answerable. Resolve discoverable facts yourself and reserve questions for user intent, preference-dependent trade-offs, authority, and meanings the repository cannot establish.
 
+Before opening the interview, check workflow fit. If the request has expanded into multiple independently executable changes or can no longer reach execution readiness in one session, ask at most one scope gate needed to choose a coherent slice, then split or hand off the rest. Do not absorb scope growth by continuing to question across every workstream.
+
 ## 2. Resolve the Fog
 
-Continue without a preset question or round limit until Same Page is reached. After every answer or new piece of evidence, recompute which unresolved branches can now be resolved.
+Use no question quota in either direction. Continue only while a known unresolved branch can materially change execution; if inspection finds none, skip directly to Same Page. After every answer or new piece of evidence, recompute which unresolved branches can now be resolved, and re-check whether the work still fits this workflow.
 
 ### Critical gates
 
@@ -41,7 +43,7 @@ Once critical prerequisites are settled, present the currently answerable, mutua
 
 Resolve prerequisite branches first, then present the dependent questions they make answerable. Promote a newly exposed critical decision to `ask_user`; investigate a newly exposed fact yourself.
 
-Each question closes a live branch whose answer could change behavior, scope, interfaces, risk, execution order, or completion evidence. Be **relentless on live Fog and silent on settled ground**: keep resolved branches closed until new evidence invalidates their basis.
+Each question closes a live branch whose answer could change behavior, scope, interfaces, risk, execution order, or completion evidence. Question count is not progress. Be complete on live Fog and silent on settled ground: do not ask the user to reconfirm repository evidence, their explicit decisions, or low-impact details that can safely remain execution-time choices. Keep resolved branches closed until new evidence invalidates their basis.
 
 A branch is resolved only when it is:
 

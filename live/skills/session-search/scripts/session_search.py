@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import heapq
 import json
+import math
 import os
 import re
 import sys
@@ -284,8 +285,17 @@ def result_view(event: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+class SessionArgumentParser(argparse.ArgumentParser):
+    def _parse_optional(self, arg_string: str):
+        # argparse recognizes ordinary negative numbers as values but treats
+        # -inf/-nan as options. Let the explicit finite-value check handle them.
+        if arg_string.lower() in {"-inf", "-infinity", "-nan"}:
+            return None
+        return super()._parse_optional(arg_string)
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Aggregate local evidence across multiple Pi sessions; use /resume for a single session.")
+    parser = SessionArgumentParser(description="Aggregate local evidence across multiple Pi sessions; use /resume for a single session.")
     parser.add_argument("-q", "--query", action="append", default=[], help="case-insensitive literal filter; repeat to require every value (AND)")
     parser.add_argument("--days", type=float, help="include entries from the last N days, based on entry timestamps")
     scope = parser.add_mutually_exclusive_group()
@@ -320,8 +330,8 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     current = normalized_path(os.environ["PI_SESSION_FILE"]) if os.environ.get("PI_SESSION_FILE") else None
     cutoff = None
     if args.days is not None:
-        if args.days < 0:
-            raise ValueError("--days must be non-negative")
+        if not math.isfinite(args.days) or args.days < 0:
+            raise ValueError("--days must be a finite non-negative number")
         current_time = now or datetime.now(timezone.utc)
         if current_time.tzinfo is None:
             current_time = current_time.replace(tzinfo=timezone.utc)

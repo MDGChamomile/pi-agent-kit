@@ -118,7 +118,10 @@ function formatOutput(result: SandboxRunResult): string {
   if (result.output.truncated) {
     text += `\n\n[Output truncated: ${result.output.shownLines}/${result.output.totalLines} lines, `;
     text += `${result.output.shownBytes}/${result.output.totalBytes} bytes shown.`;
-    if (result.capturedOutputPath) text += ` Captured output: ${result.capturedOutputPath}`;
+    if (result.capturedOutputPath) {
+      text += ` Captured output: ${result.capturedOutputPath}.`;
+      text += " Read or grep the capture only if more detail is needed.";
+    }
     text += "]";
   } else if (result.capturedOutputPath) {
     text += `\n\n[Captured output: ${result.capturedOutputPath}]`;
@@ -366,8 +369,8 @@ export function createWhiteboxExtension(
           executionMode: "sequential",
           description:
             "Run a command in the current Git workspace through strict Bubblewrap isolation. " +
-            "The workspace may be modified, root .git is read-only, network and host credentials outside the workspace are unavailable, " +
-            `and output is capped at 10MiB. Timeout defaults to ${DEFAULT_TIMEOUT_SECONDS}s.`,
+            "The workspace may be modified, root .git is read-only, network and host credentials outside the workspace are unavailable. " +
+            `Only a bounded output tail is returned inline; larger output is captured for on-demand reading. Capture is capped at 10MiB. Timeout defaults to ${DEFAULT_TIMEOUT_SECONDS}s.`,
           promptSnippet: "Run external project commands in the strict offline Whitebox sandbox",
           promptGuidelines: [
             "Use whitebox_run for test, build, and script commands in this Whitebox session; host Bash is unavailable.",
@@ -391,7 +394,7 @@ export function createWhiteboxExtension(
             let streamTail = "";
             let lastUpdateAt = 0;
             const update = (chunk: string) => {
-              streamTail = (streamTail + chunk).slice(-16_384);
+              streamTail = (streamTail + chunk).slice(-4_096);
               const now = Date.now();
               if (!onUpdate || now - lastUpdateAt < 100) return;
               lastUpdateAt = now;

@@ -77,7 +77,7 @@ Additional command-line arguments are forwarded to Pi. Explicitly loading anothe
 - interactive programs
 - Git mutation such as commit, merge, rebase, fetch, pull, or push
 
-The default command timeout is 120 seconds and the maximum is 900 seconds. Captured output is capped at 10 MiB.
+The default command timeout is 120 seconds and the maximum is 900 seconds. Command results return only the last 12 KiB or 400 lines inline; larger output is saved as a capture for on-demand `read` or `grep`. Progress updates retain only the latest 4 KiB. Captured output is capped at 10 MiB.
 
 ## Security notes
 

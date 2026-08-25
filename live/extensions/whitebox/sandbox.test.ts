@@ -39,6 +39,8 @@ import {
   cleanupTempStore,
   createTempStore,
   DEFAULT_TIMEOUT_SECONDS,
+  DISPLAY_MAX_BYTES,
+  DISPLAY_MAX_LINES,
   findNodeDistributionRoot,
   HOME_SIZE_BYTES,
   LOCK_CONFLICT_EXIT_CODE,
@@ -466,6 +468,12 @@ describe("pure policy and argument construction", () => {
   });
 
   test("tail truncation observes both byte and line limits", () => {
+    assert.equal(DISPLAY_MAX_BYTES, 12 * 1024);
+    assert.equal(DISPLAY_MAX_LINES, 400);
+    const defaultLimited = truncateOutput("x".repeat(DISPLAY_MAX_BYTES + 1));
+    assert.equal(defaultLimited.truncated, true);
+    assert.equal(defaultLimited.shownBytes, DISPLAY_MAX_BYTES);
+
     const lines = Array.from({ length: 10 }, (_, index) => `line-${index}`).join("\n");
     const truncated = truncateOutput(lines, 100, 3);
     assert.equal(truncated.truncated, true);

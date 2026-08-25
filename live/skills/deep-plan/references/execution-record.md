@@ -19,7 +19,7 @@ Create the default records directory when needed. Do not infer a repository-loca
 
 ## Required content
 
-Use these sections, combining subsections when that improves clarity.
+Keep the record proportional to the change and its failure cost. Preserve only execution-changing decisions and evidence; do not narrate the interview, restate repository documentation, or add detail merely to fill a section. Required sections may be brief. Use these sections, combining subsections when that improves clarity.
 
 ### Status and Plan Basis
 
