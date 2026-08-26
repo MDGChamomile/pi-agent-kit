@@ -1,6 +1,6 @@
 # Pi Agent Kit
 
-The skills and extensions I use or have experimented with personally for the [Pi coding agent](https://github.com/earendil-works/pi). This is a public, source-first collection: read the resources, take what is useful, and adapt it to your own workflow.
+The skills and extensions I use or have experimented with personally for the [Pi coding agent](https://github.com/earendil-works/pi). This is a public, source-first collection curated according to a set of [harness-minimalism principles](PRINCIPLE.md): read the resources, take what is useful, and adapt it to your own workflow.
 
 It is not published as an npm package or maintained as an install-everything Pi package. Skills and extensions remain ordinary files so they are easy to inspect, link, copy, and change.
 
