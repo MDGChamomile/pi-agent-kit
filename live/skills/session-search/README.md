@@ -20,7 +20,7 @@ Session data is inherently sensitive. In an agent workflow, local tool output be
 - Pi session files under `~/.pi/agent/sessions`
 - Python 3.10 or later
 
-The parser follows Pi's JSONL session structure. Future Pi schema changes may require updates.
+The parser supports Pi session versions 1 through 3. It treats a missing version as legacy v1 with a warning and skips newer, unsupported versions visibly instead of guessing at their structure.
 
 ## Installation
 
@@ -62,18 +62,18 @@ Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--ski
 The command emits one JSON object containing:
 
 - `scope`: path-free project selection and time range by default; the exact cwd only with `--include-evidence`
-- `summary`: scan and match counts grouped by role, tool, and skill
+- `summary`: scan and match counts grouped by role, tool, and skill; `evidence_omitted` distinguishes the safe default from `evidence_truncated`, while `truncated` remains a compatibility alias for evidence truncation
 - `results`: empty by default; bounded representative evidence, newest first, with `--include-evidence`
 - `warnings`: deduplicated counts by kind by default; up to 100 file-path details with `--include-evidence`
 
-`--summary-only` remains as an explicit alias for the safe default. `--include-evidence` is mutually exclusive with it. A direct skill invocation is counted only for a user message matching Pi's complete skill envelope; it is reported separately from a read of that skill's `SKILL.md`. Reading instructions, quoting the XML, or mentioning a skill is not evidence that the skill was invoked.
+`--summary-only` remains as an explicit alias for the safe default. `--include-evidence` is mutually exclusive with it. A direct skill invocation is counted only for a user message matching Pi's complete skill envelope; this means the recorded message matches Pi's invocation envelope, not that provenance can be distinguished from identical XML pasted manually. Direct calls are reported separately from `SKILL.md` read attempts, successes, and errors. The legacy `skill_file_reads` counter remains an alias for attempts. Reading instructions, quoting partial XML, or mentioning a skill is not evidence that the skill was invoked.
 
 ## Known limitations
 
 - Searches are case-insensitive literal matches, not regular expressions or semantic search.
 - Counts describe recorded events and entries, not inferred tasks or outcomes.
-- The latest branch marker is inferred from the parent chain of the last recorded entry.
-- Every invocation scans the selected JSONL files twice—once for branch metadata and once for events; there is no persistent index. Memory remains bounded by compact per-session branch metadata, aggregate counters, warning caps, and the requested result limit.
+- For v2 and v3, the latest branch marker is inferred from the parent chain of the last recorded entry; v1 is treated as a linear sequence.
+- Every candidate file is opened once. Only its header is read until cwd and version selection succeeds; each selected body is then scanned once. There is no persistent index. Memory remains bounded by compact per-session branch metadata, aggregate counters, warning caps, call-correlation metadata, and the requested result limit.
 - Secret masking is deliberately best-effort and is not a data-loss-prevention guarantee.
 
 ## Tests

@@ -1,22 +1,60 @@
-name: whitebox
+name: live-validation
 
 on:
   push:
     paths:
       - "live/extensions/whitebox/**"
+      - "live/skills/**"
       - ".github/workflows/whitebox.yml"
   pull_request:
     paths:
       - "live/extensions/whitebox/**"
+      - "live/skills/**"
       - ".github/workflows/whitebox.yml"
 
 permissions:
   contents: read
 
 jobs:
-  test:
+  skills:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Validate session-search
+        working-directory: live/skills/session-search
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
+      - name: Validate skill frontmatter and relative Markdown links
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          failures = []
+          for skill in sorted(Path("live/skills").glob("**/SKILL.md")):
+              text = skill.read_text(encoding="utf-8")
+              if not text.startswith("---\n") or "\nname:" not in text or "\ndescription:" not in text:
+                  failures.append(f"invalid frontmatter: {skill}")
+              for target in re.findall(r"\[[^]]*\]\(([^)]+)\)", text):
+                  if "://" in target or target.startswith("#"):
+                      continue
+                  path = (skill.parent / target.split("#", 1)[0]).resolve()
+                  if not path.exists():
+                      failures.append(f"broken link: {skill} -> {target}")
+          if failures:
+              raise SystemExit("\n".join(failures))
+          PY
+
+  whitebox-portable:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        pi-version: ["0.84.2", "0.84.3"]
     defaults:
       run:
         working-directory: live/extensions/whitebox
@@ -28,8 +66,10 @@ jobs:
           cache: npm
           cache-dependency-path: live/extensions/whitebox/package-lock.json
       - name: Install system requirements
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap build-essential git python3 util-linux
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap fd-find git python3 ripgrep util-linux
         working-directory: .
       - run: npm ci
+      - name: Select tested Pi version
+        run: npm install --no-save --package-lock=false --ignore-scripts @earendil-works/pi-coding-agent@${{ matrix.pi-version }}
       - run: npm run typecheck
       - run: npm run test:portable

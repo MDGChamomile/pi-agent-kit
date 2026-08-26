@@ -2,6 +2,9 @@ import { accessSync, constants as fsConstants, readFileSync, realpathSync, statS
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export const PI_PACKAGE_ROOT_ENV = "PI_WHITEBOX_PI_PACKAGE_ROOT";
+export const PI_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
+export const TESTED_PI_VERSIONS = Object.freeze(["0.84.2", "0.84.3"]);
+const TESTED_PI_VERSION_SET = new Set(TESTED_PI_VERSIONS);
 
 /** @param {string} parent @param {string} child */
 function isWithin(parent, child) {
@@ -34,11 +37,36 @@ function piRuntime(path) {
     accessSync(path, fsConstants.R_OK | fsConstants.X_OK);
     const entrypoint = realpathSync(path);
     if (!statSync(entrypoint).isFile()) return undefined;
-    const packageRoot = dirname(dirname(entrypoint));
-    if (dirname(entrypoint) !== join(packageRoot, "dist")) return undefined;
-    const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
-    if (manifest.name !== "@earendil-works/pi-coding-agent") return undefined;
-    return Object.freeze({ entrypoint, packageRoot });
+
+    for (
+      let packageRoot = dirname(entrypoint);
+      packageRoot !== dirname(packageRoot);
+      packageRoot = dirname(packageRoot)
+    ) {
+      let manifest;
+      try {
+        manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+      } catch {
+        continue;
+      }
+      if (manifest?.name !== PI_PACKAGE_NAME) continue;
+      const declaredBin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.pi;
+      if (typeof declaredBin !== "string" || !declaredBin) continue;
+      const declaredPath = resolve(packageRoot, declaredBin);
+      if (!isWithin(packageRoot, declaredPath)) continue;
+      let canonicalDeclaredPath;
+      try {
+        canonicalDeclaredPath = realpathSync(declaredPath);
+      } catch {
+        continue;
+      }
+      if (canonicalDeclaredPath !== entrypoint) continue;
+      if (typeof manifest.version !== "string" || !TESTED_PI_VERSION_SET.has(manifest.version)) {
+        return Object.freeze({ unsupportedVersion: String(manifest.version) });
+      }
+      return Object.freeze({ entrypoint, packageRoot, version: manifest.version });
+    }
+    return undefined;
   } catch {
     return undefined;
   }
@@ -58,14 +86,26 @@ export function resolvePiRuntime({
   ];
 
   const checked = new Set();
+  const unsupportedVersions = new Set();
   for (const candidate of candidates) {
     const runtime = piRuntime(candidate);
-    if (!runtime || checked.has(runtime.entrypoint)) continue;
+    if (!runtime) continue;
+    if ("unsupportedVersion" in runtime) {
+      unsupportedVersions.add(runtime.unsupportedVersion);
+      continue;
+    }
+    if (checked.has(runtime.entrypoint)) continue;
     checked.add(runtime.entrypoint);
     if (pathsOverlap(workspace, runtime.packageRoot)) continue;
     return runtime;
   }
 
+  if (unsupportedVersions.size > 0) {
+    throw new Error(
+      `Whitebox has not been validated with Pi ${[...unsupportedVersions].join(", ")}. ` +
+        `Supported: ${TESTED_PI_VERSIONS.join(", ")}.`,
+    );
+  }
   throw new Error("could not find an executable Pi package outside the current workspace");
 }
 

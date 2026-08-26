@@ -11,9 +11,10 @@ import os
 import re
 import sys
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterable
 
 DEFAULT_LIMIT = 20
 DEFAULT_SESSIONS_ROOT = Path.home() / ".pi" / "agent" / "sessions"
@@ -99,22 +100,46 @@ def latest_leaf_path(parent_by_id: dict[str, Any], leaf_id: str | None) -> set[s
     return result
 
 
-def event_matches(event: dict[str, Any], args: argparse.Namespace) -> bool:
+@dataclass(frozen=True)
+class EventFilters:
+    queries: tuple[str, ...]
+    roles: frozenset[str]
+    tools: frozenset[str]
+    skills: frozenset[str]
+    errors_only: bool
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> "EventFilters":
+        return cls(
+            queries=tuple(value.casefold() for value in args.query),
+            roles=frozenset(value.casefold() for value in args.role),
+            tools=frozenset(value.casefold() for value in args.tool),
+            skills=frozenset(value.casefold() for value in args.skill),
+            errors_only=args.error,
+        )
+
+
+def event_matches(event: dict[str, Any], filters: EventFilters) -> bool:
     searchable = event["searchable"].casefold()
-    if args.query and not all(query.casefold() in searchable for query in args.query):
+    if filters.queries and not all(query in searchable for query in filters.queries):
         return False
-    if args.role and event["role"].casefold() not in {value.casefold() for value in args.role}:
+    if filters.roles and event["role"].casefold() not in filters.roles:
         return False
-    if args.tool and (not event.get("tool_name") or event["tool_name"].casefold() not in {value.casefold() for value in args.tool}):
+    if filters.tools and (not event.get("tool_name") or event["tool_name"].casefold() not in filters.tools):
         return False
-    if args.error and not event.get("is_error", False):
+    if filters.errors_only and not event.get("is_error", False):
         return False
-    if args.skill and not any(name.casefold() in {value.casefold() for value in args.skill} for name in event.get("skill_names", [])):
+    if filters.skills and not any(name.casefold() in filters.skills for name in event.get("skill_names", [])):
         return False
     return True
 
 
-def events_for_entry(entry: dict[str, Any], session: dict[str, str], on_leaf: bool) -> list[dict[str, Any]]:
+def events_for_entry(
+    entry: dict[str, Any],
+    session: dict[str, str],
+    on_leaf: bool,
+    skill_reads_by_call_id: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
     if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
         return []
     message = entry["message"]
@@ -163,15 +188,21 @@ def events_for_entry(entry: dict[str, Any], session: dict[str, str], on_leaf: bo
             })
     if role == "toolResult":
         tool_name = str(message.get("toolName", "unknown"))
+        tool_call_id = message.get("toolCallId")
+        read_skill = (
+            skill_reads_by_call_id.get(tool_call_id)
+            if isinstance(tool_call_id, str) and skill_reads_by_call_id is not None
+            else None
+        )
         events.append({
             **base,
             "event": "tool_error" if message.get("isError") else "tool_result",
             "tool_name": tool_name,
             "is_error": bool(message.get("isError", False)),
-            "skill_names": [],
+            "skill_names": [read_skill] if read_skill else [],
             "direct_skills": [],
-            "skill_file_read": None,
-            "searchable": "\n".join([tool_name, text]),
+            "skill_file_read": read_skill,
+            "searchable": "\n".join(filter(None, [tool_name, text, read_skill])),
             "evidence_raw": text,
         })
     return events
@@ -216,60 +247,33 @@ class WarningCollector:
         return result
 
 
-def read_session_metadata(
-    path: Path,
-    warnings: WarningCollector,
-) -> tuple[dict[str, Any] | None, int, set[str]]:
-    entry_count = 0
-    parent_by_id: dict[str, Any] = {}
-    leaf_id: str | None = None
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            first = handle.readline()
-            try:
-                header = json.loads(first)
-            except (json.JSONDecodeError, TypeError):
-                warnings.add(path, "invalid_header")
-                return None, 0, set()
-            if not isinstance(header, dict) or header.get("type") != "session":
-                warnings.add(path, "invalid_header")
-                return None, 0, set()
-            for line in handle:
-                try:
-                    entry = json.loads(line)
-                except (json.JSONDecodeError, TypeError):
-                    warnings.add(path, "invalid_json_line")
-                    continue
-                if not isinstance(entry, dict):
-                    warnings.add(path, "invalid_entry")
-                    continue
-                entry_count += 1
-                entry_id = entry.get("id")
-                if isinstance(entry_id, str):
-                    parent_by_id[entry_id] = entry.get("parentId")
-                    leaf_id = entry_id
-    except (OSError, UnicodeError):
-        warnings.add(path, "unreadable_file")
-        return None, 0, set()
-    return header, entry_count, latest_leaf_path(parent_by_id, leaf_id)
+def session_version(header: dict[str, Any], path: Path, warnings: WarningCollector) -> int | None:
+    value = header.get("version")
+    if value is None:
+        warnings.add(path, "missing_session_version")
+        return 1
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        warnings.add(path, "invalid_session_version")
+        return None
+    if value > 3:
+        warnings.add(path, "unsupported_session_version")
+        return None
+    return value
 
 
-def iter_session_entries(path: Path, warnings: WarningCollector) -> Iterator[dict[str, Any]]:
-    try:
-        with path.open("r", encoding="utf-8") as handle:
-            handle.readline()
-            for line in handle:
-                try:
-                    entry = json.loads(line)
-                except (json.JSONDecodeError, TypeError):
-                    warnings.add(path, "invalid_json_line")
-                    continue
-                if isinstance(entry, dict):
-                    yield entry
-                else:
-                    warnings.add(path, "invalid_entry")
-    except (OSError, UnicodeError):
-        warnings.add(path, "unreadable_file")
+def record_skill_read_calls(entry: dict[str, Any], skill_reads_by_call_id: dict[str, str]) -> None:
+    if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
+        return
+    message = entry["message"]
+    if message.get("role") != "assistant" or not isinstance(message.get("content"), list):
+        return
+    for block in message["content"]:
+        if not isinstance(block, dict) or block.get("type") != "toolCall":
+            continue
+        call_id = block.get("id")
+        read_skill = skill_read_name(str(block.get("name", "unknown")), block.get("arguments", {}))
+        if isinstance(call_id, str) and read_skill:
+            skill_reads_by_call_id[call_id] = read_skill
 
 
 def result_view(event: dict[str, Any]) -> dict[str, Any]:
@@ -339,6 +343,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     if args.limit < 0:
         raise ValueError("--limit must be non-negative")
 
+    filters = EventFilters.from_args(args)
     warnings = WarningCollector()
     result_limit = args.limit if args.include_evidence else 0
     result_heap: list[tuple[datetime, int, dict[str, Any]]] = []
@@ -347,7 +352,9 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     tool_calls: Counter[str] = Counter()
     tool_errors: Counter[str] = Counter()
     direct_calls: Counter[str] = Counter()
-    skill_reads: Counter[str] = Counter()
+    skill_read_attempts: Counter[str] = Counter()
+    skill_read_successes: Counter[str] = Counter()
+    skill_read_errors: Counter[str] = Counter()
     files_discovered = 0
     selected_files = 0
     scanned_entries = 0
@@ -359,68 +366,117 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     attempted_files = 0
     readable_headers = 0
 
-    for path in root.rglob("*.jsonl"):
+    for path in sorted(root.rglob("*.jsonl")):
         files_discovered += 1
         if not args.include_current and current and normalized_path(path) == current:
             excluded_current += 1
             continue
         attempted_files += 1
         warnings.begin_file(path)
-        header, entry_count, leaf_path = read_session_metadata(path, warnings)
-        if header is None:
-            continue
-        readable_headers += 1
-        header_cwd = header.get("cwd")
-        if not args.all_projects and (not isinstance(header_cwd, str) or normalized_path(header_cwd) != target_cwd):
-            continue
-        selected_files += 1
-        scanned_entries += entry_count
-        session = {"session_id": str(header.get("id", "")), "file": str(path)}
-        session_matched = False
-        for entry in iter_session_entries(path, warnings):
-            timestamp = parse_timestamp(entry.get("timestamp"))
-            if cutoff is not None and (timestamp is None or timestamp < cutoff):
-                continue
-            eligible_entries += 1
-            entry_matched = False
-            for event in events_for_entry(entry, session, entry.get("id") in leaf_path):
-                if not event_matches(event, args):
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                try:
+                    header = json.loads(handle.readline())
+                except (json.JSONDecodeError, TypeError):
+                    warnings.add(path, "invalid_header")
                     continue
-                matched_events += 1
-                if not entry_matched:
-                    entry_matched = True
-                    session_matched = True
-                    matched_entries += 1
-                    roles[event["role"]] += 1
-                if event["event"] in {"tool_call", "skill_file_read"} and event.get("tool_name"):
-                    tool_calls[event["tool_name"]] += 1
-                if event.get("is_error") and event.get("tool_name"):
-                    tool_errors[event["tool_name"]] += 1
-                direct_calls.update(event.get("direct_skills", []))
-                if event.get("skill_file_read"):
-                    skill_reads[event["skill_file_read"]] += 1
-
-                result_sequence += 1
-                result_key = parse_timestamp(event.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc)
-                heap_key = (result_key, result_sequence)
-                if result_limit and (
-                    len(result_heap) < result_limit or heap_key > result_heap[0][:2]
+                if not isinstance(header, dict) or header.get("type") != "session":
+                    warnings.add(path, "invalid_header")
+                    continue
+                readable_headers += 1
+                version = session_version(header, path, warnings)
+                if version is None:
+                    continue
+                header_cwd = header.get("cwd")
+                if not args.all_projects and (
+                    not isinstance(header_cwd, str) or normalized_path(header_cwd) != target_cwd
                 ):
-                    item = (result_key, result_sequence, result_view(event))
-                    if len(result_heap) < result_limit:
-                        heapq.heappush(result_heap, item)
-                    else:
-                        heapq.heapreplace(result_heap, item)
-        if session_matched:
-            matched_sessions += 1
+                    continue
+
+                selected_files += 1
+                session = {"session_id": str(header.get("id", "")), "file": str(path)}
+                session_matched = False
+                parent_by_id: dict[str, Any] = {}
+                leaf_id: str | None = None
+                skill_reads_by_call_id: dict[str, str] = {}
+
+                for line in handle:
+                    try:
+                        entry = json.loads(line)
+                    except (json.JSONDecodeError, TypeError):
+                        warnings.add(path, "invalid_json_line")
+                        continue
+                    if not isinstance(entry, dict):
+                        warnings.add(path, "invalid_entry")
+                        continue
+                    scanned_entries += 1
+                    if version >= 2:
+                        entry_id = entry.get("id")
+                        if isinstance(entry_id, str):
+                            parent_by_id[entry_id] = entry.get("parentId")
+                            leaf_id = entry_id
+                    record_skill_read_calls(entry, skill_reads_by_call_id)
+
+                    timestamp = parse_timestamp(entry.get("timestamp"))
+                    if cutoff is not None and (timestamp is None or timestamp < cutoff):
+                        continue
+                    eligible_entries += 1
+                    entry_matched = False
+                    for event in events_for_entry(entry, session, False, skill_reads_by_call_id):
+                        if not event_matches(event, filters):
+                            continue
+                        matched_events += 1
+                        if not entry_matched:
+                            entry_matched = True
+                            session_matched = True
+                            matched_entries += 1
+                            roles[event["role"].casefold()] += 1
+                        tool_name = event.get("tool_name")
+                        if event["event"] in {"tool_call", "skill_file_read"} and tool_name:
+                            tool_calls[tool_name.casefold()] += 1
+                        if event.get("is_error") and tool_name:
+                            tool_errors[tool_name.casefold()] += 1
+                        direct_calls.update(name.casefold() for name in event.get("direct_skills", []))
+                        read_skill = event.get("skill_file_read")
+                        if read_skill:
+                            skill_key = read_skill.casefold()
+                            if event["event"] == "skill_file_read":
+                                skill_read_attempts[skill_key] += 1
+                            elif event["event"] == "tool_error":
+                                skill_read_errors[skill_key] += 1
+                            elif event["event"] == "tool_result":
+                                skill_read_successes[skill_key] += 1
+
+                        result_sequence += 1
+                        result_key = parse_timestamp(event.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc)
+                        heap_key = (result_key, result_sequence)
+                        if result_limit and (
+                            len(result_heap) < result_limit or heap_key > result_heap[0][:2]
+                        ):
+                            item = (result_key, result_sequence, event)
+                            if len(result_heap) < result_limit:
+                                heapq.heappush(result_heap, item)
+                            else:
+                                heapq.heapreplace(result_heap, item)
+
+                leaf_path = latest_leaf_path(parent_by_id, leaf_id) if version >= 2 else set()
+                for _timestamp, _sequence, event in result_heap:
+                    if event["file"] == str(path):
+                        event["on_latest_leaf"] = version == 1 or event.get("entry_id") in leaf_path
+                if session_matched:
+                    matched_sessions += 1
+        except (OSError, UnicodeError):
+            warnings.add(path, "unreadable_file")
 
     if attempted_files and not readable_headers:
         raise RuntimeError("all candidate session files were unreadable or invalid")
 
     result_events = [
-        item[2]
+        result_view(item[2])
         for item in sorted(result_heap, key=lambda item: (item[0], item[1]), reverse=True)
     ]
+    evidence_omitted = not args.include_evidence and matched_events > 0
+    evidence_truncated = args.include_evidence and matched_events > len(result_events)
     summary = {
         "files_discovered": files_discovered,
         "files_selected": selected_files,
@@ -432,12 +488,17 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         "matched_events": matched_events,
         "results_returned": len(result_events),
         "result_limit": result_limit,
-        "truncated": matched_events > len(result_events),
+        "evidence_omitted": evidence_omitted,
+        "evidence_truncated": evidence_truncated,
+        "truncated": evidence_truncated,
         "roles": dict(sorted(roles.items())),
         "tool_calls": dict(sorted(tool_calls.items())),
         "tool_errors": dict(sorted(tool_errors.items())),
         "direct_skill_calls": dict(sorted(direct_calls.items())),
-        "skill_file_reads": dict(sorted(skill_reads.items())),
+        "skill_file_reads": dict(sorted(skill_read_attempts.items())),
+        "skill_file_read_attempts": dict(sorted(skill_read_attempts.items())),
+        "skill_file_read_successes": dict(sorted(skill_read_successes.items())),
+        "skill_file_read_errors": dict(sorted(skill_read_errors.items())),
     }
     return {
         "status": "ok",
@@ -459,8 +520,23 @@ def main(argv: Iterable[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         output = aggregate(args)
-    except (OSError, RuntimeError, ValueError) as exc:
-        output = {"status": "error", "error": mask_and_shorten(str(exc)), "results": []}
+    except ValueError:
+        output = {
+            "status": "error",
+            "error": {"code": "INVALID_ARGUMENT", "message": "Arguments are invalid."},
+            "results": [],
+        }
+        print(json.dumps(output, ensure_ascii=False, sort_keys=True))
+        return 2
+    except (OSError, RuntimeError):
+        output = {
+            "status": "error",
+            "error": {
+                "code": "SESSION_STORAGE_UNAVAILABLE",
+                "message": "Session storage could not be read.",
+            },
+            "results": [],
+        }
         print(json.dumps(output, ensure_ascii=False, sort_keys=True))
         return 2
     print(json.dumps(output, ensure_ascii=False, sort_keys=True))

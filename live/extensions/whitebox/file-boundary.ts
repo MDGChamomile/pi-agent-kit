@@ -21,6 +21,8 @@ const WORKER_PATH = fileURLToPath(new URL("./file-worker.ts", import.meta.url));
 const WORKER_SANDBOX_PATH = "/opt/whitebox-file-worker.ts";
 const CAPTURE_SANDBOX_PATH = "/whitebox-capture/output.log";
 const MAX_WORKER_OUTPUT_BYTES = 64 * 1024 * 1024;
+export const FILE_TOOL_TIMEOUT_SECONDS = 120;
+const FILE_TOOL_KILL_GRACE_MS = 300;
 const UNICODE_SPACES = /[\u00a0\u2000-\u200a\u202f\u205f\u3000]/g;
 
 export interface CaptureRecord {
@@ -37,6 +39,18 @@ export interface BoundaryToolRequest {
   params: Record<string, unknown>;
   modelSupportsImages: boolean;
   captures?: readonly CaptureRecord[];
+}
+
+export function sanitizeCaptureResult(result: any): any {
+  if (!result || !Array.isArray(result.content)) return result;
+  return {
+    ...result,
+    content: result.content.map((block: any) =>
+      block?.type === "text" && typeof block.text === "string"
+        ? { ...block, text: sanitizeDisplayText(block.text) }
+        : block
+    ),
+  };
 }
 
 type AuthorizedPath = {
@@ -225,27 +239,35 @@ function terminateProcessGroup(pid: number | undefined, signal: NodeJS.Signals):
   }
 }
 
-export async function runBoundaryFileTool(
+async function runBoundaryFileToolInternal(
   policy: SandboxPolicy,
   request: BoundaryToolRequest,
-  signal?: AbortSignal,
+  signal: AbortSignal,
 ): Promise<any> {
   if (signal?.aborted) throw new Error("Operation aborted");
   // Re-scan immediately before every operation: a project may have changed
   // since startup or since the previous Whitebox command.
-  await validateWorkspaceBoundary(policy.workspace);
+  await validateWorkspaceBoundary(policy.workspace, signal);
+  signal.throwIfAborted();
   const prepared = await prepareBoundaryToolRequest(policy, request);
+  signal.throwIfAborted();
   if (prepared.capture) await assertCaptureCurrent(prepared.capture);
+  signal.throwIfAborted();
 
   await access(WORKER_PATH, fsConstants.R_OK).catch(() => {
     throw new Error("Whitebox file worker is unavailable");
   });
+  const canonicalWorkerPath = await realpath(WORKER_PATH);
+  signal.throwIfAborted();
   let captureHandle: FileHandle | undefined;
   if (prepared.capture) {
     // Open with O_NOFOLLOW and bind the descriptor, not the pathname. This
     // closes the capture-file check/use race before Bubblewrap starts.
     captureHandle = await open(prepared.capture.sourcePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
-    const info = await captureHandle.stat();
+    const info = await captureHandle.stat().catch(async (error) => {
+      await captureHandle?.close();
+      throw error;
+    });
     if (
       !info.isFile() ||
       info.dev !== prepared.capture.dev ||
@@ -258,10 +280,15 @@ export async function runBoundaryFileTool(
     }
   }
 
+  if (signal.aborted) {
+    await captureHandle?.close();
+    signal.throwIfAborted();
+  }
+
   // The worker sees only /workspace, read-only .git, the fixed Pi runtime, and
   // (when needed) one descriptor-pinned read-only capture file.
   const bwrapArgs = buildBwrapBaseArgs(policy);
-  bwrapArgs.push("--ro-bind", await realpath(WORKER_PATH), WORKER_SANDBOX_PATH);
+  bwrapArgs.push("--ro-bind", canonicalWorkerPath, WORKER_SANDBOX_PATH);
   if (captureHandle) {
     bwrapArgs.push("--dir", "/whitebox-capture");
     bwrapArgs.push("--ro-bind", "/proc/self/fd/3", CAPTURE_SANDBOX_PATH);
@@ -329,8 +356,14 @@ export async function runBoundaryFileTool(
   child.stdout.on("data", (chunk: Buffer) => consume(stdout, chunk, true));
   child.stderr.on("data", (chunk: Buffer) => consume(stderr, chunk, false));
 
-  const onAbort = () => terminateProcessGroup(child.pid, "SIGKILL");
-  signal?.addEventListener("abort", onAbort, { once: true });
+  let killTimer: ReturnType<typeof setTimeout> | undefined;
+  const onAbort = () => {
+    terminateProcessGroup(child.pid, "SIGTERM");
+    killTimer = setTimeout(() => terminateProcessGroup(child.pid, "SIGKILL"), FILE_TOOL_KILL_GRACE_MS);
+    killTimer.unref?.();
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
+  if (signal.aborted) onAbort();
   child.stdin.on("error", () => undefined);
   child.stdin.end(JSON.stringify({
     toolName: request.toolName,
@@ -342,11 +375,12 @@ export async function runBoundaryFileTool(
     child.once("error", reject);
     child.once("close", (code, childSignal) => resolveClose({ code, signal: childSignal }));
   }).finally(async () => {
-    signal?.removeEventListener("abort", onAbort);
+    if (killTimer) clearTimeout(killTimer);
+    signal.removeEventListener("abort", onAbort);
     await captureHandle?.close();
   });
 
-  if (signal?.aborted) throw new Error("Operation aborted");
+  if (signal.aborted) throw new Error("Operation aborted");
   if (outputExceeded) throw new Error("Whitebox file tool output exceeded 64MiB");
   if (closed.code === LOCK_CONFLICT_EXIT_CODE) throw new Error("Another Whitebox operation is active for this workspace");
 
@@ -361,5 +395,41 @@ export async function runBoundaryFileTool(
   if (closed.code !== 0 || !response?.ok) {
     throw new Error(sanitizeDisplayText(response?.error ?? `Whitebox file worker exited with code ${closed.code}`));
   }
-  return response.result;
+  // Capture files retain the exact raw bytes for evidence. Only text crossing
+  // back into Pi/model context receives Whitebox's stronger display safety
+  // treatment; ordinary workspace-file results preserve Pi's native behavior.
+  return prepared.capture ? sanitizeCaptureResult(response.result) : response.result;
+}
+
+export async function runBoundaryFileTool(
+  policy: SandboxPolicy,
+  request: BoundaryToolRequest,
+  signal?: AbortSignal,
+  timeoutSeconds = FILE_TOOL_TIMEOUT_SECONDS,
+): Promise<any> {
+  if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0 || timeoutSeconds > FILE_TOOL_TIMEOUT_SECONDS) {
+    throw new Error(`Whitebox file tool timeout must be at most ${FILE_TOOL_TIMEOUT_SECONDS} seconds`);
+  }
+  if (signal?.aborted) throw new Error("Operation aborted");
+  const timeoutController = new AbortController();
+  let timedOut = false;
+  const timeoutTimer = setTimeout(() => {
+    timedOut = true;
+    timeoutController.abort();
+  }, timeoutSeconds * 1_000);
+  timeoutTimer.unref?.();
+  const combinedSignal = signal
+    ? AbortSignal.any([signal, timeoutController.signal])
+    : timeoutController.signal;
+  try {
+    return await runBoundaryFileToolInternal(policy, request, combinedSignal);
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(`Whitebox file tool timed out after ${timeoutSeconds} seconds`);
+    }
+    if (signal?.aborted) throw new Error("Operation aborted");
+    throw error;
+  } finally {
+    clearTimeout(timeoutTimer);
+  }
 }

@@ -31,6 +31,7 @@ import {
   FILE_TOOL_NAMES,
   registerCapture,
   runBoundaryFileTool,
+  sanitizeCaptureResult,
 } from "./file-boundary.ts";
 import {
   assertTempStoreRemoved,
@@ -306,26 +307,35 @@ describe("pure policy and argument construction", () => {
       const trustedPi = join(runtimeBin, "pi");
       const projectPi = join(projectBin, "pi");
       const externalPi = join(externalBin, "pi");
-      const makePiCandidate = async (candidate: string, packageRoot: string) => {
-        const entrypoint = join(packageRoot, "dist", "cli.js");
+      const makePiCandidate = async (
+        candidate: string,
+        packageRoot: string,
+        bin = "dist/cli.js",
+        version = "0.84.2",
+      ) => {
+        const entrypoint = join(packageRoot, bin);
         await mkdir(dirname(entrypoint), { recursive: true });
         await writeFile(join(packageRoot, "package.json"), JSON.stringify({
           name: "@earendil-works/pi-coding-agent",
+          version,
+          bin: { pi: bin },
         }));
         await writeFile(entrypoint, "#!/usr/bin/env node\n");
         await chmod(entrypoint, 0o755);
         await symlink(entrypoint, candidate);
-        return entrypoint;
+        return { entrypoint, packageRoot };
       };
-      const trustedEntrypoint = await makePiCandidate(
+      const trusted = await makePiCandidate(
         trustedPi,
         join(root, "runtime", "lib", "node_modules", "@earendil-works", "pi-coding-agent"),
+        "dist/bundle/cli.js",
+        "0.84.3",
       );
       await makePiCandidate(
         projectPi,
         join(workspace, "fake-package", "@earendil-works", "pi-coding-agent"),
       );
-      const externalEntrypoint = await makePiCandidate(
+      const external = await makePiCandidate(
         externalPi,
         join(root, "external-package", "@earendil-works", "pi-coding-agent"),
       );
@@ -335,8 +345,9 @@ describe("pure policy and argument construction", () => {
         execPath: join(runtimeBin, "node"),
         pathValue: projectBin,
       });
-      assert.equal(trustedRuntime.entrypoint, await realpath(trustedEntrypoint));
-      assert.equal(trustedRuntime.packageRoot, dirname(dirname(await realpath(trustedEntrypoint))));
+      assert.equal(trustedRuntime.entrypoint, await realpath(trusted.entrypoint));
+      assert.equal(trustedRuntime.packageRoot, await realpath(trusted.packageRoot));
+      assert.equal(trustedRuntime.version, "0.84.3");
       assert.equal(resolvePiEntrypoint({
         cwd: workspace,
         execPath: join(runtimeBin, "node"),
@@ -353,7 +364,21 @@ describe("pure policy and argument construction", () => {
         cwd: workspace,
         execPath: join(runtimeBin, "node"),
         pathValue: `${projectBin}:${externalBin}`,
-      }), await realpath(externalEntrypoint));
+      }), await realpath(external.entrypoint));
+
+      await rm(externalPi);
+      const unsupportedPi = join(externalBin, "pi");
+      await makePiCandidate(
+        unsupportedPi,
+        join(root, "unsupported-package", "@earendil-works", "pi-coding-agent"),
+        "dist/bundle/cli.js",
+        "0.84.4",
+      );
+      assert.throws(() => resolvePiEntrypoint({
+        cwd: workspace,
+        execPath: join(runtimeBin, "node"),
+        pathValue: externalBin,
+      }), /not been validated with Pi 0\.84\.4/);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -435,7 +460,9 @@ describe("pure policy and argument construction", () => {
       const args = buildBwrapArgs(policy, command);
       assert.deepEqual(args.slice(-6), ["--", "/bin/bash", "--noprofile", "--norc", "-c", command]);
       assert.ok(args.indexOf("--clearenv") >= 0);
-      assert.equal(args.some((value) => value.startsWith("PI_") || value.startsWith("SSH_")), false);
+      assert.deepEqual(args.filter((value) => value.startsWith("PI_")), ["PI_OFFLINE"]);
+      assert.equal(args[args.indexOf("PI_OFFLINE") + 1], "1");
+      assert.equal(args.some((value) => value.startsWith("SSH_")), false);
       assert.equal(
         args.some((value, index) => value === "--ro-bind" && args[index + 1] === policy.nodeRoot),
         false,
@@ -465,6 +492,19 @@ describe("pure policy and argument construction", () => {
     } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
+  });
+
+  test("capture result sanitization preserves source objects and removes display controls", () => {
+    const rawText = "ansi\u001b[31m osc\u001b]0;title\u0007 nul\u0000 c1\u0085 bidi\u202e isolate\u2066";
+    const original = { content: [{ type: "text", text: rawText }], details: { source: "capture" } };
+    const sanitized = sanitizeCaptureResult(original);
+    assert.equal(original.content[0]!.text, rawText);
+    assert.notEqual(sanitized, original);
+    assert.deepEqual(sanitized.details, original.details);
+    assert.doesNotMatch(
+      sanitized.content[0].text,
+      /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/,
+    );
   });
 
   test("tail truncation observes both byte and line limits", () => {
@@ -687,16 +727,30 @@ describe("actual Bubblewrap integration", () => {
         /cannot modify \.git/,
       );
 
+      const workspaceControlPath = join(fixture.workspace, "workspace-control.txt");
+      await writeFile(workspaceControlPath, "workspace \u202e unchanged\n");
+      const workspaceControl = await run("read", { path: "workspace-control.txt" });
+      assert.equal(workspaceControl.content[0].text, "workspace \u202e unchanged\n");
+
       const capturePath = join(store.root, `output-${randomUUID()}.log`);
-      await writeFile(capturePath, "captured\n", { mode: 0o600 });
+      const rawCapture = "ansi\u001b[31mred\u001b]0;title\u0007 bidi\u202ereversed isolate\u2066text c1\u0085\n";
+      await writeFile(capturePath, rawCapture, { mode: 0o600 });
       const capture = await registerCapture(store, capturePath);
-      const captured = await runBoundaryFileTool(policy, {
-        toolName: "read",
-        params: { path: capturePath },
-        modelSupportsImages: false,
-        captures: [capture],
-      });
-      assert.equal(captured.content[0].text, "captured\n");
+      const captureRequest = (toolName: "read" | "grep", params: Record<string, unknown>) =>
+        runBoundaryFileTool(policy, {
+          toolName,
+          params: { path: capturePath, ...params },
+          modelSupportsImages: false,
+          captures: [capture],
+        });
+      const captured = await captureRequest("read", {});
+      const capturedGrep = await captureRequest("grep", { pattern: "reversed" });
+      for (const result of [captured, capturedGrep]) {
+        assert.doesNotMatch(
+          result.content[0].text,
+          /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/,
+        );
+      }
       await assert.rejects(
         () => runBoundaryFileTool(policy, {
           toolName: "write",
@@ -706,7 +760,7 @@ describe("actual Bubblewrap integration", () => {
         }),
         /outside the workspace/,
       );
-      assert.equal(await readFile(capturePath, "utf8"), "captured\n");
+      assert.equal(await readFile(capturePath, "utf8"), rawCapture);
       await rm(capturePath);
       await writeFile(capturePath, "replacement\n", { mode: 0o600 });
       await assert.rejects(
@@ -720,6 +774,29 @@ describe("actual Bubblewrap integration", () => {
       );
     } finally {
       await cleanupTempStore(store);
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  test("file workers have a parent-enforced deadline", { timeout: 10_000 }, async () => {
+    const fixture = await makeFixture("file-timeout");
+    try {
+      const policy = await prepareTestSandbox(fixture.workspace, { homeDir: fixture.fakeHome });
+      const hangingWorker = join(fixture.root, "hanging-worker");
+      await writeFile(hangingWorker, "#!/bin/sh\nexec sleep 30\n");
+      await chmod(hangingWorker, 0o755);
+      const started = Date.now();
+      await assert.rejects(
+        () => runBoundaryFileTool(
+          { ...policy, flockPath: hangingWorker },
+          { toolName: "read", params: { path: "source.txt" }, modelSupportsImages: false },
+          undefined,
+          0.1,
+        ),
+        /timed out after 0.1 seconds/,
+      );
+      assert.ok(Date.now() - started < 2_000);
+    } finally {
       await rm(fixture.root, { recursive: true, force: true });
     }
   });
@@ -1154,6 +1231,21 @@ describe("actual Pi entry point", () => {
       await assert.rejects(
         writeTool.execute("sdk-write-capture", { path: capturedPath, content: "changed" }),
         /outside the workspace/,
+      );
+      const replacementCaptureRun = await tool.execute(
+        "sdk-capture-replacement",
+        { command: "printf '\\033[32mreplacement'" },
+        undefined,
+        undefined,
+      );
+      const replacementCapturePath = replacementCaptureRun.details.capturedOutputPath;
+      assert.ok(replacementCapturePath);
+      assert.notEqual(replacementCapturePath, capturedPath);
+      assert.match(replacementCaptureRun.content[0].text, /replaces the previous Whitebox capture/);
+      await assert.rejects(readTool.execute("sdk-read-old-capture", { path: capturedPath }), /outside the workspace/);
+      assert.match(
+        (await readTool.execute("sdk-read-new-capture", { path: replacementCapturePath })).content[0].text,
+        /replacement/,
       );
 
       const cancelMarker = `whitebox-sdk-cancel-${randomUUID()}`;

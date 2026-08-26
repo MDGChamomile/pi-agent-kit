@@ -26,13 +26,15 @@ Use a disposable checkout with no important uncommitted files or secrets. Use a 
 
 - Linux
 - Node.js 22.19 or newer
-- Pi coding agent (tested with 0.84.2)
+- Pi coding agent 0.84.2 or 0.84.3 (exact tested-version allowlist; other versions fail closed)
 - `/usr/bin/bwrap` with `--disable-userns` support (Bubblewrap 0.8.0 or newer) and `/usr/bin/flock`
-- `bash`, `python3`, `git`, `make`, `cc`, and `c++` under `/usr/bin`
+- `bash`, `python3`, `git`, and ripgrep (`rg`) under `/usr/bin`
+- `fd` as `/usr/bin/fd` or Debian/Ubuntu's `/usr/bin/fdfind`
+- Optional for native builds: `make`, `cc`, and `c++` (not required for Whitebox startup)
 - A normal Git repository root with a real `.git` directory; worktrees are not supported
 - Unprivileged user namespaces enabled
 
-The current boundary has been tested with Node.js 22.22.3, Pi 0.84.2, Bubblewrap 0.9.0, and Linux 6.8.
+The current boundary has been tested with Node.js 22.22.3, Pi 0.84.2 and 0.84.3, Bubblewrap 0.9.0, and Linux 6.8.
 
 ## Install from a checkout
 
@@ -60,7 +62,7 @@ The launcher deliberately starts Pi with only Whitebox loaded:
 pi --no-extensions -e <whitebox>/index.ts --no-skills --no-approve --whitebox
 ```
 
-Additional command-line arguments are forwarded to Pi. Explicitly loading another extension expands the trusted boundary because extensions run with host permissions. The launcher pins the sandbox worker to the same canonical Pi package that it starts; it does not pin Pi to one hard-coded version.
+Additional command-line arguments are forwarded to Pi. Explicitly loading another extension expands the trusted boundary because extensions run with host permissions; the ready status reports additional active host-side tools. The launcher locates the owning package from `package.json`, requires its `bin.pi` target to match the selected executable, pins the sandbox worker to that canonical package, and accepts only the exact Pi versions listed above. The `peerDependencies` wildcard follows Pi's package contract; runtime compatibility is enforced by the allowlist instead.
 
 ## Supported work
 
@@ -77,14 +79,15 @@ Additional command-line arguments are forwarded to Pi. Explicitly loading anothe
 - interactive programs
 - Git mutation such as commit, merge, rebase, fetch, pull, or push
 
-The default command timeout is 120 seconds and the maximum is 900 seconds. Command results return only the last 12 KiB or 400 lines inline; larger output is saved as a capture for on-demand `read` or `grep`. Progress updates retain only the latest 4 KiB. Captured output is capped at 10 MiB.
+The default command timeout is 120 seconds and the maximum is 900 seconds. Command results return only the last 12 KiB or 400 lines inline; larger output is saved as a capture for on-demand `read` or `grep`. Progress updates retain only the latest 4 KiB. File-tool calls have a 120-second parent-enforced deadline with cooperative cancellation during workspace validation. Captured output is capped at 10 MiB, and a new capture replaces the previous capture and its read authorization.
 
 ## Security notes
 
 - The workspace is writable and can be damaged or deleted.
 - Everything in the workspace is readable by sandboxed commands and Pi's file tools and may be sent over the model connection. Whitebox is not a confidentiality boundary for project contents.
 - Project context files such as `AGENTS.md` may still be read by Pi and influence model behavior. Add `--no-context-files` only if you understand that it also disables your global context instructions.
-- Read-only host files under `/usr`, selected identity/runtime files under `/etc`, and a curated Node/npm/Pi runtime under `/opt/node` are visible inside the sandbox so supported tools can run. Other globally installed Node packages are not mounted.
+- Read-only host files under `/usr`, selected identity/runtime files under `/etc`, and a curated Node/npm/Pi runtime under `/opt/node` are visible inside the sandbox so supported tools can run. Other globally installed Node packages are not mounted. The inner runtime sets `PI_OFFLINE=1`; `rg` and `fd` must already be installed instead of being downloaded by Pi.
+- Capture files preserve the exact raw bytes. When a capture is read or searched through a Whitebox file tool, text returned to Pi and the model is sanitized for control and bidirectional-display characters; ordinary workspace-file results keep Pi's native behavior.
 - CPU, memory, and workspace disk exhaustion are not fully controlled.
 - Whitebox reduces risk; it is not a substitute for an independently isolated host.
 

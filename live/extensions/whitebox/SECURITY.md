@@ -4,7 +4,7 @@ Whitebox is an early, Linux-only safety boundary for inspecting disposable proje
 
 ## Supported version
 
-Whitebox is currently maintained from the `main` branch of this repository. There are no separately supported releases.
+Whitebox is currently maintained from the `main` branch of this repository. There are no separately supported releases. Runtime startup is fail-closed to the exact Pi versions validated by the test matrix and listed in the README.
 
 ## Intended protections
 
@@ -15,8 +15,9 @@ When started through `piw`, Whitebox is designed to:
 - confine Pi's `read`, `write`, `edit`, `grep`, `find`, and `ls` tools to the workspace;
 - block host Bash and user `!` / `!!` commands;
 - fail closed when startup, trusted-source overlap, tool ownership, path, namespace, or runtime checks fail;
-- use the same canonical Pi package for the host process and sandbox file worker; and
-- bound command time, captured output, temporary storage, and concurrent workspace execution.
+- require the selected executable to match the owning Pi package's declared `bin.pi`, and use that same canonical package for the host process and sandbox file worker;
+- preserve raw capture bytes while sanitizing capture text returned to Pi/model context; and
+- bound command and file-tool time, captured output, temporary storage, and concurrent workspace execution. File-tool deadlines use cooperative cancellation during workspace validation, so a non-interruptible host filesystem call may delay observed cancellation.
 
 ## Trusted components
 

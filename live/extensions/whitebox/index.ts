@@ -29,9 +29,8 @@ const PREFLIGHT_COMMAND = [
   "npx --version >/dev/null",
   "python3 --version >/dev/null",
   "git --version >/dev/null",
-  "make --version >/dev/null",
-  "cc --version >/dev/null",
-  "c++ --version >/dev/null",
+  "rg --version >/dev/null",
+  "(fd --version >/dev/null 2>&1 || fdfind --version >/dev/null 2>&1)",
   "test \"$PWD\" = /workspace",
   "test \"$HOME\" = /home/whitebox",
   "test -z \"${PI_SESSION_FILE-}\"",
@@ -134,10 +133,14 @@ function formatFinalResult(
   policy: SandboxPolicy,
   timeout: number,
   result: SandboxRunResult,
+  captureReplaced: boolean,
 ): string {
+  const captureNotice = captureReplaced
+    ? "\n\n[This capture replaces the previous Whitebox capture.]"
+    : "";
   return [
     `$ ${displayCommand(command)}`,
-    formatOutput(result),
+    formatOutput(result) + captureNotice,
     "",
     `[Whitebox: ${policySummary(policy, timeout)}; termination=${result.termination}; ` +
       `exit=${result.exitCode ?? "unknown"}; duration=${result.durationMs}ms]`,
@@ -283,10 +286,10 @@ export function createWhiteboxExtension(
       ctx.ui.setStatus(STATUS_KEY, "Whitebox: checking strict boundary");
       const initiallyActiveTools = pi.getActiveTools();
       const initiallyActiveFileTools = initiallyActiveTools.filter(isFileToolName);
-      const inactiveBoundaryTools = initiallyActiveTools.filter(
+      const preservedHostTools = initiallyActiveTools.filter(
         (name) => !shellRoute(name) && name !== TOOL_NAME && !isFileToolName(name),
       );
-      pi.setActiveTools(inactiveBoundaryTools);
+      pi.setActiveTools(preservedHostTools);
 
       try {
         if (malformedWhiteboxArg || !exactWhiteboxArg) {
@@ -420,14 +423,27 @@ export function createWhiteboxExtension(
               throw new Error(`Whitebox command could not run: ${reason}`);
             } finally {
               activeRunPromise = undefined;
-              if (state === "ready") toolCtx.ui.setStatus(STATUS_KEY, "Whitebox: /workspace RW · .git RO · net off");
+              if (state === "ready") {
+                const hostToolNotice = preservedHostTools.length > 0
+                  ? ` · ${preservedHostTools.length} host tool(s) outside boundary`
+                  : "";
+                toolCtx.ui.setStatus(
+                  STATUS_KEY,
+                  `Whitebox-owned tools: /workspace RW · .git RO · net off${hostToolNotice}`,
+                );
+              }
             }
 
+            const captureReplaced = Boolean(result.capturedOutputPath && captures.size > 0);
             if (result.capturedOutputPath) {
+              // runSandbox has already evicted the previous capture file. Clear
+              // its authorization record before registering the replacement so
+              // file retention and read authorization cannot diverge.
+              captures.clear();
               const capture = await registerCapture(tempStore, result.capturedOutputPath);
               captures.set(capture.sourcePath, capture);
             }
-            const text = formatFinalResult(params.command, policy, timeout, result);
+            const text = formatFinalResult(params.command, policy, timeout, result, captureReplaced);
             if (result.termination !== "exit" || result.exitCode !== 0) throw new Error(text);
             return {
               content: [{ type: "text", text }],
@@ -451,11 +467,18 @@ export function createWhiteboxExtension(
           }
         }
 
-        pi.setActiveTools([...new Set([...inactiveBoundaryTools, ...initiallyActiveFileTools, TOOL_NAME])]);
+        pi.setActiveTools([...new Set([...preservedHostTools, ...initiallyActiveFileTools, TOOL_NAME])]);
         state = "ready";
-        ctx.ui.setStatus(STATUS_KEY, "Whitebox: files + commands workspace-only · .git RO · net off");
+        const hostToolNotice = preservedHostTools.length > 0
+          ? ` · ${preservedHostTools.length} other host-side tool(s) outside boundary`
+          : "";
+        ctx.ui.setStatus(
+          STATUS_KEY,
+          `Whitebox-owned files + commands workspace-only · .git RO · net off${hostToolNotice}`,
+        );
         ctx.ui.notify(
           `Whitebox ready. ${policySummary(policy, DEFAULT_TIMEOUT_SECONDS)}. ` +
+            `${preservedHostTools.length} additional active host-side tool(s) remain outside this boundary. ` +
             "The workspace can be damaged, and its contents remain visible to Pi and the model.",
           "warning",
         );

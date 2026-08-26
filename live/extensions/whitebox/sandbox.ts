@@ -17,6 +17,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { PI_PACKAGE_NAME, TESTED_PI_VERSIONS } from "./bin/resolve-pi.mjs";
 
 export const BWRAP_PATH = "/usr/bin/bwrap";
 export const FLOCK_PATH = "/usr/bin/flock";
@@ -38,17 +39,15 @@ const LOCK_ACQUIRE_WRAPPER = [
   "os.close(fd)",
   "os.execv(sys.argv[2], sys.argv[2:])",
 ].join("\n");
-const PI_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
 const PI_PACKAGE_ROOT_ENV = "PI_WHITEBOX_PI_PACKAGE_ROOT";
 const EXTENSION_ROOT = dirname(fileURLToPath(import.meta.url));
 const REQUIRED_USR_TOOLS = [
   "/usr/bin/bash",
   "/usr/bin/python3",
   "/usr/bin/git",
-  "/usr/bin/make",
-  "/usr/bin/cc",
-  "/usr/bin/c++",
+  "/usr/bin/rg",
 ] as const;
+const FD_USR_TOOLS = ["/usr/bin/fd", "/usr/bin/fdfind"] as const;
 
 export type SandboxTermination =
   | "exit"
@@ -195,7 +194,7 @@ async function validatePiPackageRoot(path: string): Promise<string> {
   const info = await lstat(canonical);
   if (!info.isDirectory()) throw new Error(`Pi package must be a directory: ${canonical}`);
   const manifestPath = join(canonical, "package.json");
-  let manifest: { name?: unknown };
+  let manifest: { name?: unknown; version?: unknown };
   try {
     manifest = JSON.parse(await readFile(manifestPath, "utf8"));
   } catch {
@@ -203,6 +202,12 @@ async function validatePiPackageRoot(path: string): Promise<string> {
   }
   if (manifest.name !== PI_PACKAGE_NAME) {
     throw new Error(`Unexpected Pi package at ${canonical}`);
+  }
+  if (typeof manifest.version !== "string" || !TESTED_PI_VERSIONS.includes(manifest.version)) {
+    throw new Error(
+      `Whitebox has not been validated with Pi ${String(manifest.version)}. ` +
+        `Supported: ${TESTED_PI_VERSIONS.join(", ")}.`,
+    );
   }
   await access(join(canonical, "dist", "index.js"), fsConstants.R_OK).catch(() => {
     throw new Error(`Pi SDK entry point is unavailable: ${canonical}`);
@@ -319,9 +324,11 @@ function decodeMountInfoPath(value: string): string {
   );
 }
 
-export async function validateWorkspaceBoundary(workspace: string): Promise<void> {
-  const mountInfo = await readFile("/proc/self/mountinfo", "utf8");
+export async function validateWorkspaceBoundary(workspace: string, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  const mountInfo = await readFile("/proc/self/mountinfo", { encoding: "utf8", signal });
   for (const line of mountInfo.split("\n")) {
+    signal?.throwIfAborted();
     if (!line) continue;
     const fields = line.split(" ");
     const mountPoint = fields[4] ? decodeMountInfoPath(fields[4]) : undefined;
@@ -368,6 +375,7 @@ export async function validateWorkspaceBoundary(workspace: string): Promise<void
     const directory = pending.pop()!;
     const handle = await opendir(directory);
     for await (const entry of handle) {
+      signal?.throwIfAborted();
       visited++;
       if (visited > 1_000_000) throw new Error("Workspace safety scan exceeded 1,000,000 entries");
       const path = join(directory, entry.name);
@@ -420,6 +428,17 @@ export async function prepareSandbox(
   }
 
   await Promise.all(REQUIRED_USR_TOOLS.map((path) => assertExecutable(path, basename(path))));
+  let fdAvailable = false;
+  for (const path of FD_USR_TOOLS) {
+    try {
+      await assertExecutable(path, basename(path));
+      fdAvailable = true;
+      break;
+    } catch {
+      // Try Debian/Ubuntu's fdfind name before failing startup.
+    }
+  }
+  if (!fdAvailable) throw new Error("fd is missing or not executable: expected /usr/bin/fd or /usr/bin/fdfind");
   const nodeRoot = await findNodeDistributionRoot(options.nodeExecPath ?? process.execPath);
   await validateNodeRuntime(nodeRoot);
   const requestedPiPackageRoot = options.piPackageRoot ?? process.env[PI_PACKAGE_ROOT_ENV];
@@ -502,6 +521,7 @@ const INNER_ENV: ReadonlyArray<readonly [string, string]> = [
   ["GIT_CONFIG_NOSYSTEM", "1"],
   ["GIT_CONFIG_GLOBAL", "/dev/null"],
   ["GIT_ASKPASS", "/bin/false"],
+  ["PI_OFFLINE", "1"],
   ["NPM_CONFIG_OFFLINE", "true"],
   ["NPM_CONFIG_CACHE", "/tmp/npm-cache"],
   ["NPM_CONFIG_USERCONFIG", "/dev/null"],
@@ -698,7 +718,7 @@ export async function runSandbox(
     throw new Error(`maxCaptureBytes must be an integer from 1 to ${MAX_CAPTURE_BYTES}`);
   }
   if (options.signal?.aborted) throw new Error("Whitebox run was cancelled before start");
-  await validateWorkspaceBoundary(policy.workspace);
+  await validateWorkspaceBoundary(policy.workspace, options.signal);
 
   const acquisitionMarker = join(options.tempStore.root, `lock-acquired-${randomUUID()}`);
   const flockArgs = buildFlockArgs(policy, options.command, acquisitionMarker);

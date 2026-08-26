@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import contextmanager, redirect_stderr
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -17,6 +17,7 @@ SCRIPT = Path(__file__).parents[1] / "scripts" / "session_search.py"
 SPEC = importlib.util.spec_from_file_location("session_search", SCRIPT)
 assert SPEC and SPEC.loader
 session_search = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = session_search
 SPEC.loader.exec_module(session_search)
 
 
@@ -151,6 +152,9 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(result["summary"]["matched_sessions"], 1)
         self.assertEqual(result["summary"]["matched_entries"], 2)
         self.assertEqual(result["results"], [])
+        self.assertTrue(result["summary"]["evidence_omitted"])
+        self.assertFalse(result["summary"]["evidence_truncated"])
+        self.assertFalse(result["summary"]["truncated"])
         serialized = json.dumps(result)
         self.assertNotIn(str(project_a), serialized)
         self.assertNotIn(str(primary), serialized)
@@ -200,6 +204,9 @@ class SessionSearchTests(unittest.TestCase):
                 ), now=self.NOW)
         self.assertEqual(result["summary"]["direct_skill_calls"], {"alpha": 1})
         self.assertEqual(result["summary"]["skill_file_reads"], {"alpha": 1})
+        self.assertEqual(result["summary"]["skill_file_read_attempts"], {"alpha": 1})
+        self.assertEqual(result["summary"]["skill_file_read_successes"], {"alpha": 1})
+        self.assertEqual(result["summary"]["skill_file_read_errors"], {})
         events = {item["event"]: item for item in result["results"]}
         self.assertFalse(events["skill_file_read"]["on_latest_leaf"])
         self.assertIn("direct_skills", events["message"])
@@ -259,8 +266,13 @@ class SessionSearchTests(unittest.TestCase):
             after = primary.stat().st_mtime_ns
         self.assertEqual(limited["summary"]["results_returned"], 1)
         self.assertTrue(limited["summary"]["truncated"])
+        self.assertTrue(limited["summary"]["evidence_truncated"])
+        self.assertFalse(limited["summary"]["evidence_omitted"])
         self.assertEqual(summary_only["results"], [])
         self.assertFalse(summary_only["evidence_included"])
+        self.assertTrue(summary_only["summary"]["evidence_omitted"])
+        self.assertFalse(summary_only["summary"]["evidence_truncated"])
+        self.assertFalse(summary_only["summary"]["truncated"])
         self.assertEqual(no_match["summary"]["matched_entries"], 0)
         self.assertGreaterEqual(limited["warnings"]["count"], 1)
         self.assertIn("items", limited["warnings"])
@@ -289,6 +301,85 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(result["summary"]["matched_events"], 10)
         self.assertEqual(result["summary"]["results_returned"], 3)
         self.assertEqual([item["entry_id"] for item in result["results"]], ["e9", "e8", "e7"])
+
+    def test_unselected_session_body_is_not_scanned(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            root = base / "sessions"
+            selected_project = base / "selected"
+            other_project = base / "other"
+            selected_project.mkdir()
+            other_project.mkdir()
+            write_session(root / "selected.jsonl", header("selected", selected_project), [])
+            foreign = root / "foreign.jsonl"
+            write_session(root / "foreign.jsonl", header("foreign", other_project), [], malformed=True)
+            result = session_search.aggregate(self.args(root, selected_project), now=self.NOW)
+        self.assertEqual(result["summary"]["files_selected"], 1)
+        self.assertNotIn("invalid_json_line", result["warnings"]["by_kind"])
+
+    def test_skill_file_read_outcomes_are_correlated(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            root = base / "sessions"
+            project = base / "project"
+            project.mkdir()
+            entries = [
+                message("a1", None, "2026-08-10T00:00:00Z", "assistant", [{
+                    "type": "toolCall",
+                    "id": "failed-read",
+                    "name": "read",
+                    "arguments": {"path": "/tmp/skills/Alpha/SKILL.md"},
+                }], stopReason="toolUse"),
+                message(
+                    "a2",
+                    "a1",
+                    "2026-08-10T00:00:01Z",
+                    "toolResult",
+                    [{"type": "text", "text": "permission denied"}],
+                    toolCallId="failed-read",
+                    toolName="read",
+                    isError=True,
+                ),
+            ]
+            write_session(root / "failed-read.jsonl", header("failed-read", project), entries)
+            result = session_search.aggregate(self.args(
+                root, project, "--include-evidence", "--skill", "ALPHA"
+            ), now=self.NOW)
+        self.assertEqual(result["summary"]["skill_file_read_attempts"], {"alpha": 1})
+        self.assertEqual(result["summary"]["skill_file_read_successes"], {})
+        self.assertEqual(result["summary"]["skill_file_read_errors"], {"alpha": 1})
+        self.assertEqual({item["event"] for item in result["results"]}, {"skill_file_read", "tool_error"})
+
+    def test_session_versions_are_explicit_and_future_versions_are_skipped(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            root = base / "sessions"
+            project = base / "project"
+            project.mkdir()
+            legacy_header = header("legacy", project)
+            legacy_header.pop("version")
+            write_session(
+                root / "legacy.jsonl",
+                legacy_header,
+                [message("legacy-1", None, "2026-08-10T00:00:00Z", "user", "legacy match")],
+            )
+            future_header = header("future", project)
+            future_header["version"] = 99
+            write_session(
+                root / "future.jsonl",
+                future_header,
+                [message("future-1", None, "2026-08-10T00:00:00Z", "user", "future match")],
+            )
+            result = session_search.aggregate(self.args(
+                root, project, "--include-evidence", "--query", "match"
+            ), now=self.NOW)
+        self.assertEqual(result["summary"]["files_selected"], 1)
+        self.assertEqual(result["summary"]["matched_events"], 1)
+        self.assertTrue(result["results"][0]["on_latest_leaf"])
+        self.assertEqual(result["warnings"]["by_kind"], {
+            "missing_session_version": 1,
+            "unsupported_session_version": 1,
+        })
 
     def test_warning_details_are_deduplicated_and_capped(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -363,7 +454,10 @@ class SessionSearchTests(unittest.TestCase):
                 self.assertEqual(completed.stderr, "")
                 self.assertEqual(len(completed.stdout.strip().splitlines()), 1)
                 self.assertEqual(json.loads(completed.stdout), {
-                    "error": "--days must be a finite non-negative number",
+                    "error": {
+                        "code": "INVALID_ARGUMENT",
+                        "message": "Arguments are invalid.",
+                    },
                     "results": [],
                     "status": "error",
                 })
@@ -375,6 +469,19 @@ class SessionSearchTests(unittest.TestCase):
             args = self.args(root, root)
             with self.assertRaisesRegex(RuntimeError, "all candidate"):
                 session_search.aggregate(args, now=self.NOW)
+
+    def test_cli_errors_do_not_expose_exception_paths(self):
+        stdout = io.StringIO()
+        with patch.object(
+            session_search,
+            "aggregate",
+            side_effect=OSError("could not open /home/private-user/sessions/private.jsonl"),
+        ), redirect_stdout(stdout):
+            code = session_search.main([])
+        result = json.loads(stdout.getvalue())
+        self.assertEqual(code, 2)
+        self.assertEqual(result["error"]["code"], "SESSION_STORAGE_UNAVAILABLE")
+        self.assertNotIn("/home/private-user", stdout.getvalue())
 
     def test_cli_emits_one_json_object(self):
         with fixture_tree() as (root, project_a, _, _, _, current):

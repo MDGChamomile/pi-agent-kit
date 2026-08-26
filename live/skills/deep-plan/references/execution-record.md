@@ -13,9 +13,17 @@ YYYYMMDD-<subject>.md
 Use a concise kebab-case `<subject>` derived from the work, or the user's supplied subject. Choose the destination directory in this order:
 
 1. the directory explicitly named by the user for this run;
-2. otherwise `records/` relative to the Deep Plan skill.
+2. otherwise `<agent-dir>/records/deep-plan/<project-key>/`, where `<agent-dir>` is the non-empty `PI_CODING_AGENT_DIR` value when set and the expanded `~/.pi/agent` path otherwise.
 
-Create the default records directory when needed. Do not infer a repository-local plan directory or ask a destination question while this default is available. Never overwrite an existing record. If the target exists or conflicts with a non-directory, stop and report it.
+Build `<project-key>` from the canonical repository root, or the canonical current working directory when no repository root is available:
+
+```text
+<sanitized-basename>-<first-6-lowercase-hex-of-SHA-256(canonical-path)>
+```
+
+Keep ASCII letters, digits, dots, underscores, and hyphens in the basename; replace other runs with `-`, trim separators, and use `project` if nothing remains. The path hash prevents same-named repositories in different locations from sharing records. `PI_CODING_AGENT_DIR` is Pi's supported agent-directory override; do not use a similarly named unofficial variable.
+
+Create the selected records directory when needed. Do not infer a repository-local plan directory or ask a destination question while this default is available. Never overwrite an existing record. If the target exists or conflicts with a non-directory, stop and report it.
 
 ## Required content
 

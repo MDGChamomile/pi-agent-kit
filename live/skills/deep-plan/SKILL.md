@@ -10,11 +10,11 @@ compatibility: Requires Pi with the ask_user tool provided by pi-ask-user.
 
 Move from **Fog → Same Page → Execution Record**.
 
-Use this workflow for one repository change that can be brought to execution readiness in one session. Scale the interview to the live Fog, not to a minimum question count: an already concrete request may need no discovery questions before the Same Page readback. During Fog and Same Page, work read-only. The only allowed mutation is the final Markdown record and its destination directory. Unless the user explicitly selects another destination for that run, store records under `records/` relative to this skill. The record is an execution guide, not authorization; implementation requires a separate explicit user request.
+Use this workflow for one repository change that can be brought to execution readiness in one session. Scale the interview to the live Fog, not to a minimum question count: an already concrete request may need no discovery questions before the Same Page readback. During Fog and Same Page, work read-only. The only allowed mutation is the final Markdown record and its destination directory. Unless the user explicitly selects another destination for that run, store records under the external state directory defined in `references/execution-record.md`. The record is an execution guide, not authorization; implementation requires a separate explicit user request.
 
 ## Requirement
 
-Critical decision gates require the `ask_user` tool from [pi-ask-user](https://github.com/edlsh/pi-ask-user). Install it with `pi install npm:pi-ask-user` before using this skill. If the tool is unavailable, report the missing dependency at the first critical gate and end with that gate recorded as unresolved.
+Critical decision gates require the `ask_user` tool from [pi-ask-user](https://github.com/edlsh/pi-ask-user). Install it with `pi install npm:pi-ask-user` before using this skill. If the tool is unavailable at a critical gate, identify the blocker and unresolved gate in the final response, then stop. Unless Same Page was already explicitly confirmed, do not create an execution record.
 
 ## 1. Inspect and map the Fog
 
@@ -35,7 +35,7 @@ Use no question quota in either direction. Continue only while a known unresolve
 
 ### Critical gates
 
-Use `ask_user`, following its decision-gate protocol, for load-bearing or authority-changing decisions that are ready to resolve. Keep them one at a time and grounded in evidence.
+For load-bearing or authority-changing decisions that are ready to resolve, use `ask_user` with evidence gathered before asking. Ask one focused decision at a time. After an unclear or cancelled answer, make at most one narrower retry; if the gate remains unresolved, report the blocker and stop. A decision continues only this planning workflow and never authorizes implementation. These local rules take precedence over broader workflow instructions bundled with the tool.
 
 ### Answerable questions
 
@@ -78,3 +78,5 @@ If this exact understanding has not already been confirmed, use `ask_user` for o
 After Same Page is confirmed, read `references/execution-record.md` and write one Markdown record.
 
 Apply the reference's completion condition, report the path, alignment state, readiness, and execution status, then stop without implementing.
+
+When maintaining this skill itself, exercise the scenarios in `references/behavior-evals.md` through Pi.
