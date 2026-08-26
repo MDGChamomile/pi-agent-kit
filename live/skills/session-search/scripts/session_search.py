@@ -328,10 +328,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str, Any]:
     root = args.sessions_root.expanduser()
-    if not root.is_dir():
-        raise RuntimeError("session root is unavailable")
-    target_cwd = normalized_path(args.cwd)
-    current = normalized_path(os.environ["PI_SESSION_FILE"]) if os.environ.get("PI_SESSION_FILE") else None
     cutoff = None
     if args.days is not None:
         if not math.isfinite(args.days) or args.days < 0:
@@ -342,6 +338,10 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         cutoff = current_time.astimezone(timezone.utc) - timedelta(days=args.days)
     if args.limit < 0:
         raise ValueError("--limit must be non-negative")
+    if not root.is_dir():
+        raise RuntimeError("session root is unavailable")
+    target_cwd = normalized_path(args.cwd)
+    current = normalized_path(os.environ["PI_SESSION_FILE"]) if os.environ.get("PI_SESSION_FILE") else None
 
     filters = EventFilters.from_args(args)
     warnings = WarningCollector()

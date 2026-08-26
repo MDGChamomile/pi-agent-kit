@@ -441,26 +441,35 @@ class SessionSearchTests(unittest.TestCase):
                     session_search.aggregate(self.args(root, root, "--days", value), now=self.NOW)
 
     def test_non_finite_days_cli_emits_one_json_error(self):
-        for value in ("nan", "inf", "-inf"):
-            with self.subTest(value=value):
-                completed = subprocess.run(
-                    [sys.executable, str(SCRIPT), "--days", value],
-                    check=False,
-                    capture_output=True,
-                    text=True,
-                    env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-                )
-                self.assertEqual(completed.returncode, 2)
-                self.assertEqual(completed.stderr, "")
-                self.assertEqual(len(completed.stdout.strip().splitlines()), 1)
-                self.assertEqual(json.loads(completed.stdout), {
-                    "error": {
-                        "code": "INVALID_ARGUMENT",
-                        "message": "Arguments are invalid.",
-                    },
-                    "results": [],
-                    "status": "error",
-                })
+        with tempfile.TemporaryDirectory() as temp:
+            missing_root = Path(temp) / "missing-sessions"
+            for value in ("nan", "inf", "-inf"):
+                with self.subTest(value=value):
+                    completed = subprocess.run(
+                        [
+                            sys.executable,
+                            str(SCRIPT),
+                            "--sessions-root",
+                            str(missing_root),
+                            "--days",
+                            value,
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+                    )
+                    self.assertEqual(completed.returncode, 2)
+                    self.assertEqual(completed.stderr, "")
+                    self.assertEqual(len(completed.stdout.strip().splitlines()), 1)
+                    self.assertEqual(json.loads(completed.stdout), {
+                        "error": {
+                            "code": "INVALID_ARGUMENT",
+                            "message": "Arguments are invalid.",
+                        },
+                        "results": [],
+                        "status": "error",
+                    })
 
     def test_total_parse_failure_is_fatal(self):
         with tempfile.TemporaryDirectory() as temp:
