@@ -20,7 +20,7 @@ Resources currently used and maintained.
 
 | Extension | Purpose | Platform |
 | --- | --- | --- |
-| [`pi-subagent`](live/extensions/pi-subagent/README.md) | Run one isolated, read-only local or public-web investigation outside the parent context | Portable (tested on Linux) |
+| [`pi-subagent`](live/extensions/pi-subagent/README.md) | Run bounded, isolated, read-only local or public-web investigations outside the parent context | Portable (tested on Linux) |
 | [`whitebox`](live/extensions/whitebox/README.md) | Run project commands and Pi file tools inside a strict offline Bubblewrap boundary | Linux |
 
 ## Retired
