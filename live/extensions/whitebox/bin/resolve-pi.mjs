@@ -1,5 +1,7 @@
 import { accessSync, constants as fsConstants, readFileSync, realpathSync, statSync } from "node:fs";
+import { findPackageJSON } from "node:module";
 import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 
 export const PI_PACKAGE_ROOT_ENV = "PI_WHITEBOX_PI_PACKAGE_ROOT";
 export const PI_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
@@ -38,35 +40,21 @@ function piRuntime(path) {
     const entrypoint = realpathSync(path);
     if (!statSync(entrypoint).isFile()) return undefined;
 
-    for (
-      let packageRoot = dirname(entrypoint);
-      packageRoot !== dirname(packageRoot);
-      packageRoot = dirname(packageRoot)
-    ) {
-      let manifest;
-      try {
-        manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
-      } catch {
-        continue;
-      }
-      if (manifest?.name !== PI_PACKAGE_NAME) continue;
-      const declaredBin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.pi;
-      if (typeof declaredBin !== "string" || !declaredBin) continue;
-      const declaredPath = resolve(packageRoot, declaredBin);
-      if (!isWithin(packageRoot, declaredPath)) continue;
-      let canonicalDeclaredPath;
-      try {
-        canonicalDeclaredPath = realpathSync(declaredPath);
-      } catch {
-        continue;
-      }
-      if (canonicalDeclaredPath !== entrypoint) continue;
-      if (typeof manifest.version !== "string" || !TESTED_PI_VERSION_SET.has(manifest.version)) {
-        return Object.freeze({ unsupportedVersion: String(manifest.version) });
-      }
-      return Object.freeze({ entrypoint, packageRoot, version: manifest.version });
+    const manifestPath = findPackageJSON(pathToFileURL(entrypoint));
+    if (!manifestPath) return undefined;
+    const packageRoot = dirname(manifestPath);
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+    if (manifest?.name !== PI_PACKAGE_NAME) return undefined;
+
+    const declaredBin = typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.pi;
+    if (typeof declaredBin !== "string" || !declaredBin) return undefined;
+    const declaredPath = resolve(packageRoot, declaredBin);
+    if (!isWithin(packageRoot, declaredPath)) return undefined;
+    if (realpathSync(declaredPath) !== entrypoint) return undefined;
+    if (typeof manifest.version !== "string" || !TESTED_PI_VERSION_SET.has(manifest.version)) {
+      return Object.freeze({ unsupportedVersion: String(manifest.version) });
     }
-    return undefined;
+    return Object.freeze({ entrypoint, packageRoot, version: manifest.version });
   } catch {
     return undefined;
   }

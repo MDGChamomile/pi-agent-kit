@@ -366,6 +366,15 @@ describe("pure policy and argument construction", () => {
         pathValue: `${projectBin}:${externalBin}`,
       }), await realpath(external.entrypoint));
 
+      const nestedManifest = join(dirname(external.entrypoint), "package.json");
+      await writeFile(nestedManifest, JSON.stringify({ name: "not-pi" }));
+      assert.throws(() => resolvePiEntrypoint({
+        cwd: workspace,
+        execPath: join(runtimeBin, "node"),
+        pathValue: `${projectBin}:${externalBin}`,
+      }), /outside the current workspace/);
+      await rm(nestedManifest);
+
       await rm(externalPi);
       const unsupportedPi = join(externalBin, "pi");
       await makePiCandidate(
