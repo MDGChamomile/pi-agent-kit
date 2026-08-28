@@ -43,18 +43,20 @@ Resources currently used and maintained.
 
 ### Skills
 
-| Skill | Purpose | Invoke |
-| --- | --- | --- |
-| [`deep-plan`](live/skills/deep-plan/SKILL.md) | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` |
-| [`pi-subagent`](live/skills/pi-subagent/SKILL.md) | Delegate noisy local-file or public-web investigation and return only a bounded final answer | Model-selected or `/skill:pi-subagent` |
-| [`session-search`](live/skills/session-search/README.md) | Aggregate counts, errors, and tool or skill usage across local Pi sessions | `/skill:session-search` |
+| Skill | Purpose | Invoke | Usage |
+| --- | --- | --- | --- |
+| [`deep-plan`](live/skills/deep-plan/SKILL.md) | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` | Regular |
+| [`pi-subagent`](live/skills/pi-subagent/SKILL.md) | Delegate noisy local-file or public-web investigation and return only a bounded final answer | Model-selected or `/skill:pi-subagent` | Primary |
+| [`session-search`](live/skills/session-search/README.md) | Aggregate counts, errors, and tool or skill usage across local Pi sessions | `/skill:session-search` | Regular |
 
 ### Extensions
 
-| Extension | Purpose | Platform |
-| --- | --- | --- |
-| [`pi-subagent`](live/extensions/pi-subagent/README.md) | Run bounded, isolated, read-only local or public-web investigations outside the parent context | Portable (tested on Linux) |
-| [`whitebox`](live/extensions/whitebox/README.md) | Run project commands and Pi file tools inside a strict offline Bubblewrap boundary | Linux |
+| Extension | Purpose | Platform | Usage |
+| --- | --- | --- | --- |
+| [`pi-subagent`](live/extensions/pi-subagent/README.md) | Run bounded, isolated, read-only local or public-web investigations outside the parent context | Portable (tested on Linux) | Primary |
+| [`whitebox`](live/extensions/whitebox/README.md) | Run project commands and Pi file tools inside a strict offline Bubblewrap boundary | Linux | Situational |
+
+**Usage:** `Primary` is central and most frequently used; `Regular` is used repeatedly; `Situational` serves a narrower, occasional need.
 
 ### Pi Subagent in action
 
