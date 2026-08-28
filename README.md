@@ -59,18 +59,6 @@ Resources currently used and maintained.
 
 **Usage:** `◎ Primary` is central and most frequently used; `◐ Regular` is used repeatedly; `○ Situational` serves a narrower, occasional need.
 
-### Pi Subagent in action
-
-The status and result below came from a real local lookup against this repository and were rendered without machine-specific paths or account details.
-
-**Running**
-
-![Pi Subagent reporting elapsed time, child model, thinking level, and reported tokens while running](docs/images/pi-subagent-running.png)
-
-**Complete**
-
-![Pi Subagent reporting completion time, injected context size, and the expanded final answer](docs/images/pi-subagent-complete.png)
-
 ## Retired
 
 Resources kept for reference but no longer actively used or maintained.
