@@ -3,13 +3,17 @@ name: live-validation
 on:
   push:
     paths:
+      - "live/extensions/pi-subagent/**"
       - "live/extensions/whitebox/**"
       - "live/skills/**"
+      - ".github/workflows/pi-subagent-canary.yml"
       - ".github/workflows/whitebox.yml"
   pull_request:
     paths:
+      - "live/extensions/pi-subagent/**"
       - "live/extensions/whitebox/**"
       - "live/skills/**"
+      - ".github/workflows/pi-subagent-canary.yml"
       - ".github/workflows/whitebox.yml"
 
 permissions:
@@ -47,6 +51,33 @@ jobs:
           if failures:
               raise SystemExit("\n".join(failures))
           PY
+
+  pi-subagent:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        pi-version: ["0.84.2", "0.84.3"]
+    defaults:
+      run:
+        working-directory: live/extensions/pi-subagent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.0"
+          cache: npm
+          cache-dependency-path: live/extensions/pi-subagent/package-lock.json
+      - run: npm ci --ignore-scripts
+      - name: Select tested Pi version
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts \
+            @earendil-works/pi-agent-core@${{ matrix.pi-version }} \
+            @earendil-works/pi-ai@${{ matrix.pi-version }} \
+            @earendil-works/pi-coding-agent@${{ matrix.pi-version }} \
+            @earendil-works/pi-tui@${{ matrix.pi-version }}
+      - run: npm test
 
   whitebox-portable:
     runs-on: ubuntu-24.04
