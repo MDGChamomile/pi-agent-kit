@@ -16,7 +16,7 @@ The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): r
 | If you want to… | Start with | Type |
 | --- | --- | --- |
 | Turn a vague repository change into an executable plan | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Skill |
-| Isolate noisy investigation from the main context | [`pi-subagent`](live/extensions/pi-subagent/README.md) | Skill + extension |
+| Isolate noisy investigation from the main context | [`pi-subagent`](live/skills/pi-subagent/README.md) | Skill + extension |
 | Analyze patterns across local Pi sessions | [`session-search`](live/skills/session-search/README.md) | Skill |
 | Run project commands inside an offline Linux boundary | [`whitebox`](live/extensions/whitebox/README.md) | Extension |
 
@@ -46,7 +46,7 @@ Resources currently used and maintained.
 
 | Skill | Purpose | Invoke | Usage |
 | --- | --- | --- | --- |
-| [`pi-subagent`](live/skills/pi-subagent/SKILL.md) | Delegate noisy local-file or public-web investigation and return only a bounded final answer | Model-selected or `/skill:pi-subagent` | ◎ Primary |
+| [`pi-subagent`](live/skills/pi-subagent/README.md) | Delegate noisy local-file or public-web investigation and return only a bounded final answer | Model-selected or `/skill:pi-subagent` | ◎ Primary |
 | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` | ◐ Regular |
 | [`session-search`](live/skills/session-search/README.md) | Aggregate counts, errors, and tool or skill usage across local Pi sessions | `/skill:session-search` | ◐ Regular |
 
