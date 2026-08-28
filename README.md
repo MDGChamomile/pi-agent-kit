@@ -9,7 +9,7 @@ Pi Agent Kit is the public, source-first collection of resources I currently use
 - **Live** resources are currently used and maintained.
 - **Retired** resources remain available as references.
 
-The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): read the source, take what is useful, and adapt it to your own workflow. It is not published as an npm package or maintained as an install-everything Pi package.
+The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): read the source, take what is useful, and adapt it to your own workflow. It is not maintained as an install-everything Pi package. The `pi-subagent` skill and extension are also distributed together as the focused [`@mdgchamomile/pi-subagent`](https://www.npmjs.com/package/@mdgchamomile/pi-subagent) package.
 
 ## Start here
 
