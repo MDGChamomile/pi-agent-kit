@@ -13,7 +13,7 @@ Resources currently used and maintained.
 | Skill | Purpose | Invoke |
 | --- | --- | --- |
 | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` |
-| [`pi-subagent`](live/skills/pi-subagent/SKILL.md) | Delegate noisy local-file or public-web investigation and return only a bounded report | Model-selected or `/skill:pi-subagent` |
+| [`pi-subagent`](live/skills/pi-subagent/SKILL.md) | Delegate noisy local-file or public-web investigation and return only a bounded final answer | Model-selected or `/skill:pi-subagent` |
 | [`session-search`](live/skills/session-search/README.md) | Aggregate counts, errors, and tool or skill usage across local Pi sessions | `/skill:session-search` |
 
 ### Extensions
