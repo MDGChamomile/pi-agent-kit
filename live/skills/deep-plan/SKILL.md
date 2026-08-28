@@ -3,7 +3,7 @@ name: deep-plan
 description: Grill a vague repository idea until user and agent reach the same page, then record the result as an execution plan.
 disable-model-invocation: true
 license: MIT
-compatibility: Requires Pi with the ask_user tool provided by pi-ask-user.
+compatibility: Requires Pi with an ask_user tool compatible with pi-ask-user.
 ---
 
 # Deep Plan
@@ -14,7 +14,7 @@ Use this workflow for one repository change that can be brought to execution rea
 
 ## Requirement
 
-Critical decision gates require the `ask_user` tool from [pi-ask-user](https://github.com/edlsh/pi-ask-user). Install it with `pi install npm:pi-ask-user` before using this skill. If the tool is unavailable at a critical gate, identify the blocker and unresolved gate in the final response, then stop. Unless Same Page was already explicitly confirmed, do not create an execution record.
+Critical decision gates require a compatible `ask_user` tool. [pi-ask-user](https://github.com/edlsh/pi-ask-user) is the reference implementation and can be installed with `pi install npm:pi-ask-user`, but you may use a customized question extension instead if it exposes the same tool interface and supports the critical-gate behavior below. If the tool is unavailable at a critical gate, identify the blocker and unresolved gate in the final response, then stop. Unless Same Page was already explicitly confirmed, do not create an execution record.
 
 ## 1. Inspect and map the Fog
 
