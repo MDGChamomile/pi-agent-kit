@@ -33,6 +33,13 @@ try {
 }
 
 if (piRuntime) {
+  if (!piRuntime.validated) {
+    console.warn(
+      `piw warning: Pi ${piRuntime.version} has not been validated by the Whitebox test matrix; ` +
+        "continuing because it is a stable patch release within the supported range and passed runtime identity checks.",
+    );
+  }
+
   // Use the Node executable that already launched piw instead of resolving a
   // second interpreter or Pi executable through a project-influenced PATH.
   const child = spawn(process.execPath, [piRuntime.entrypoint, ...args], {

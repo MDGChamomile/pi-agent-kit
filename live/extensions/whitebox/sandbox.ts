@@ -17,7 +17,7 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PI_PACKAGE_NAME, TESTED_PI_VERSIONS } from "./bin/resolve-pi.mjs";
+import { assessPiVersion, PI_PACKAGE_NAME, SUPPORTED_PI_VERSION_RANGE } from "./bin/resolve-pi.mjs";
 
 export const BWRAP_PATH = "/usr/bin/bwrap";
 export const FLOCK_PATH = "/usr/bin/flock";
@@ -203,10 +203,14 @@ async function validatePiPackageRoot(path: string): Promise<string> {
   if (manifest.name !== PI_PACKAGE_NAME) {
     throw new Error(`Unexpected Pi package at ${canonical}`);
   }
-  if (typeof manifest.version !== "string" || !TESTED_PI_VERSIONS.includes(manifest.version)) {
+  if (typeof manifest.version !== "string") {
+    throw new Error(`Pi package version is missing at ${canonical}`);
+  }
+  const compatibility = assessPiVersion(manifest.version);
+  if (!compatibility.allowed) {
     throw new Error(
-      `Whitebox has not been validated with Pi ${String(manifest.version)}. ` +
-        `Supported: ${TESTED_PI_VERSIONS.join(", ")}.`,
+      `Whitebox cannot use Pi ${manifest.version} (${compatibility.reason}). ` +
+        `Supported range: ${SUPPORTED_PI_VERSION_RANGE}.`,
     );
   }
   await access(join(canonical, "dist", "index.js"), fsConstants.R_OK).catch(() => {

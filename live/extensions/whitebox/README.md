@@ -26,7 +26,7 @@ Use a disposable checkout with no important uncommitted files or secrets. Use a 
 
 - Linux
 - Node.js 22.19 or newer
-- Pi coding agent 0.84.2 or 0.84.3 (exact tested-version allowlist; other versions fail closed)
+- Pi coding agent 0.84.2 or newer within the 0.84.x line; known-incompatible and prerelease versions are blocked, while unvalidated 0.84.x patch releases start with a warning
 - `/usr/bin/bwrap` with `--disable-userns` support (Bubblewrap 0.8.0 or newer) and `/usr/bin/flock`
 - `bash`, `python3`, `git`, and ripgrep (`rg`) under `/usr/bin`
 - `fd` as `/usr/bin/fd` or Debian/Ubuntu's `/usr/bin/fdfind`
@@ -34,7 +34,7 @@ Use a disposable checkout with no important uncommitted files or secrets. Use a 
 - A normal Git repository root with a real `.git` directory; worktrees are not supported
 - Unprivileged user namespaces enabled
 
-The current boundary has been tested with Node.js 22.22.3, Pi 0.84.2 and 0.84.3, Bubblewrap 0.9.0, and Linux 6.8.
+The current boundary has been validated with Node.js 22.22.3, Pi 0.84.2 and 0.84.3, Bubblewrap 0.9.0, and Linux 6.8. Newer 0.84.x patch releases are permitted after runtime identity checks but remain unvalidated until added to the test matrix; later minor or major lines fail closed until reviewed.
 
 ## Install from a checkout
 
@@ -62,7 +62,7 @@ The launcher deliberately starts Pi with only Whitebox loaded:
 pi --no-extensions -e <whitebox>/index.ts --no-skills --no-approve --whitebox
 ```
 
-Additional command-line arguments are forwarded to Pi. Explicitly loading another extension expands the trusted boundary because extensions run with host permissions; the ready status reports additional active host-side tools. The launcher locates the owning package from `package.json`, requires its `bin.pi` target to match the selected executable, pins the sandbox worker to that canonical package, and accepts only the exact Pi versions listed above. The `peerDependencies` wildcard follows Pi's package contract; runtime compatibility is enforced by the allowlist instead.
+Additional command-line arguments are forwarded to Pi. Explicitly loading another extension expands the trusted boundary because extensions run with host permissions; the ready status reports additional active host-side tools. The launcher locates the owning package from `package.json`, requires its `bin.pi` target to match the selected executable, and pins the sandbox worker to that canonical package. Runtime policy enforces the bounded `>=0.84.2 <0.85.0` range and any known-incompatible denylist; an unvalidated stable patch release within that range produces a warning instead of being blocked. Security-relevant identity, path, runtime, and tool-ownership checks still fail closed. The `peerDependencies` wildcard follows Pi's package contract.
 
 ## Supported work
 

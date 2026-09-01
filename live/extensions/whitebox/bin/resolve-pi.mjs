@@ -5,8 +5,82 @@ import { pathToFileURL } from "node:url";
 
 export const PI_PACKAGE_ROOT_ENV = "PI_WHITEBOX_PI_PACKAGE_ROOT";
 export const PI_PACKAGE_NAME = "@earendil-works/pi-coding-agent";
-export const TESTED_PI_VERSIONS = Object.freeze(["0.84.2", "0.84.3"]);
-const TESTED_PI_VERSION_SET = new Set(TESTED_PI_VERSIONS);
+export const MINIMUM_PI_VERSION = "0.84.2";
+export const MAXIMUM_PI_VERSION_EXCLUSIVE = "0.85.0";
+export const SUPPORTED_PI_VERSION_RANGE = `>=${MINIMUM_PI_VERSION} <${MAXIMUM_PI_VERSION_EXCLUSIVE}`;
+export const VALIDATED_PI_VERSIONS = Object.freeze(["0.84.2", "0.84.3"]);
+/** @type {readonly string[]} */
+export const KNOWN_INCOMPATIBLE_PI_VERSIONS = Object.freeze([]);
+
+/** @param {string} version */
+function parsePiVersion(version) {
+  const numeric = String.raw`(?:0|[1-9]\d*)`;
+  const prereleaseIdentifier = String.raw`(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)`;
+  const buildIdentifier = String.raw`[0-9A-Za-z-]+`;
+  const match = new RegExp(
+    String.raw`^(${numeric})\.(${numeric})\.(${numeric})` +
+      String.raw`(?:-(${prereleaseIdentifier}(?:\.${prereleaseIdentifier})*))?` +
+      String.raw`(?:\+(${buildIdentifier}(?:\.${buildIdentifier})*))?$`,
+  ).exec(version);
+  if (!match) return undefined;
+  const parts = [BigInt(match[1]), BigInt(match[2]), BigInt(match[3])];
+  return {
+    parts,
+    coreVersion: `${match[1]}.${match[2]}.${match[3]}`,
+    prerelease: match[4] !== undefined,
+  };
+}
+
+const VALIDATED_PI_VERSION_SET = new Set(VALIDATED_PI_VERSIONS);
+const KNOWN_INCOMPATIBLE_PI_CORE_VERSION_SET = new Set(
+  KNOWN_INCOMPATIBLE_PI_VERSIONS.map((version) => {
+    const parsed = parsePiVersion(version);
+    if (!parsed || parsed.prerelease) {
+      throw new Error(`Invalid known-incompatible Pi version: ${version}`);
+    }
+    return parsed.coreVersion;
+  }),
+);
+
+/** @param {bigint[]} first @param {bigint[]} second */
+function compareVersionParts(first, second) {
+  for (let index = 0; index < first.length; index += 1) {
+    if (first[index] < second[index]) return -1;
+    if (first[index] > second[index]) return 1;
+  }
+  return 0;
+}
+
+/** @param {string} version */
+export function assessPiVersion(version) {
+  const parsed = parsePiVersion(version);
+  const minimum = parsePiVersion(MINIMUM_PI_VERSION);
+  const maximum = parsePiVersion(MAXIMUM_PI_VERSION_EXCLUSIVE);
+  if (!parsed || !minimum || !maximum) {
+    return Object.freeze({ allowed: false, validated: false, reason: "version is not valid semver" });
+  }
+  if (parsed.prerelease) {
+    return Object.freeze({ allowed: false, validated: false, reason: "prerelease versions are not supported" });
+  }
+  if (compareVersionParts(parsed.parts, minimum.parts) < 0) {
+    return Object.freeze({
+      allowed: false,
+      validated: false,
+      reason: `version is below the minimum ${MINIMUM_PI_VERSION}`,
+    });
+  }
+  if (compareVersionParts(parsed.parts, maximum.parts) >= 0) {
+    return Object.freeze({
+      allowed: false,
+      validated: false,
+      reason: `version is outside the supported range ${SUPPORTED_PI_VERSION_RANGE}`,
+    });
+  }
+  if (KNOWN_INCOMPATIBLE_PI_CORE_VERSION_SET.has(parsed.coreVersion)) {
+    return Object.freeze({ allowed: false, validated: false, reason: "version is known to be incompatible" });
+  }
+  return Object.freeze({ allowed: true, validated: VALIDATED_PI_VERSION_SET.has(version) });
+}
 
 /** @param {string} parent @param {string} child */
 function isWithin(parent, child) {
@@ -51,10 +125,19 @@ function piRuntime(path) {
     const declaredPath = resolve(packageRoot, declaredBin);
     if (!isWithin(packageRoot, declaredPath)) return undefined;
     if (realpathSync(declaredPath) !== entrypoint) return undefined;
-    if (typeof manifest.version !== "string" || !TESTED_PI_VERSION_SET.has(manifest.version)) {
-      return Object.freeze({ unsupportedVersion: String(manifest.version) });
+    if (typeof manifest.version !== "string") {
+      return Object.freeze({ unsupportedVersion: String(manifest.version), reason: "package version is missing" });
     }
-    return Object.freeze({ entrypoint, packageRoot, version: manifest.version });
+    const compatibility = assessPiVersion(manifest.version);
+    if (!compatibility.allowed) {
+      return Object.freeze({ unsupportedVersion: manifest.version, reason: compatibility.reason });
+    }
+    return Object.freeze({
+      entrypoint,
+      packageRoot,
+      version: manifest.version,
+      validated: compatibility.validated,
+    });
   } catch {
     return undefined;
   }
@@ -74,12 +157,12 @@ export function resolvePiRuntime({
   ];
 
   const checked = new Set();
-  const unsupportedVersions = new Set();
+  const unsupportedVersions = new Map();
   for (const candidate of candidates) {
     const runtime = piRuntime(candidate);
     if (!runtime) continue;
     if ("unsupportedVersion" in runtime) {
-      unsupportedVersions.add(runtime.unsupportedVersion);
+      unsupportedVersions.set(runtime.unsupportedVersion, runtime.reason);
       continue;
     }
     if (checked.has(runtime.entrypoint)) continue;
@@ -89,10 +172,8 @@ export function resolvePiRuntime({
   }
 
   if (unsupportedVersions.size > 0) {
-    throw new Error(
-      `Whitebox has not been validated with Pi ${[...unsupportedVersions].join(", ")}. ` +
-        `Supported: ${TESTED_PI_VERSIONS.join(", ")}.`,
-    );
+    const details = [...unsupportedVersions].map(([version, reason]) => `${version} (${reason})`).join(", ");
+    throw new Error(`Whitebox cannot use Pi ${details}. Supported range: ${SUPPORTED_PI_VERSION_RANGE}.`);
   }
   throw new Error("could not find an executable Pi package outside the current workspace");
 }
