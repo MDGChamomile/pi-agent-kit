@@ -1,6 +1,6 @@
 # Executor-Specific Deltas
 
-Read this reference only when executor choice materially changes the execution contract. The Execution Record remains the sole plan format, and neither the record nor a handoff authorizes implementation.
+Read this reference only when executor choice materially changes the execution contract. The execution-record directory remains the sole plan artifact, `PLAN.md` remains authoritative over any specs or tickets, and neither the record nor a handoff authorizes implementation.
 
 Add only relevant differences in:
 

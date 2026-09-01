@@ -10,7 +10,7 @@ compatibility: Requires Pi with an ask_user tool compatible with pi-ask-user.
 
 Move from **Fog → Same Page → Execution Record**.
 
-Use this workflow for one repository change that can be brought to execution readiness in one session. Scale the interview to the live Fog, not to a minimum question count: an already concrete request may need no discovery questions before the Same Page readback. During Fog and Same Page, work read-only. The only allowed mutation is the final Markdown record and its destination directory. Unless the user explicitly selects another destination for that run, store records under the external state directory defined in `references/execution-record.md`. The record is an execution guide, not authorization; implementation requires a separate explicit user request.
+Use this workflow for one cohesive repository change that can be brought to execution readiness in one session. Scale the interview to the live Fog, not to a minimum question count: an already concrete request may need no discovery questions before the Same Page readback. During Fog and Same Page, work read-only. The only allowed mutation is the final execution-record directory and its Markdown files. Unless the user explicitly selects another destination for that run, store records under the external state directory defined in `references/execution-record.md`. The record is an execution guide, not authorization; implementation requires a separate explicit user request.
 
 ## Requirement
 
@@ -75,8 +75,8 @@ If this exact understanding has not already been confirmed, use `ask_user` for o
 
 ## 4. Write the Execution Record
 
-After Same Page is confirmed, read `references/execution-record.md` and write one Markdown record.
+After Same Page is confirmed, read `references/execution-record.md` and write one execution-record directory. Always create its authoritative `PLAN.md`; add specs and tickets only when the reference's qualitative decomposition rules call for them.
 
-Apply the reference's completion condition, report the path, alignment state, readiness, and execution status, then stop without implementing.
+Apply the reference's completion and integrity conditions, report the record-directory path, artifact shape, alignment state, readiness, and execution status, then stop without implementing.
 
 When maintaining this skill itself, exercise the scenarios in `references/behavior-evals.md` through Pi.
