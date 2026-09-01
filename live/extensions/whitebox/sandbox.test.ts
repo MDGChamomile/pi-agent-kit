@@ -21,6 +21,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import {
+  assessPiVersion,
   assertTrustedPathOutsideWorkspace,
   PI_PACKAGE_ROOT_ENV,
   resolvePiEntrypoint,
@@ -376,21 +377,56 @@ describe("pure policy and argument construction", () => {
       await rm(nestedManifest);
 
       await rm(externalPi);
-      const unsupportedPi = join(externalBin, "pi");
-      await makePiCandidate(
-        unsupportedPi,
-        join(root, "unsupported-package", "@earendil-works", "pi-coding-agent"),
+      const unvalidatedPi = join(externalBin, "pi");
+      const unvalidated = await makePiCandidate(
+        unvalidatedPi,
+        join(root, "unvalidated-package", "@earendil-works", "pi-coding-agent"),
         "dist/bundle/cli.js",
         "0.84.4",
       );
+      const unvalidatedRuntime = resolvePiRuntime({
+        cwd: workspace,
+        execPath: join(runtimeBin, "node"),
+        pathValue: externalBin,
+      });
+      assert.equal(unvalidatedRuntime.version, "0.84.4");
+      assert.equal(unvalidatedRuntime.validated, false);
+
+      await writeFile(join(unvalidated.packageRoot, "package.json"), JSON.stringify({
+        name: "@earendil-works/pi-coding-agent",
+        version: "0.84.1",
+        bin: { pi: "dist/bundle/cli.js" },
+      }));
       assert.throws(() => resolvePiEntrypoint({
         cwd: workspace,
         execPath: join(runtimeBin, "node"),
         pathValue: externalBin,
-      }), /not been validated with Pi 0\.84\.4/);
+      }), /below the minimum 0\.84\.2/);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  test("Pi version policy permits unvalidated patch releases only within the supported minor line", () => {
+    assert.deepEqual(assessPiVersion("0.84.1"), {
+      allowed: false,
+      validated: false,
+      reason: "version is below the minimum 0.84.2",
+    });
+    assert.deepEqual(assessPiVersion("0.84.2"), { allowed: true, validated: true });
+    assert.deepEqual(assessPiVersion("0.84.4"), { allowed: true, validated: false });
+    assert.deepEqual(assessPiVersion("0.84.4-rc.1"), {
+      allowed: false,
+      validated: false,
+      reason: "prerelease versions are not supported",
+    });
+    assert.deepEqual(assessPiVersion("0.85.0"), {
+      allowed: false,
+      validated: false,
+      reason: "version is outside the supported range >=0.84.2 <0.85.0",
+    });
+    assert.equal(assessPiVersion("1.0.0").allowed, false);
+    assert.equal(assessPiVersion("not-semver").allowed, false);
   });
 
   test("workspace and trusted runtime paths cannot overlap", async () => {

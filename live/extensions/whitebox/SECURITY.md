@@ -4,7 +4,7 @@ Whitebox is an early, Linux-only safety boundary for inspecting disposable proje
 
 ## Supported version
 
-Whitebox is currently maintained from the `main` branch of this repository. There are no separately supported releases. Runtime startup is fail-closed to the exact Pi versions validated by the test matrix and listed in the README.
+Whitebox is currently maintained from the `main` branch of this repository. There are no separately supported releases. Runtime startup requires the bounded Pi version range listed in the README and blocks prerelease versions, later minor or major lines, and versions known to be incompatible. Stable patch releases inside that range but outside the validated test matrix start with a warning after package identity checks pass. Security-relevant startup, trusted-source overlap, tool-ownership, path, namespace, and runtime checks remain fail-closed.
 
 ## Intended protections
 
