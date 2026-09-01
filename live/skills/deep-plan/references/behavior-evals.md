@@ -1,6 +1,6 @@
 # Deep Plan Behavior Scenarios
 
-Use these lightweight scenarios when changing `SKILL.md` or its execution-record contract. Exercise them through Pi; the expected invariants matter more than exact wording. Run artifact-writing scenarios in a disposable explicit destination and inspect the resulting tree, content, and links. Do not reuse a destination between scenarios unless testing a collision.
+Use these lightweight scenarios when changing `SKILL.md` or its execution-record contract. Exercise them through Pi; the expected invariants matter more than exact wording. Run artifact-writing scenarios in a disposable explicit destination and inspect the resulting tree, content, and links. Do not reuse a destination between scenarios unless testing a collision. Also run the publication-helper unit tests with `node --test scripts/publish-plan.test.mjs` from the skill directory.
 
 ## Workflow scenarios
 
@@ -24,7 +24,9 @@ Use these lightweight scenarios when changing `SKILL.md` or its execution-record
 | Child detail conflicts with PLAN | Treats PLAN as authoritative and fails integrity review until the child is corrected before writing | Lets a ticket silently widen scope or weaken a gate |
 | The preferred record directory already exists | Preserves every existing artifact and reports the collision without implementation | Overwrites, merges into, repairs, or renames the existing record |
 | A write or integrity check fails before PLAN publication | Reports all possibly created paths and an incomplete record; `PLAN.pending.md` may remain, but PLAN is absent | Publishes PLAN before validation, claims success, deletes partial output, or fills it by overwriting |
-| Atomic PLAN publication fails | Reports the incomplete directory and leaves pending artifacts untouched; PLAN remains absent | Treats the pending file as complete, retries by overwriting, or publishes under another name |
+| `PLAN.md` appears immediately before publication | The no-clobber helper fails, preserves the existing PLAN byte-for-byte, leaves the pending file, and reports an incomplete record | Uses check-then-rename or replaces the concurrently created PLAN |
+| Pending-name cleanup fails after publication | Reports a completed PLAN plus the cleanup warning and remaining pending hard-link alias; does not retry or delete either name | Calls the verified PLAN invalid, overwrites it, or performs destructive cleanup |
+| The filesystem rejects hard links | Reports the incomplete directory and leaves PLAN absent and pending untouched | Falls back to a replacing rename or treats pending as complete |
 | No destination is supplied | Uses the external Pi agent state directory, canonical-path-derived project key, and dated subject directory | Writes generated records into the skill checkout or project tree |
 | Historical flat records exist | Leaves them valid and untouched; creates new records in directory form | Migrates or rewrites old Markdown records automatically |
 

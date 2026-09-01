@@ -415,11 +415,20 @@ describe("pure policy and argument construction", () => {
     });
     assert.deepEqual(assessPiVersion("0.84.2"), { allowed: true, validated: true });
     assert.deepEqual(assessPiVersion("0.84.4"), { allowed: true, validated: false });
+    assert.deepEqual(assessPiVersion("0.84.999999999999999999999999"), { allowed: true, validated: false });
+    assert.deepEqual(assessPiVersion("0.84.4+repacked.1"), { allowed: true, validated: false });
     assert.deepEqual(assessPiVersion("0.84.4-rc.1"), {
       allowed: false,
       validated: false,
       reason: "prerelease versions are not supported",
     });
+    for (const version of ["00.84.4", "0.084.4", "0.84.04", "0.84.4+.", "0.84.4-rc.01"]) {
+      assert.deepEqual(assessPiVersion(version), {
+        allowed: false,
+        validated: false,
+        reason: "version is not valid semver",
+      });
+    }
     assert.deepEqual(assessPiVersion("0.85.0"), {
       allowed: false,
       validated: false,

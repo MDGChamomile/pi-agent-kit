@@ -141,9 +141,17 @@ Treat successful atomic publication of `PLAN.md` as the record's completion mark
 
 For a hierarchical record, write tickets first and then their `SPEC.md` files. Render the authoritative plan last to `PLAN.pending.md`; for a simple record, write only `PLAN.pending.md`. Before publication, verify the complete intended tree while treating that pending file as the future `PLAN.md`: every intended file exists, every relative link resolves under its final name, every ID is unique in its scope, all dependency targets exist, no dependency cycle is left unexplained, and the plan maps every whole-plan completion condition to proof.
 
-Only after all checks pass, confirm that `PLAN.md` is still absent and atomically rename `PLAN.pending.md` to `PLAN.md` without replacing any destination. That successful rename is the final mutation and marks completion; do not perform a later fallible integrity step and then leave a published PLAN described as invalid.
+Only after all checks pass, publish with the bundled no-clobber helper, resolving `<skill-dir>` as the directory that contains this skill's `SKILL.md`:
 
-If any write, integrity check, or publication rename fails, stop immediately, report every path that may have been created and that the record is incomplete, and leave it untouched for explicit user-directed recovery. `PLAN.pending.md` may remain, but the absence of `PLAN.md` unambiguously means the directory is not a completed execution record. Do not silently retry by overwriting, renaming to a different record, deleting, or filling a partial record.
+```bash
+node <skill-dir>/scripts/publish-plan.mjs <record-dir>/PLAN.pending.md <record-dir>/PLAN.md
+```
+
+The helper atomically creates `PLAN.md` as a hard link to the verified pending file. Hard-link creation fails if `PLAN.md` appeared concurrently, so it never replaces an existing destination. Because both names are in the same directory, they are on the same filesystem. If that filesystem does not support hard links, publication fails safely with `PLAN.md` absent. Do not substitute a check-then-rename sequence, plain `rename`, or `mv`, because those forms may replace a destination created after the check.
+
+Successful hard-link creation is the publication point and marks the record complete. The helper then removes `PLAN.pending.md`. If only that cleanup fails, `PLAN.md` still points to the complete pre-verified file; report the helper's cleanup warning and the remaining pending alias, but do not retry, delete, or call the completed PLAN invalid.
+
+If any write, integrity check, or helper publication step fails before `PLAN.md` is created, stop immediately, report every path that may have been created and that the record is incomplete, and leave it untouched for explicit user-directed recovery. `PLAN.pending.md` may remain, but the absence of `PLAN.md` unambiguously means the directory is not a completed execution record. Do not silently retry by overwriting, publishing under a different record name, deleting, or filling a partial record.
 
 ## Completion condition
 

@@ -11,20 +11,38 @@ export const SUPPORTED_PI_VERSION_RANGE = `>=${MINIMUM_PI_VERSION} <${MAXIMUM_PI
 export const VALIDATED_PI_VERSIONS = Object.freeze(["0.84.2", "0.84.3"]);
 /** @type {readonly string[]} */
 export const KNOWN_INCOMPATIBLE_PI_VERSIONS = Object.freeze([]);
-const VALIDATED_PI_VERSION_SET = new Set(VALIDATED_PI_VERSIONS);
-const KNOWN_INCOMPATIBLE_PI_VERSION_SET = new Set(KNOWN_INCOMPATIBLE_PI_VERSIONS);
 
 /** @param {string} version */
 function parsePiVersion(version) {
-  const match = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(version);
+  const numeric = String.raw`(?:0|[1-9]\d*)`;
+  const prereleaseIdentifier = String.raw`(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)`;
+  const buildIdentifier = String.raw`[0-9A-Za-z-]+`;
+  const match = new RegExp(
+    String.raw`^(${numeric})\.(${numeric})\.(${numeric})` +
+      String.raw`(?:-(${prereleaseIdentifier}(?:\.${prereleaseIdentifier})*))?` +
+      String.raw`(?:\+(${buildIdentifier}(?:\.${buildIdentifier})*))?$`,
+  ).exec(version);
   if (!match) return undefined;
+  const parts = [BigInt(match[1]), BigInt(match[2]), BigInt(match[3])];
   return {
-    parts: [Number(match[1]), Number(match[2]), Number(match[3])],
+    parts,
+    coreVersion: `${match[1]}.${match[2]}.${match[3]}`,
     prerelease: match[4] !== undefined,
   };
 }
 
-/** @param {number[]} first @param {number[]} second */
+const VALIDATED_PI_VERSION_SET = new Set(VALIDATED_PI_VERSIONS);
+const KNOWN_INCOMPATIBLE_PI_CORE_VERSION_SET = new Set(
+  KNOWN_INCOMPATIBLE_PI_VERSIONS.map((version) => {
+    const parsed = parsePiVersion(version);
+    if (!parsed || parsed.prerelease) {
+      throw new Error(`Invalid known-incompatible Pi version: ${version}`);
+    }
+    return parsed.coreVersion;
+  }),
+);
+
+/** @param {bigint[]} first @param {bigint[]} second */
 function compareVersionParts(first, second) {
   for (let index = 0; index < first.length; index += 1) {
     if (first[index] < second[index]) return -1;
@@ -58,7 +76,7 @@ export function assessPiVersion(version) {
       reason: `version is outside the supported range ${SUPPORTED_PI_VERSION_RANGE}`,
     });
   }
-  if (KNOWN_INCOMPATIBLE_PI_VERSION_SET.has(version)) {
+  if (KNOWN_INCOMPATIBLE_PI_CORE_VERSION_SET.has(parsed.coreVersion)) {
     return Object.freeze({ allowed: false, validated: false, reason: "version is known to be incompatible" });
   }
   return Object.freeze({ allowed: true, validated: VALIDATED_PI_VERSION_SET.has(version) });
