@@ -89,7 +89,7 @@ The default command timeout is 120 seconds and the maximum is 900 seconds. Comma
 - The workspace is writable and can be damaged or deleted.
 - Everything in the workspace is readable by sandboxed commands and Pi's file tools and may be sent over the model connection. Whitebox is not a confidentiality boundary for project contents.
 - Project context files such as `AGENTS.md` may still be read by Pi and influence model behavior. Add `--no-context-files` only if you understand that it also disables your global context instructions.
-- Read-only host files under `/usr`, selected identity/runtime files under `/etc`, and a curated Node/npm/Pi runtime under `/opt/node` are visible inside the sandbox so supported tools can run. Other globally installed Node packages are not mounted. The inner runtime sets `PI_OFFLINE=1`; `rg` and `fd` must already be installed instead of being downloaded by Pi.
+- Read-only host files under `/usr`—including any Node packages installed there—and selected identity/runtime files under `/etc` are visible inside the sandbox so supported tools can run. Only the selected Node/npm/Pi runtime is additionally mounted under `/opt/node`; the host Node prefix is not mounted wholesale there. The inner runtime sets `PI_OFFLINE=1`; `rg` and `fd` must already be installed instead of being downloaded by Pi.
 - Capture files preserve the exact raw bytes. When a capture is read or searched through a Whitebox file tool, text returned to Pi and the model is sanitized for control and bidirectional-display characters; ordinary workspace-file results keep Pi's native behavior.
 - CPU, memory, and workspace disk exhaustion are not fully controlled.
 - Whitebox reduces risk; it is not a substitute for an independently isolated host.
