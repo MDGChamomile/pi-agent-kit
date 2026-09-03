@@ -10,7 +10,7 @@ compatibility: Requires Pi with an ask_user tool compatible with pi-ask-user.
 
 Move from **Fog → Same Page → Execution Record**.
 
-Use this workflow for one cohesive repository change that can be brought to execution readiness in one session. Scale the interview to the live Fog, not to a minimum question count: an already concrete request may need no discovery questions before the Same Page readback. During Fog and Same Page, work read-only. The only allowed mutation is the final execution-record directory and its Markdown files. Unless the user explicitly selects another destination for that run, store records under the external state directory defined in `references/execution-record.md`. The record is an execution guide, not authorization; implementation requires a separate explicit user request.
+Use this workflow for one cohesive repository change that can be brought to execution readiness in one session. Scale the interview to the live Fog, not to a minimum question count: an already concrete request may need no discovery questions before the Same Page readback. During Fog and Same Page, work read-only. During record writing, mutation is limited to creating needed parent directories under the selected records root, the final execution-record directory, and its Markdown files; do not modify or overwrite existing files or make any other repository changes. Unless the user explicitly selects another destination for that run, store records under the external state directory defined in `references/execution-record.md`. The record is an execution guide, not authorization; implementation requires a separate explicit user request.
 
 ## Requirement
 
