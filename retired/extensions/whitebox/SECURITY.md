@@ -1,14 +1,14 @@
-# Whitebox security policy and threat model
+# Whitebox historical threat model
 
 Whitebox is an early, Linux-only safety boundary for inspecting disposable project checkouts with Pi. It reduces exposure to project commands; it is not a general-purpose malware sandbox or a substitute for an independently isolated virtual machine.
 
-## Supported version
+## Retirement status
 
-Whitebox is currently maintained from the `main` branch of this repository. There are no separately supported releases. Runtime startup requires the bounded Pi version range listed in the README and blocks prerelease versions, later minor or major lines, and versions known to be incompatible. Stable patch releases inside that range but outside the validated test matrix start with a warning after package identity checks pass. Security-relevant startup, trusted-source overlap, tool-ownership, path, namespace, and runtime checks remain fail-closed.
+Whitebox is retired and has no supported release or branch. It no longer receives compatibility or security maintenance. The controls below describe the frozen implementation for reference; they are not current security assurance.
 
 ## Intended protections
 
-When started through `piw`, Whitebox is designed to:
+At retirement, Whitebox was designed to:
 
 - run project commands without network access, inherited environment variables, host credentials, or access to the host home directory beyond the workspace and documented read-only runtime mounts;
 - expose only the writable project workspace, a read-only root `.git` directory, temporary filesystems, and the documented read-only runtimes;
@@ -36,10 +36,8 @@ Whitebox does not protect against:
 - the Pi process, model connection, or explicitly loaded third-party extensions; or
 - interactive programs, network-dependent work, host credential use, or Git mutation.
 
-Symlinks, hard links, nested mounts, IPC nodes, root `.git` writes, process descendants, output limits, and actual Pi entry-point behavior are covered by the integration tests. Passing tests are evidence for the tested environment, not a security certification.
+Symlinks, hard links, nested mounts, IPC nodes, root `.git` writes, process descendants, output limits, and actual Pi entry-point behavior were covered by the integration tests. Passing tests were evidence for the tested environment, not a security certification.
 
 ## Reporting a suspected vulnerability
 
-Do not publish exploit details, credentials, or sensitive host information in a public issue. Use GitHub's [private vulnerability reporting](https://github.com/MDGChamomile/pi-agent-kit/security/advisories/new) to send a confidential report to the maintainer.
-
-Non-sensitive defects and hardening suggestions may be reported through the normal issue tracker.
+The retired implementation carries no support or remediation commitment. Do not publish exploit details, credentials, or sensitive host information in a public issue. If disclosure is still necessary, use GitHub's [private vulnerability reporting](https://github.com/MDGChamomile/pi-agent-kit/security/advisories/new).

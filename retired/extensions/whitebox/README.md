@@ -1,5 +1,8 @@
 # Pi Whitebox
 
+> [!WARNING]
+> **Retired:** Whitebox is preserved as a reference and is no longer actively used, maintained, or supported. Its Pi compatibility and security boundary may become stale; do not treat its historical tests or documentation as current security assurance.
+
 Whitebox is a Linux-only Pi extension for running test, build, and project scripts inside a strict offline Bubblewrap boundary.
 
 It keeps the model free to choose how to work while enforcing a small set of hard boundaries around project command execution and Pi's file tools.
@@ -32,29 +35,31 @@ Use a disposable checkout with no important uncommitted files or secrets. Use a 
 - A normal Git repository root with a real `.git` directory; worktrees are not supported
 - Unprivileged user namespaces enabled
 
-The current boundary has been validated with Node.js 22.22.3, Pi 0.84.2 and 0.84.3, Bubblewrap 0.9.0, and Linux 6.8. Newer 0.84.x patch releases are permitted after runtime identity checks but remain unvalidated until added to the test matrix; later minor or major lines fail closed until reviewed.
+At retirement, the boundary had been validated with Node.js 22.22.3, Pi 0.84.2 and 0.84.3, Bubblewrap 0.9.0, and Linux 6.8. Compatibility beyond that frozen matrix is not maintained.
 
-## Install from a checkout
+## Historical setup (unsupported)
+
+The checkout setup before retirement was:
 
 ```bash
 git clone https://github.com/MDGChamomile/pi-agent-kit.git
-cd pi-agent-kit/live/extensions/whitebox
+cd pi-agent-kit/retired/extensions/whitebox
 npm install
 npm link
 ```
 
-This installs the `piw` launcher. Pi must already be installed alongside the current Node distribution or available on `PATH`. The launcher refuses to start when the selected Pi package or the Whitebox extension source overlaps the workspace. Keep the linked Whitebox checkout outside projects you inspect; use a separate installed copy if you need to inspect this repository itself.
+This setup installed the `piw` launcher. Pi had to be installed alongside the current Node distribution or available on `PATH`. The launcher refused to start when the selected Pi package or the Whitebox extension source overlapped the workspace. The linked Whitebox checkout had to remain outside inspected projects; inspecting this repository itself required a separate installed copy.
 
-## Run
+## Historical operation
 
-Start Whitebox from the root of the disposable project you want to inspect:
+Whitebox was started from the root of the disposable project to inspect:
 
 ```bash
 cd /path/to/project
 piw
 ```
 
-The launcher deliberately starts Pi with only Whitebox loaded:
+The launcher deliberately started Pi with only Whitebox loaded:
 
 ```text
 pi --no-extensions -e <whitebox>/index.ts --no-skills --no-approve --whitebox
@@ -62,7 +67,7 @@ pi --no-extensions -e <whitebox>/index.ts --no-skills --no-approve --whitebox
 
 Additional command-line arguments are forwarded to Pi. Explicitly loading another extension expands the trusted boundary because extensions run with host permissions; the ready status reports additional active host-side tools. Before starting, the launcher verifies the selected Pi package, executable, and supported version. Security-relevant identity, path, runtime, and tool-ownership checks fail closed. See [SECURITY.md](SECURITY.md) for the full threat model.
 
-## Supported work
+## Historical scope
 
 **Good fits:**
 
@@ -91,15 +96,13 @@ The default command timeout is 120 seconds and the maximum is 900 seconds. Comma
 
 See [SECURITY.md](SECURITY.md) for the threat model and vulnerability-reporting guidance.
 
-## Test
+## Historical tests
 
 ```bash
 npm test
 ```
 
-The full suite creates temporary Git workspaces and checks filesystem, network, environment, namespace, lifecycle, file-tool, and actual Pi entry-point boundaries. It does not execute code from an external project.
-
-GitHub-hosted runners do not permit the network-namespace operation required by Whitebox. CI therefore runs `npm run test:portable` for the portable policy and extension-wiring tests; `npm test` remains the required full integration check on a supported Linux host.
+The full suite creates temporary Git workspaces and checks filesystem, network, environment, namespace, lifecycle, file-tool, and actual Pi entry-point boundaries. It does not execute code from an external project. The retired copy is not exercised by live CI.
 
 ## License
 

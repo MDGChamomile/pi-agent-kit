@@ -18,7 +18,6 @@ The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): r
 | Turn a vague repository change into an executable plan | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Skill |
 | Isolate noisy investigation from the main context | [`pi-subagent`](live/skills/pi-subagent/README.md) | Skill + extension |
 | Analyze patterns across local Pi sessions | [`session-search`](live/skills/session-search/README.md) | Skill |
-| Run project commands inside an offline Linux boundary | [`whitebox`](live/extensions/whitebox/README.md) | Extension |
 
 ## Getting started
 
@@ -55,9 +54,8 @@ Resources currently used and maintained.
 | Extension | Purpose | Platform | Usage |
 | --- | --- | --- | --- |
 | [`pi-subagent`](live/extensions/pi-subagent/README.md) | Run bounded, isolated, read-only local or web investigations outside the parent context | Portable (tested on Linux) | ◎ Primary |
-| [`whitebox`](live/extensions/whitebox/README.md) | Run project commands and Pi file tools inside a strict offline Bubblewrap boundary | Linux | ○ Situational |
 
-**Usage:** `◎ Primary` is central and most frequently used; `◐ Regular` is used repeatedly; `○ Situational` serves a narrower, occasional need.
+**Usage:** `◎ Primary` is central and most frequently used; `◐ Regular` is used repeatedly.
 
 ## Retired
 
@@ -65,6 +63,7 @@ Resources kept for reference but no longer actively used or maintained.
 
 | Resource | Purpose |
 | --- | --- |
+| [`whitebox`](retired/extensions/whitebox/README.md) | Run project commands and Pi file tools inside an offline Linux Bubblewrap boundary |
 | [`git-history`](retired/extensions/git-history/index.ts) | Add `/snapshot` to review and commit changes in the Pi agent directory |
 | [`meta-prompt`](retired/skills/meta-prompt/SKILL.md) | Write or improve a compact, ready-to-use prompt |
 | [`nomore-harness`](retired/skills/nomore-harness/SKILL.md) | Review proposed additions to a Pi environment before adoption |

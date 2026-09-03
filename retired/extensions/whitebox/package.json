@@ -2,14 +2,14 @@
   "name": "pi-whitebox",
   "version": "0.1.0",
   "private": true,
-  "description": "A strict offline Bubblewrap boundary for running untrusted project commands with Pi",
+  "description": "Retired reference implementation of an offline Bubblewrap boundary for Pi",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/MDGChamomile/pi-agent-kit.git",
-    "directory": "live/extensions/whitebox"
+    "directory": "retired/extensions/whitebox"
   },
-  "homepage": "https://github.com/MDGChamomile/pi-agent-kit/tree/main/live/extensions/whitebox",
+  "homepage": "https://github.com/MDGChamomile/pi-agent-kit/tree/main/retired/extensions/whitebox",
   "bugs": "https://github.com/MDGChamomile/pi-agent-kit/issues",
   "type": "module",
   "os": [

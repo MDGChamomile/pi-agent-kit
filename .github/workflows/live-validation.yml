@@ -4,19 +4,17 @@ on:
   push:
     paths:
       - "live/extensions/pi-subagent/**"
-      - "live/extensions/whitebox/**"
       - "live/skills/**"
       - "packaging/pi-subagent/**"
       - ".github/workflows/pi-subagent-canary.yml"
-      - ".github/workflows/whitebox.yml"
+      - ".github/workflows/live-validation.yml"
   pull_request:
     paths:
       - "live/extensions/pi-subagent/**"
-      - "live/extensions/whitebox/**"
       - "live/skills/**"
       - "packaging/pi-subagent/**"
       - ".github/workflows/pi-subagent-canary.yml"
-      - ".github/workflows/whitebox.yml"
+      - ".github/workflows/live-validation.yml"
 
 permissions:
   contents: read
@@ -81,29 +79,3 @@ jobs:
             @earendil-works/pi-tui@${{ matrix.pi-version }}
       - run: npm test
       - run: npm run package:check
-
-  whitebox-portable:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        pi-version: ["0.84.2", "0.84.3"]
-    defaults:
-      run:
-        working-directory: live/extensions/whitebox
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22.22.0"
-          cache: npm
-          cache-dependency-path: live/extensions/whitebox/package-lock.json
-      - name: Install system requirements
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap fd-find git python3 ripgrep util-linux
-        working-directory: .
-      - run: npm ci
-      - name: Select tested Pi version
-        run: npm install --no-save --package-lock=false --ignore-scripts @earendil-works/pi-coding-agent@${{ matrix.pi-version }}
-      - run: npm run typecheck
-      - run: npm run test:portable
