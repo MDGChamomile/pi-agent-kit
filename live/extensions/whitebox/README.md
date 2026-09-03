@@ -1,7 +1,5 @@
 # Pi Whitebox
 
-[한국어](README.ko.md)
-
 Whitebox is a Linux-only Pi extension for running test, build, and project scripts inside a strict offline Bubblewrap boundary.
 
 It keeps the model free to choose how to work while enforcing a small set of hard boundaries around project command execution and Pi's file tools.
@@ -25,9 +23,9 @@ Use a disposable checkout with no important uncommitted files or secrets. Use a 
 ## Requirements
 
 - Linux
-- Node.js 22.19 or newer
+- Node.js 22.19 or newer; the selected distribution must include executable `node`, `npm`, and `npx`, Node headers, and the npm runtime
 - Pi coding agent 0.84.2 or newer within the 0.84.x line; known-incompatible and prerelease versions are blocked, while unvalidated 0.84.x patch releases start with a warning
-- `/usr/bin/bwrap` with `--disable-userns` support (Bubblewrap 0.8.0 or newer) and `/usr/bin/flock`
+- `/usr/bin/bwrap` with `--disable-userns` support (Bubblewrap 0.8.0 or newer) and `/usr/bin/flock`; both must be canonical, root-owned regular executables that are non-setuid and not group/world-writable
 - `bash`, `python3`, `git`, and ripgrep (`rg`) under `/usr/bin`
 - `fd` as `/usr/bin/fd` or Debian/Ubuntu's `/usr/bin/fdfind`
 - Optional for native builds: `make`, `cc`, and `c++` (not required for Whitebox startup)
@@ -62,7 +60,7 @@ The launcher deliberately starts Pi with only Whitebox loaded:
 pi --no-extensions -e <whitebox>/index.ts --no-skills --no-approve --whitebox
 ```
 
-Additional command-line arguments are forwarded to Pi. Explicitly loading another extension expands the trusted boundary because extensions run with host permissions; the ready status reports additional active host-side tools. The launcher locates the owning package from `package.json`, requires its `bin.pi` target to match the selected executable, and pins the sandbox worker to that canonical package. Runtime policy enforces the bounded `>=0.84.2 <0.85.0` range and any known-incompatible denylist; an unvalidated stable patch release within that range produces a warning instead of being blocked. Security-relevant identity, path, runtime, and tool-ownership checks still fail closed. The `peerDependencies` wildcard follows Pi's package contract.
+Additional command-line arguments are forwarded to Pi. Explicitly loading another extension expands the trusted boundary because extensions run with host permissions; the ready status reports additional active host-side tools. Before starting, the launcher verifies the selected Pi package, executable, and supported version. Security-relevant identity, path, runtime, and tool-ownership checks fail closed. See [SECURITY.md](SECURITY.md) for the full threat model.
 
 ## Supported work
 
@@ -79,7 +77,7 @@ Additional command-line arguments are forwarded to Pi. Explicitly loading anothe
 - interactive programs
 - Git mutation such as commit, merge, rebase, fetch, pull, or push
 
-The default command timeout is 120 seconds and the maximum is 900 seconds. Command results return only the last 12 KiB or 400 lines inline; larger output is saved as a capture for on-demand `read` or `grep`. Progress updates retain only the latest 4 KiB. File-tool calls have a 120-second parent-enforced deadline with cooperative cancellation during workspace validation. Captured output is capped at 10 MiB, and a new capture replaces the previous capture and its read authorization.
+The default command timeout is 120 seconds and the maximum is 900 seconds. Command results return only the last 12 KiB or 400 lines inline; larger output is saved as a capture for on-demand `read` or `grep`. Progress updates retain only the latest 4 KiB. File-tool calls have a 120-second parent-enforced deadline with cooperative cancellation during workspace validation. If combined observed stdout and stderr exceeds 10 MiB, the command is terminated with `output_limit`; captured bytes are capped at 10 MiB, and a new capture replaces the previous capture and its read authorization.
 
 ## Security notes
 
