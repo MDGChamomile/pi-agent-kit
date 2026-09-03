@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import contextmanager, redirect_stderr, redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -420,7 +420,7 @@ class SessionSearchTests(unittest.TestCase):
 
     def test_evidence_and_summary_only_flags_are_mutually_exclusive(self):
         parser = session_search.build_parser()
-        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+        with self.assertRaises(session_search.InvalidArgumentError):
             parser.parse_args(["--include-evidence", "--summary-only"])
 
     def test_negative_days_and_limit_are_rejected(self):
@@ -440,36 +440,63 @@ class SessionSearchTests(unittest.TestCase):
                 ):
                     session_search.aggregate(self.args(root, root, "--days", value), now=self.NOW)
 
+    def assert_invalid_cli_argument(self, missing_root: Path, arguments: list[str]):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--sessions-root",
+                str(missing_root),
+                *arguments,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertEqual(completed.stderr, "")
+        self.assertEqual(len(completed.stdout.strip().splitlines()), 1)
+        self.assertEqual(json.loads(completed.stdout), {
+            "error": {
+                "code": "INVALID_ARGUMENT",
+                "message": "Arguments are invalid.",
+            },
+            "results": [],
+            "status": "error",
+        })
+
     def test_non_finite_days_cli_emits_one_json_error(self):
         with tempfile.TemporaryDirectory() as temp:
             missing_root = Path(temp) / "missing-sessions"
             for value in ("nan", "inf", "-inf"):
                 with self.subTest(value=value):
-                    completed = subprocess.run(
-                        [
-                            sys.executable,
-                            str(SCRIPT),
-                            "--sessions-root",
-                            str(missing_root),
-                            "--days",
-                            value,
-                        ],
-                        check=False,
-                        capture_output=True,
-                        text=True,
-                        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
-                    )
-                    self.assertEqual(completed.returncode, 2)
-                    self.assertEqual(completed.stderr, "")
-                    self.assertEqual(len(completed.stdout.strip().splitlines()), 1)
-                    self.assertEqual(json.loads(completed.stdout), {
-                        "error": {
-                            "code": "INVALID_ARGUMENT",
-                            "message": "Arguments are invalid.",
-                        },
-                        "results": [],
-                        "status": "error",
-                    })
+                    self.assert_invalid_cli_argument(missing_root, ["--days", value])
+
+    def test_parse_and_range_errors_emit_one_json_error(self):
+        with tempfile.TemporaryDirectory() as temp:
+            missing_root = Path(temp) / "missing-sessions"
+            cases = (
+                ["--days", "abc"],
+                ["--limit", "abc"],
+                ["--unknown-option"],
+                ["--days", "1000000000"],
+            )
+            for arguments in cases:
+                with self.subTest(arguments=arguments):
+                    self.assert_invalid_cli_argument(missing_root, arguments)
+
+    def test_help_retains_argparse_text_output(self):
+        completed = subprocess.run(
+            [sys.executable, str(SCRIPT), "--help"],
+            check=False,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(completed.stderr, "")
+        self.assertIn("usage:", completed.stdout)
 
     def test_total_parse_failure_is_fatal(self):
         with tempfile.TemporaryDirectory() as temp:

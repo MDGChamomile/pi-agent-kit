@@ -289,6 +289,10 @@ def result_view(event: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+class InvalidArgumentError(Exception):
+    pass
+
+
 class SessionArgumentParser(argparse.ArgumentParser):
     def _parse_optional(self, arg_string: str):
         # argparse recognizes ordinary negative numbers as values but treats
@@ -296,6 +300,9 @@ class SessionArgumentParser(argparse.ArgumentParser):
         if arg_string.lower() in {"-inf", "-infinity", "-nan"}:
             return None
         return super()._parse_optional(arg_string)
+
+    def error(self, message: str) -> None:
+        raise InvalidArgumentError(message)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -335,7 +342,10 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         current_time = now or datetime.now(timezone.utc)
         if current_time.tzinfo is None:
             current_time = current_time.replace(tzinfo=timezone.utc)
-        cutoff = current_time.astimezone(timezone.utc) - timedelta(days=args.days)
+        try:
+            cutoff = current_time.astimezone(timezone.utc) - timedelta(days=args.days)
+        except OverflowError as error:
+            raise ValueError("--days exceeds the supported date range") from error
     if args.limit < 0:
         raise ValueError("--limit must be non-negative")
     if not root.is_dir():
@@ -515,30 +525,25 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     }
 
 
+def emit_error(code: str, message: str) -> int:
+    output = {
+        "status": "error",
+        "error": {"code": code, "message": message},
+        "results": [],
+    }
+    print(json.dumps(output, ensure_ascii=False, sort_keys=True))
+    return 2
+
+
 def main(argv: Iterable[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
     try:
+        args = parser.parse_args(argv)
         output = aggregate(args)
-    except ValueError:
-        output = {
-            "status": "error",
-            "error": {"code": "INVALID_ARGUMENT", "message": "Arguments are invalid."},
-            "results": [],
-        }
-        print(json.dumps(output, ensure_ascii=False, sort_keys=True))
-        return 2
+    except (InvalidArgumentError, ValueError):
+        return emit_error("INVALID_ARGUMENT", "Arguments are invalid.")
     except (OSError, RuntimeError):
-        output = {
-            "status": "error",
-            "error": {
-                "code": "SESSION_STORAGE_UNAVAILABLE",
-                "message": "Session storage could not be read.",
-            },
-            "results": [],
-        }
-        print(json.dumps(output, ensure_ascii=False, sort_keys=True))
-        return 2
+        return emit_error("SESSION_STORAGE_UNAVAILABLE", "Session storage could not be read.")
     print(json.dumps(output, ensure_ascii=False, sort_keys=True))
     return 0
 
