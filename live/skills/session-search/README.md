@@ -2,7 +2,7 @@
 
 `session-search` is an [Agent Skill](https://agentskills.io/) for factual analysis across multiple local [Pi](https://github.com/earendil-works/pi) session files. Its helper script can count matching entries, identify repeated tool errors, and distinguish direct skill invocations from reads of a skill's `SKILL.md`.
 
-Use Pi's built-in `/resume` command instead when you only need to find, open, or continue one session.
+Read [`SKILL.md`](SKILL.md) for the executable agent workflow. Use Pi's built-in `/resume` command instead when you only need to find, open, or continue one session.
 
 ## Safety model
 
@@ -59,12 +59,16 @@ python3 scripts/session_search.py --all-projects --skill deep-plan
 
 Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each filter.
 
-The command emits one JSON object containing:
+The command emits one JSON object:
 
-- `scope`: path-free project selection and time range by default; the exact cwd only with `--include-evidence`
-- `summary`: scan and match counts grouped by role, tool, and skill; `evidence_omitted` distinguishes the safe default from `evidence_truncated`, while `truncated` remains a compatibility alias for evidence truncation
-- `results`: empty by default; bounded representative evidence, newest first, with `--include-evidence`
-- `warnings`: deduplicated counts by kind by default; up to 100 file-path details with `--include-evidence`
+| Field | Safe default | With `--include-evidence` |
+| --- | --- | --- |
+| `scope` | Path-free project selection and time range | Also includes the exact cwd |
+| `summary` | Scan and match counts grouped by role, tool, and skill | Also reports evidence truncation |
+| `results` | Empty | Bounded representative evidence, newest first |
+| `warnings` | Deduplicated counts by kind | Up to 100 file-path details |
+
+In `summary`, `evidence_omitted` distinguishes the safe default from `evidence_truncated`; `truncated` remains a compatibility alias for evidence truncation.
 
 `--summary-only` remains as an explicit alias for the safe default. `--include-evidence` is mutually exclusive with it. A direct skill invocation is counted only for a user message matching Pi's complete skill envelope; this means the recorded message matches Pi's invocation envelope, not that provenance can be distinguished from identical XML pasted manually. Direct calls are reported separately from `SKILL.md` read attempts, successes, and errors. The legacy `skill_file_reads` counter remains an alias for attempts. Reading instructions, quoting partial XML, or mentioning a skill is not evidence that the skill was invoked.
 
