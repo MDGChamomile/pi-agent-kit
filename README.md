@@ -1,5 +1,9 @@
 # Pi Agent Kit
 
+[![live-validation](https://github.com/MDGChamomile/pi-agent-kit/actions/workflows/live-validation.yml/badge.svg?branch=main)](https://github.com/MDGChamomile/pi-agent-kit/actions/workflows/live-validation.yml)
+[![Latest release](https://img.shields.io/github/v/release/MDGChamomile/pi-agent-kit)](https://github.com/MDGChamomile/pi-agent-kit/releases/latest)
+[![License](https://img.shields.io/github/license/MDGChamomile/pi-agent-kit)](LICENSE)
+
 > Inspectable, copy-friendly skills and extensions for the [Pi coding agent](https://github.com/earendil-works/pi).
 
 Pi Agent Kit is the public, source-first collection of resources I currently use or have tested in my own workflow. It is for people who prefer to adopt one small, understandable component at a time instead of installing a complete agent framework.
@@ -13,20 +17,23 @@ The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): r
 
 ## Start here
 
-| If you want to… | Start with | Type |
+| If you want to… | Start with | Adopt it by… |
 | --- | --- | --- |
-| Turn a vague repository change into an executable plan | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Skill |
-| Isolate noisy investigation from the main context | [`pi-subagent`](live/skills/pi-subagent/README.md) | Skill + extension |
-| Analyze patterns across local Pi sessions | [`session-search`](live/skills/session-search/README.md) | Skill |
+| Isolate noisy investigation from the main context | [`pi-subagent`](live/extensions/pi-subagent/README.md) | Installing the paired skill and extension from npm |
+| Turn a vague repository change into an executable plan | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Copying the standalone skill from source |
+| Analyze patterns across local Pi sessions | [`session-search`](live/skills/session-search/README.md) | Copying the standalone skill from source |
 
-## Getting started
+### Install Pi Subagent
 
-1. Choose one resource from the table above.
-2. Read its linked documentation, requirements, and security assumptions.
-3. Copy or link only that resource into the applicable Pi location, following its component-specific setup.
-4. Restart Pi, or use `/reload` for an auto-discovered resource.
+Pi Subagent requires Linux, including Ubuntu on WSL; native Windows is not officially supported or tested. See the [extension guide](live/extensions/pi-subagent/README.md#requirements-and-installation) for its complete requirements and security model.
 
-For example, to try the standalone `deep-plan` skill from a checkout:
+```bash
+pi install npm:@mdgchamomile/pi-subagent
+```
+
+### Copy a standalone resource
+
+Clone the repository, review the resource, and copy or link only the directory you want into the applicable Pi location. For example:
 
 ```bash
 git clone https://github.com/MDGChamomile/pi-agent-kit.git
@@ -34,32 +41,14 @@ mkdir -p ~/.pi/agent/skills
 cp -R pi-agent-kit/live/skills/deep-plan ~/.pi/agent/skills/
 ```
 
+Restart Pi, or use `/reload` for an auto-discovered resource.
+
 > [!CAUTION]
 > Skills can instruct the model to take actions, and extensions run with the user's system permissions. Review each resource before adopting it.
 
-## Live
-
-Resources currently used and maintained.
-
-### Skills
-
-| Skill | Purpose | Invoke | Usage |
-| --- | --- | --- | --- |
-| [`pi-subagent`](live/skills/pi-subagent/README.md) | Delegate noisy local-file or web investigation and return only a bounded final answer | Model-selected or `/skill:pi-subagent` | ◎ Primary |
-| [`deep-plan`](live/skills/deep-plan/SKILL.md) | Turn a vague repository change into an aligned execution record | `/skill:deep-plan` | ◐ Regular |
-| [`session-search`](live/skills/session-search/README.md) | Aggregate counts, errors, and tool or skill usage across local Pi sessions | `/skill:session-search` | ◐ Regular |
-
-### Extensions
-
-| Extension | Purpose | Platform | Usage |
-| --- | --- | --- | --- |
-| [`pi-subagent`](live/extensions/pi-subagent/README.md) | Run bounded, isolated, read-only local or web investigations outside the parent context | Portable (tested on Linux) | ◎ Primary |
-
-**Usage:** `◎ Primary` is central and most frequently used; `◐ Regular` is used repeatedly.
-
 ## Retired
 
-Resources kept for reference but no longer actively used or maintained.
+Resources kept for reference but no longer actively used or maintained:
 
 | Resource | Purpose |
 | --- | --- |
