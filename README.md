@@ -20,7 +20,7 @@ The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): r
 | If you want to… | Start with | Adopt it by… |
 | --- | --- | --- |
 | Isolate noisy investigation from the main context | [`pi-subagent`](live/extensions/pi-subagent/README.md) | Installing the paired skill and extension from npm |
-| Turn a vague repository change into an executable plan | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Copying the standalone skill from source |
+| Turn a vague repository change into an executable plan | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Copying the skill from source and providing a compatible `ask_user` tool |
 | Analyze patterns across local Pi sessions | [`session-search`](live/skills/session-search/README.md) | Copying the standalone skill from source |
 
 ### Install Pi Subagent
@@ -31,9 +31,13 @@ Pi Subagent requires Linux, including Ubuntu on WSL; native Windows is not offic
 pi install npm:@mdgchamomile/pi-subagent
 ```
 
-### Copy a standalone resource
+### Copy an individual resource
 
-Clone the repository, review the resource, and copy or link only the directory you want into the applicable Pi location. For example:
+Clone the repository, review the resource and its requirements, and copy or link only the directory you want into the applicable Pi location.
+
+For `deep-plan`, a compatible `ask_user` tool is required at decision gates; copying the skill does not install that tool. If you do not already have a compatible extension, the reference implementation can be installed with `pi install npm:pi-ask-user`. See the skill's [requirements](live/skills/deep-plan/SKILL.md#requirement) before adopting it.
+
+Copy the skill:
 
 ```bash
 git clone https://github.com/MDGChamomile/pi-agent-kit.git
@@ -41,7 +45,13 @@ mkdir -p ~/.pi/agent/skills
 cp -R pi-agent-kit/live/skills/deep-plan ~/.pi/agent/skills/
 ```
 
-Restart Pi, or use `/reload` for an auto-discovered resource.
+Restart Pi, or use `/reload` for an auto-discovered resource. With skill commands enabled, invoke `deep-plan` explicitly:
+
+```text
+/skill:deep-plan
+```
+
+This skill sets `disable-model-invocation: true`, so Pi does not advertise it to the model for automatic selection.
 
 > [!CAUTION]
 > Skills can instruct the model to take actions, and extensions run with the user's system permissions. Review each resource before adopting it.
