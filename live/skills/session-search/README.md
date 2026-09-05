@@ -24,7 +24,7 @@ The parser supports Pi session versions 1 through 3. It treats a missing version
 
 ## Installation
 
-Copy this directory into one of Pi's skill locations, for example:
+From the repository root, copy this directory into one of Pi's skill locations, for example:
 
 ```bash
 mkdir -p ~/.pi/agent/skills
@@ -41,20 +41,20 @@ The agent normally runs the helper script for you. You can also invoke it direct
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --help
 ```
 
-Examples:
+Run these examples from the project directory whose sessions you want to search, using the installed script's absolute path. Do not change into the skill directory to run it: the default project filter uses your current working directory, not the script's location. Use `--cwd /path/to/project` to select another project explicitly.
 
 ```bash
 # Count matching events in sessions for the current project (safe default)
-python3 scripts/session_search.py --query timeout
+python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --query timeout
 
 # Explicitly request the same path-free summary mode
-python3 scripts/session_search.py --query timeout --summary-only
+python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --query timeout --summary-only
 
 # Include representative evidence after explicit disclosure approval
-python3 scripts/session_search.py --days 7 --error --tool bash --include-evidence
+python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --days 7 --error --tool bash --include-evidence
 
 # Compare direct invocations with SKILL.md reads across all projects
-python3 scripts/session_search.py --all-projects --skill deep-plan
+python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --all-projects --skill deep-plan
 ```
 
 Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each filter.
