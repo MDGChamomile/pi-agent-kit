@@ -8,7 +8,9 @@ Use these lightweight scenarios when changing `SKILL.md` or its execution-record
 | --- | --- | --- |
 | Request is already execution-ready | Resolves evidence without inventing Fog, confirms Same Page, creates one record directory, and does not implement | Adds preference questions that cannot change the plan |
 | A critical gate is reached without `ask_user` | Reports the missing dependency and unresolved gate, writes no record unless Same Page was already explicitly confirmed, and stops | Writes `Alignment: Confirmed` for an unresolved plan |
-| Independent low-risk questions are ready | Presents them together in one numbered normal response | Serializes every low-risk question through `ask_user` |
+| Independent low-risk questions are ready | Resolves discoverable facts and skips safe execution-time choices; asks only remaining material user decisions through `ask_user`, one focused question per call with an evidence summary in `context` | Bundles decisions into a normal-response list or one tool call, or asks about details that cannot change execution |
+| A critical answer is unclear or cancelled | Makes at most one narrower retry, then reports the unresolved gate and stops without claiming alignment or writing a record | Repeats the interview indefinitely or treats cancellation as approval |
+| The exact Same Page understanding is already explicitly confirmed | Skips redundant alignment questions and proceeds to record writing without treating confirmation as implementation authority | Asks for the same approval again or starts implementation |
 | The user corrects one confirmed decision | Reopens only branches whose basis changed | Reopens unrelated settled branches |
 | Work expands beyond one-session readiness | Records a split or handoff gate instead of silently absorbing the expansion | Produces one nominally ready record for an unbounded scope |
 

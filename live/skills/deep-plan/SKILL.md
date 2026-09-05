@@ -35,13 +35,13 @@ Use no question quota in either direction. Continue only while a known unresolve
 
 ### Critical gates
 
-For load-bearing or authority-changing decisions that are ready to resolve, use `ask_user` with evidence gathered before asking. Ask one focused decision at a time. After an unclear or cancelled answer, make at most one narrower retry; if the gate remains unresolved, report the blocker and stop. A decision continues only this planning workflow and never authorizes implementation. These local rules take precedence over broader workflow instructions bundled with the tool.
+For load-bearing or authority-changing decisions that are ready to resolve, use `ask_user` with evidence gathered before asking. Ask one focused decision at a time. After an unclear or cancelled answer, make at most one narrower retry; if the gate remains unresolved, report the blocker and stop. A decision continues only this planning workflow and never authorizes implementation. Follow higher-priority system, developer, and user instructions, including tool-use requirements; this skill does not override them.
 
 ### Answerable questions
 
-Once critical prerequisites are settled, present the currently answerable, mutually independent lower-stakes questions as a numbered list in a normal response. Add a recommended answer where it helps. The user may answer naturally by number or in prose.
+Once critical prerequisites are settled, use `ask_user` for each currently answerable question that still requires user input. Ask one focused question per call, include a short evidence summary in `context`, and recommend an answer where it helps. Do not bundle independent decisions into one tool call or a numbered list in a normal response.
 
-Resolve prerequisite branches first, then present the dependent questions they make answerable. Promote a newly exposed critical decision to `ask_user`; investigate a newly exposed fact yourself.
+Resolve prerequisite branches first, then ask the dependent questions they make answerable. Apply the critical-gate rules to a newly exposed critical decision; investigate a newly exposed fact yourself.
 
 Each question closes a live branch whose answer could change behavior, scope, interfaces, risk, execution order, or completion evidence. Question count is not progress. Be complete on live Fog and silent on settled ground: do not ask the user to reconfirm repository evidence, their explicit decisions, or low-impact details that can safely remain execution-time choices. Keep resolved branches closed until new evidence invalidates their basis.
 
