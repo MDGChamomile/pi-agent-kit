@@ -55,14 +55,40 @@ def normalized_path(value: str | Path) -> str:
     return str(Path(value).expanduser().resolve(strict=False))
 
 
-def mask_and_shorten(value: str, limit: int = MAX_EVIDENCE_CHARS) -> str:
+def mask_and_shorten(
+    value: str, limit: int = MAX_EVIDENCE_CHARS, queries: Iterable[str] = (),
+) -> str:
     masked = value
     for pattern, replacement in MASK_PATTERNS:
         masked = pattern.sub(replacement, masked)
     masked = re.sub(r"\s+", " ", masked).strip()
-    if len(masked) > limit:
-        return masked[: max(0, limit - 1)] + "…"
-    return masked
+    if limit <= 0:
+        return ""
+    if len(masked) <= limit:
+        return masked
+
+    folded = masked.casefold()
+    positions = []
+    for query in queries:
+        query = re.sub(r"\s+", " ", query).strip().casefold()
+        if query:
+            position = folded.find(query)
+            if position >= 0:
+                positions.append(position)
+    if positions and limit >= 3:
+        # casefold can expand characters (e.g. ß -> ss); translate the offset
+        # back to masked text without ever consulting the unmasked source.
+        target = min(positions)
+        folded_offset = 0
+        for index, char in enumerate(masked):
+            folded_offset += len(char.casefold())
+            if folded_offset > target:
+                break
+        budget = limit - 2  # Reserve both possible omission markers.
+        start = min(max(0, index - budget // 2), len(masked) - budget)
+        end = start + budget
+        return ("…" if start else "") + masked[start:end] + ("…" if end < len(masked) else "")
+    return masked[: limit - 1] + "…"
 
 
 def text_content(content: Any) -> str:
@@ -281,7 +307,7 @@ def record_skill_read_calls(entry: dict[str, Any], skill_reads_by_call_id: dict[
             skill_reads_by_call_id[call_id] = read_skill
 
 
-def result_view(event: dict[str, Any]) -> dict[str, Any]:
+def result_view(event: dict[str, Any], queries: Iterable[str] = ()) -> dict[str, Any]:
     result = {
         key: event.get(key)
         for key in ("session_id", "file", "timestamp", "entry_id", "role", "event", "tool_name", "is_error", "on_latest_leaf")
@@ -290,7 +316,7 @@ def result_view(event: dict[str, Any]) -> dict[str, Any]:
         result["direct_skills"] = event["direct_skills"]
     if event.get("skill_file_read"):
         result["skill_file_read"] = event["skill_file_read"]
-    result["evidence"] = mask_and_shorten(event.get("evidence_raw", ""))
+    result["evidence"] = mask_and_shorten(event.get("evidence_raw", ""), queries=queries)
     return result
 
 
@@ -493,7 +519,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         raise RuntimeError("all candidate session files were unreadable or invalid")
 
     result_events = [
-        result_view(item[2])
+        result_view(item[2], filters.queries)
         for item in sorted(result_heap, key=lambda item: (item[0], item[1]), reverse=True)
     ]
     evidence_omitted = not args.include_evidence and matched_events > 0

@@ -386,6 +386,75 @@ class SessionSearchTests(unittest.TestCase):
         self.assertNotIn("BOUNDARY_SECRET_VALUE", masked)
         self.assertLessEqual(len(masked), session_search.MAX_EVIDENCE_CHARS)
 
+    def test_query_centered_evidence_is_opt_in_and_keeps_and_filtering(self):
+        raw = "prefix " * 100 + "한글 NEEDLE context " + "middle " * 100 + "distant"
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_session(root / "long.jsonl", header("synthetic-long", root), [
+                message("e1", None, "2026-08-14T00:00:00Z", "user", raw),
+            ])
+            flags = ("--query", "distant", "--query", "한글 needle")
+            with patch.object(session_search, "mask_and_shorten", wraps=session_search.mask_and_shorten) as shorten:
+                summary = session_search.aggregate(self.args(root, root, *flags), now=self.NOW)
+                shorten.assert_not_called()
+            result = session_search.aggregate(self.args(
+                root, root, *flags, "--include-evidence"
+            ), now=self.NOW)
+            no_match = session_search.aggregate(self.args(
+                root, root, *flags, "--query", "absent", "--include-evidence"
+            ), now=self.NOW)
+        self.assertEqual(summary["results"], [])
+        self.assertEqual(summary["summary"]["matched_events"], 1)
+        evidence = result["results"][0]["evidence"]
+        self.assertIn("한글 NEEDLE context", evidence)
+        self.assertNotIn("distant", evidence)
+        self.assertTrue(evidence.startswith("…"))
+        self.assertTrue(evidence.endswith("…"))
+        self.assertLessEqual(len(evidence), session_search.MAX_EVIDENCE_CHARS)
+        self.assertEqual(no_match["results"], [])
+
+    def test_centered_evidence_handles_casefold_expansion_and_whitespace(self):
+        raw = "ß" * 500 + " 한글\n\tStraße context " + "tail " * 100
+        evidence = session_search.mask_and_shorten(raw, queries=("한글\nSTRASSE",))
+        self.assertIn("한글 Straße context", evidence)
+        self.assertLessEqual(len(evidence), session_search.MAX_EVIDENCE_CHARS)
+
+    def test_evidence_falls_back_to_masked_prefix_without_visible_query(self):
+        raw = "prefix " * 100 + " token=SYNTHETIC_HIDDEN_VALUE " + "tail " * 100
+        prefix = session_search.mask_and_shorten(raw)
+        for queries in ((), ("SYNTHETIC_HIDDEN_VALUE",), ("tool-metadata-only",), ("",)):
+            with self.subTest(queries=queries):
+                self.assertEqual(session_search.mask_and_shorten(raw, queries=queries), prefix)
+        self.assertEqual(prefix, raw[:299] + "…")
+
+    def test_centered_evidence_masks_entire_source_before_selecting_window(self):
+        secret = "SYNTHETIC_" + "x" * 800
+        raw = "prefix " * 100 + " token=" + secret + " visible-target " + "tail " * 100
+        evidence = session_search.mask_and_shorten(raw, queries=(secret, "visible-target"))
+        self.assertIn("visible-target", evidence)
+        self.assertIn("token=[REDACTED]", evidence)
+        self.assertNotIn("SYNTHETIC_", evidence)
+        self.assertNotIn("xxx", evidence)
+        private_key = (
+            "prefix " * 100 + "-----BEGIN TEST PRIVATE KEY-----" + "secret-material " * 100
+            + "-----END TEST PRIVATE KEY----- visible-target " + "tail " * 100
+        )
+        evidence = session_search.mask_and_shorten(private_key, queries=("visible-target",))
+        self.assertIn("[REDACTED_PRIVATE_KEY]", evidence)
+        self.assertIn("visible-target", evidence)
+        self.assertNotIn("secret-material", evidence)
+
+    def test_centered_evidence_respects_limits_and_text_edges(self):
+        for raw in ("needle " + "x" * 700, "x" * 700 + " needle", "short needle"):
+            for limit in (0, 1, 2, 3, 20, 300):
+                with self.subTest(raw=raw[:20], limit=limit):
+                    evidence = session_search.mask_and_shorten(raw, limit, queries=("needle",))
+                    self.assertLessEqual(len(evidence), limit)
+                    if limit >= 20:
+                        self.assertIn("needle", evidence)
+                    if len(raw) <= limit:
+                        self.assertEqual(evidence, raw)
+
     def test_limit_summary_only_no_match_and_warning(self):
         with fixture_tree() as (root, project_a, _, primary, _, current):
             before = primary.stat().st_mtime_ns
