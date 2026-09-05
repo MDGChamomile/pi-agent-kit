@@ -366,6 +366,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     roles: Counter[str] = Counter()
     tool_calls: Counter[str] = Counter()
     tool_errors: Counter[str] = Counter()
+    tool_error_sessions: Counter[str] = Counter()
     direct_calls: Counter[str] = Counter()
     skill_read_attempts: Counter[str] = Counter()
     skill_read_successes: Counter[str] = Counter()
@@ -411,6 +412,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                 selected_files += 1
                 session = {"session_id": str(header.get("id", "")), "file": str(path)}
                 session_matched = False
+                session_error_tools: set[str] = set()
                 parent_by_id: dict[str, Any] = {}
                 leaf_id: str | None = None
                 skill_reads_by_call_id: dict[str, str] = {}
@@ -450,7 +452,11 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                         if event["event"] in {"tool_call", "skill_file_read"} and tool_name:
                             tool_calls[tool_name.casefold()] += 1
                         if event.get("is_error") and tool_name:
-                            tool_errors[tool_name.casefold()] += 1
+                            tool_key = tool_name.casefold()
+                            tool_errors[tool_key] += 1
+                            if tool_key not in session_error_tools:
+                                session_error_tools.add(tool_key)
+                                tool_error_sessions[tool_key] += 1
                         direct_calls.update(name.casefold() for name in event.get("direct_skills", []))
                         read_skill = event.get("skill_file_read")
                         if read_skill:
@@ -509,6 +515,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         "roles": dict(sorted(roles.items())),
         "tool_calls": dict(sorted(tool_calls.items())),
         "tool_errors": dict(sorted(tool_errors.items())),
+        "tool_error_sessions": dict(sorted(tool_error_sessions.items())),
         "direct_skill_calls": dict(sorted(direct_calls.items())),
         "skill_file_reads": dict(sorted(skill_read_attempts.items())),
         "skill_file_read_attempts": dict(sorted(skill_read_attempts.items())),

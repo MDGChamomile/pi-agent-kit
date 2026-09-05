@@ -196,6 +196,37 @@ class SessionSearchTests(unittest.TestCase):
         self.assertTrue(result["results"][0]["on_latest_leaf"])
         self.assertEqual(result["results"][0]["event"], "tool_error")
 
+    def test_tool_error_sessions_count_files_once_per_filtered_tool(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for index, tools in enumerate((("BASH", "bash", "read"), ("bash",))):
+                # Identical header IDs deliberately remain separate session files.
+                write_session(root / f"errors-{index}.jsonl", header("same-id", root), [
+                    message(
+                        f"e{i}", None, "2026-08-14T00:00:00Z", "toolResult",
+                        "failure" if i != 1 else "retry", toolName=tool, isError=True,
+                    )
+                    for i, tool in enumerate(tools)
+                ])
+            cases = (
+                ((), {"bash": 3, "read": 1}, {"bash": 2, "read": 1}),
+                (("--error", "--tool", "BASH", "--tool", "read"),
+                 {"bash": 3, "read": 1}, {"bash": 2, "read": 1}),
+                (("--query", "retry"), {"bash": 1}, {"bash": 1}),
+                (("--tool", "read", "--role", "toolResult"), {"read": 1}, {"read": 1}),
+                (("--role", "assistant"), {}, {}),
+                (("--days", "0"), {}, {}),
+                (("--query", "absent"), {}, {}),
+            )
+            for flags, errors, sessions in cases:
+                with self.subTest(flags=flags):
+                    result = session_search.aggregate(self.args(root, root, *flags), now=self.NOW)
+                    self.assertEqual(result["summary"]["tool_errors"], errors)
+                    self.assertEqual(result["summary"]["tool_error_sessions"], sessions)
+                    self.assertEqual(result["results"], [])
+                    self.assertNotIn(str(root), json.dumps(result))
+                    self.assertNotIn("same-id", json.dumps(result))
+
     def test_empty_assistant_errors_are_recorded(self):
         session = {"session_id": "synthetic-session", "file": "/tmp/synthetic-session.jsonl"}
         for content in ([], "", [{"type": "thinking", "thinking": "internal reasoning"}]):
@@ -449,6 +480,7 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(result["summary"]["skill_file_read_attempts"], {"alpha": 1})
         self.assertEqual(result["summary"]["skill_file_read_successes"], {})
         self.assertEqual(result["summary"]["skill_file_read_errors"], {"alpha": 1})
+        self.assertEqual(result["summary"]["tool_error_sessions"], {"read": 1})
         self.assertEqual({item["event"] for item in result["results"]}, {"skill_file_read", "tool_error"})
 
     def test_session_versions_are_explicit_and_future_versions_are_skipped(self):
@@ -511,6 +543,7 @@ class SessionSearchTests(unittest.TestCase):
             result = session_search.aggregate(self.args(root, root), now=self.NOW)
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["summary"]["files_discovered"], 0)
+        self.assertEqual(result["summary"]["tool_error_sessions"], {})
         self.assertEqual(result["summary"]["matched_events"], 0)
         self.assertEqual(result["results"], [])
 
