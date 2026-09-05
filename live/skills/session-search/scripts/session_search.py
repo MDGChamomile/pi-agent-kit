@@ -153,13 +153,18 @@ def events_for_entry(
     }
     events: list[dict[str, Any]] = []
     text = text_content(message.get("content"))
+    # Provider failures may have no text content; their details live in errorMessage.
+    error_message = message.get("errorMessage")
+    if role == "assistant" and isinstance(error_message, str):
+        text = "\n".join(filter(None, [text, error_message]))
     skills = direct_skills(text) if role == "user" else []
-    if (text or skills) and role != "toolResult":
+    is_error = bool(message.get("isError", False) or message.get("stopReason") == "error")
+    if (text or skills or is_error) and role != "toolResult":
         events.append({
             **base,
             "event": "message",
             "tool_name": None,
-            "is_error": bool(message.get("isError", False) or message.get("stopReason") == "error"),
+            "is_error": is_error,
             "skill_names": skills,
             "direct_skills": skills,
             "skill_file_read": None,

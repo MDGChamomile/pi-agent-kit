@@ -196,6 +196,107 @@ class SessionSearchTests(unittest.TestCase):
         self.assertTrue(result["results"][0]["on_latest_leaf"])
         self.assertEqual(result["results"][0]["event"], "tool_error")
 
+    def test_empty_assistant_errors_are_recorded(self):
+        session = {"session_id": "synthetic-session", "file": "/tmp/synthetic-session.jsonl"}
+        for content in ([], "", [{"type": "thinking", "thinking": "internal reasoning"}]):
+            for metadata in ({"stopReason": "error"}, {"isError": True}):
+                with self.subTest(content=content, metadata=metadata):
+                    entry = message("e1", None, "2026-08-10T00:00:00Z", "assistant", content, **metadata)
+                    events = session_search.events_for_entry(entry, session, True)
+                    self.assertEqual(len(events), 1)
+                    self.assertEqual(events[0]["event"], "message")
+                    self.assertTrue(events[0]["is_error"])
+                    self.assertEqual(events[0]["searchable"], "")
+                    self.assertEqual(events[0]["evidence_raw"], "")
+
+    def test_assistant_error_messages_are_searchable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            entries = [
+                message(
+                    "e1", None, "2026-08-10T00:00:00Z", "assistant", [],
+                    stopReason="error", errorMessage="Provider rate limit exceeded",
+                ),
+                message(
+                    "e2", "e1", "2026-08-10T00:00:01Z", "assistant",
+                    [{"type": "text", "text": "Partial answer"}],
+                    stopReason="error", errorMessage="Provider rate limit exceeded",
+                ),
+            ]
+            write_session(root / "errors.jsonl", header("synthetic-errors", root), entries)
+            for filters in (
+                ("--error",),
+                ("--error", "--query", "RATE LIMIT"),
+                ("--query", "rate limit", "--role", "ASSISTANT"),
+            ):
+                with self.subTest(filters=filters):
+                    result = session_search.aggregate(self.args(root, root, *filters), now=self.NOW)
+                    self.assertEqual(result["summary"]["matched_sessions"], 1)
+                    self.assertEqual(result["summary"]["matched_entries"], 2)
+                    self.assertEqual(result["summary"]["matched_events"], 2)
+                    self.assertEqual(result["summary"]["roles"], {"assistant": 2})
+                    self.assertEqual(result["summary"]["tool_errors"], {})
+                    self.assertEqual(result["results"], [])
+
+    def test_assistant_error_evidence_is_masked_and_opt_in(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "errors.jsonl"
+            write_session(path, header("synthetic-private-session", root), [
+                message(
+                    "e1", None, "2026-08-10T00:00:00Z", "assistant",
+                    [{"type": "text", "text": "Partial answer"}],
+                    stopReason="error", errorMessage="Provider failed token=SYNTHETIC_ERROR_SECRET",
+                ),
+            ])
+            filters = ("--error", "--query", "SYNTHETIC_ERROR_SECRET")
+            summary = session_search.aggregate(self.args(root, root, *filters), now=self.NOW)
+            evidence = session_search.aggregate(self.args(
+                root, root, *filters, "--include-evidence"
+            ), now=self.NOW)
+        self.assertEqual(summary["summary"]["matched_entries"], 1)
+        self.assertFalse(summary["evidence_included"])
+        self.assertTrue(summary["summary"]["evidence_omitted"])
+        self.assertEqual(summary["results"], [])
+        serialized = json.dumps(summary)
+        for private_value in (
+            str(root), str(path), "synthetic-private-session", "Partial answer", "Provider failed",
+            "SYNTHETIC_ERROR_SECRET",
+        ):
+            self.assertNotIn(private_value, serialized)
+        self.assertTrue(evidence["evidence_included"])
+        self.assertEqual(evidence["summary"]["matched_entries"], 1)
+        self.assertEqual(evidence["results"][0]["evidence"], "Partial answer Provider failed token=[REDACTED]")
+        self.assertNotIn("SYNTHETIC_ERROR_SECRET", json.dumps(evidence))
+
+    def test_assistant_error_message_alone_does_not_mark_an_error(self):
+        session = {"session_id": "synthetic-session", "file": "/tmp/synthetic-session.jsonl"}
+        filters = session_search.EventFilters.from_args(session_search.build_parser().parse_args(["--error"]))
+        for stop_reason in ("stop", "aborted"):
+            with self.subTest(stop_reason=stop_reason):
+                entry = message(
+                    "e1", None, "2026-08-10T00:00:00Z", "assistant", "Partial answer",
+                    stopReason=stop_reason, errorMessage="Synthetic diagnostic",
+                )
+                events = session_search.events_for_entry(entry, session, True)
+                self.assertEqual(len(events), 1)
+                self.assertFalse(events[0]["is_error"])
+                self.assertFalse(session_search.event_matches(events[0], filters))
+
+    def test_non_string_assistant_error_messages_are_ignored(self):
+        session = {"session_id": "synthetic-session", "file": "/tmp/synthetic-session.jsonl"}
+        for error_message in (None, False, 42, {}, []):
+            with self.subTest(error_message=error_message):
+                entry = message(
+                    "e1", None, "2026-08-10T00:00:00Z", "assistant", "Partial answer",
+                    stopReason="error", errorMessage=error_message,
+                )
+                events = session_search.events_for_entry(entry, session, True)
+                self.assertEqual(len(events), 1)
+                self.assertTrue(events[0]["is_error"])
+                self.assertEqual(events[0]["searchable"], "Partial answer")
+                self.assertEqual(events[0]["evidence_raw"], "Partial answer")
+
     def test_direct_skill_and_file_read_are_separate(self):
         with fixture_tree() as (root, project_a, _, _, _, current):
             with patch.dict(os.environ, {"PI_SESSION_FILE": str(current)}):

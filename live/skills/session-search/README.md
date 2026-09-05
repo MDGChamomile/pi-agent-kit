@@ -59,6 +59,8 @@ python3 scripts/session_search.py --all-projects --skill deep-plan
 
 Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each filter.
 
+Assistant failures are counted by `--error` even when their content is empty. Their `errorMessage` text is searchable alongside any partial response and is subject to the same opt-in evidence and masking rules.
+
 The command emits one JSON object:
 
 | Field | Safe default | With `--include-evidence` |
