@@ -79,4 +79,4 @@ After Same Page is confirmed, read `references/execution-record.md` and write on
 
 Apply the reference's completion and integrity conditions, report the record-directory path, artifact shape, alignment state, readiness, and execution status, then stop without implementing.
 
-When maintaining this skill itself, exercise the scenarios in `references/behavior-evals.md` through Pi.
+When maintaining this skill itself, select and exercise only the affected scenarios through Pi as described in `references/behavior-evals.md`. Once the selected required checks pass, stop verification unless new changes, failures, or unresolved concerns justify expanding or repeating it.
