@@ -360,12 +360,42 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="explicitly select the path-free summary output (the default; retained for compatibility)",
     )
+    parser.add_argument(
+        "--additional-sessions-root", type=Path, action="append", default=[], metavar="PATH",
+        help="also search this directory recursively; repeat for multiple directories; "
+             "default: only ~/.pi/agent/sessions; all directories must be readable",
+    )
     parser.add_argument("--sessions-root", type=Path, default=DEFAULT_SESSIONS_ROOT, help=argparse.SUPPRESS)
     return parser
 
 
+def discover_session_files(roots: Iterable[Path]) -> list[Path]:
+    """Fail visibly on traversal errors and deduplicate resolved file paths."""
+    paths: dict[str, Path] = {}
+    seen_roots: set[str] = set()
+
+    def traversal_error(error: OSError) -> None:
+        raise error
+
+    for value in roots:
+        root = value.expanduser()
+        key = normalized_path(root)
+        if key in seen_roots:
+            continue
+        seen_roots.add(key)
+        if not root.is_dir():
+            raise RuntimeError("session root is unavailable")
+        # Unlike Path.rglob, walk's onerror makes inaccessible subtrees visible.
+        # Do not follow nested directory symlinks, matching the previous scan.
+        for directory, _dirs, files in os.walk(root, onerror=traversal_error):
+            for name in files:
+                if name.endswith(".jsonl"):
+                    path = Path(directory) / name
+                    paths.setdefault(normalized_path(path), path)
+    return sorted(paths.values())
+
+
 def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str, Any]:
-    root = args.sessions_root.expanduser()
     cutoff = None
     if args.days is not None:
         if not math.isfinite(args.days) or args.days < 0:
@@ -379,8 +409,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             raise ValueError("--days exceeds the supported date range") from error
     if args.limit < 0:
         raise ValueError("--limit must be non-negative")
-    if not root.is_dir():
-        raise RuntimeError("session root is unavailable")
+    paths = discover_session_files([args.sessions_root, *args.additional_sessions_root])
     target_cwd = normalized_path(args.cwd)
     current = normalized_path(os.environ["PI_SESSION_FILE"]) if os.environ.get("PI_SESSION_FILE") else None
 
@@ -408,7 +437,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     attempted_files = 0
     readable_headers = 0
 
-    for path in sorted(root.rglob("*.jsonl")):
+    for path in paths:
         files_discovered += 1
         if not args.include_current and current and normalized_path(path) == current:
             excluded_current += 1

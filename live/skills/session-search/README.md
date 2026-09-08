@@ -57,6 +57,22 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --days 7 --e
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --all-projects --skill deep-plan
 ```
 
+### Additional session directories
+
+By default, only `~/.pi/agent/sessions` is searched. Add other directories explicitly; no archive location is assumed:
+
+```bash
+python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
+  --additional-sessions-root /path/to/session-backup \
+  --additional-sessions-root /path/to/another-store
+```
+
+`--additional-sessions-root PATH` is repeatable and additive, not a replacement for the default directory. `~` is expanded; relative paths are resolved from the invocation's working directory. The same cwd, time, event, current-session exclusion, and evidence-consent rules apply across all directories. `--all-projects` selects all projects within those directories, not other storage locations.
+
+Repeated or overlapping directories and file symlink aliases are deduplicated by resolved file path before counting. Separate copies (including files with the same session ID) and hard links remain separate files. Nested directory symlinks are not followed; a directory symlink explicitly supplied as a root is supported. Missing or non-directory roots and directory traversal failures return a path-free `SESSION_STORAGE_UNAVAILABLE` error (exit code 2), rather than a partial summary. Empty directories are valid. Individual unreadable session files retain the existing warning behavior.
+
+For recurring agent use, specify your additional directories in your own local instructions. Keep personal paths out of the shared skill; this feature neither moves sessions nor changes Pi's `/resume` storage.
+
 Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each filter.
 
 With `--include-evidence`, each snippet stays within 300 characters, including omission markers. The full evidence text is masked before whitespace is collapsed and a window is selected. For long text, the window centers on the earliest remaining query occurrence (case-insensitive, with query whitespace collapsed too), regardless of query order. Distant AND terms need not all appear in that single window; matching still uses the full original searchable event. If no query remains visible—for example, it was masked or matched only tool metadata—or no query was supplied, the snippet uses the masked text's beginning. Hidden values are never restored. Results remain newest first.
@@ -83,7 +99,7 @@ In `summary`, `evidence_omitted` distinguishes the safe default from `evidence_t
 - Searches are case-insensitive literal matches, not regular expressions or semantic search.
 - Counts describe recorded events and entries, not inferred tasks or outcomes.
 - For v2 and v3, the latest branch marker is inferred from the parent chain of the last recorded entry; v1 is treated as a linear sequence.
-- Every candidate file is opened once. Only its header is read until cwd and version selection succeeds; each selected body is then scanned once. There is no persistent index. Memory remains bounded by compact per-session branch metadata, aggregate counters, warning caps, call-correlation metadata, and the requested result limit.
+- Every candidate file is opened once. Only its header is read until cwd and version selection succeeds; each selected body is then scanned once. There is no persistent index. Memory includes the discovered file paths used for deduplication, compact per-session branch metadata, aggregate counters, warning caps, call-correlation metadata, and the requested result limit.
 - Secret masking is deliberately best-effort and is not a data-loss-prevention guarantee.
 
 ## Tests

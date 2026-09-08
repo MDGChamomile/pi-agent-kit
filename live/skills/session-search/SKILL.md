@@ -12,7 +12,7 @@ Use this skill only when a request needs factual aggregation across multiple Pi 
 ## Workflow
 
 1. Resolve paths relative to this `SKILL.md`, then run `python3 <skill-directory>/scripts/session_search.py --help`. Treat that output as the single source of truth for current options, defaults, repetition rules, and mutually exclusive flags; never invent plausible aliases.
-2. Translate only the user's stated scope and filters into options shown by `--help`. With no explicit scope, retain the script's current-working-directory default and path-free aggregate output.
+2. Translate only the user's stated scope and filters into options shown by `--help`. With no explicit scope, retain the script's current-working-directory default and path-free aggregate output. Add search directories only when specified by the user or their local instructions, using `--additional-sessions-root`; do not infer archive locations. Extra directories do not change the project filter or evidence-consent requirement.
 3. Run the script locally. It reads session JSONL files without modifying them or creating an index.
 4. Interpret the returned JSON as evidence, not as an automatic judgment. Direct invocation means a user-role message matching Pi's complete skill envelope; keep it separate from reads of a skill's `SKILL.md`, mentions, and quoted XML.
 5. Report only what is needed to answer the request. Use the bounded evidence mode shown by `--help` only after the user explicitly approves sending masked snippets, local paths, and session identifiers to the active model provider.
