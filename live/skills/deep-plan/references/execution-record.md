@@ -13,7 +13,7 @@ YYYYMMDD-<subject>/
 Use a concise kebab-case `<subject>` derived from the work, or the user's supplied subject. Choose the parent records directory in this order:
 
 1. the directory explicitly named by the user for this run;
-2. otherwise `<agent-dir>/records/deep-plan/<project-key>/`, where `<agent-dir>` is the non-empty `PI_CODING_AGENT_DIR` value when set and the expanded `~/.pi/agent` path otherwise.
+2. otherwise `<skill-dir>/records/<project-key>/`, where `<skill-dir>` is the directory containing this skill's `SKILL.md`, not a path relative to the current working directory.
 
 Build `<project-key>` from the canonical repository root, or the canonical current working directory when no repository root is available:
 
@@ -21,9 +21,9 @@ Build `<project-key>` from the canonical repository root, or the canonical curre
 <sanitized-basename>-<first-6-lowercase-hex-of-SHA-256(canonical-path)>
 ```
 
-Keep ASCII letters, digits, dots, underscores, and hyphens in the basename; replace other runs with `-`, trim separators, and use `project` if nothing remains. The path hash prevents same-named repositories in different locations from sharing records. `PI_CODING_AGENT_DIR` is Pi's supported agent-directory override; do not use a similarly named unofficial variable.
+Keep ASCII letters, digits, dots, underscores, and hyphens in the basename; replace other runs with `-`, trim separators, and use `project` if nothing remains. The path hash prevents same-named repositories in different locations from sharing records.
 
-Create the parent records directory when needed. Do not infer a repository-local plan directory or ask a destination question while this default is available. Existing flat `YYYYMMDD-<subject>.md` records remain valid historical artifacts; do not migrate them automatically.
+Create the parent records directory when needed. Do not infer another project-local plan directory or ask a destination question while this default is available. If the skill directory is not writable, report the blocker rather than silently choosing another destination. Existing records, including those under the former external state directory and flat `YYYYMMDD-<subject>.md` records, remain valid historical artifacts; do not migrate them automatically.
 
 Never overwrite, merge into, or repair an existing record directory or artifact. Before writing, determine and validate the complete path set in memory. If the target record path already exists, any required parent is a non-directory, or two planned artifacts collide, stop and report it.
 

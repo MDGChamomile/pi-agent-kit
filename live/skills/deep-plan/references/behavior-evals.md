@@ -35,8 +35,9 @@ The expected invariants matter more than exact wording. Run artifact-writing sce
 | `PLAN.md` appears immediately before publication | The no-clobber helper fails, preserves the existing PLAN byte-for-byte, leaves the pending file, and reports an incomplete record | Uses check-then-rename or replaces the concurrently created PLAN |
 | Pending-name cleanup fails after publication | Reports a completed PLAN plus the cleanup warning and remaining pending hard-link alias; does not retry or delete either name | Calls the verified PLAN invalid, overwrites it, or performs destructive cleanup |
 | The filesystem rejects hard links | Reports the incomplete directory and leaves PLAN absent and pending untouched | Falls back to a replacing rename or treats pending as complete |
-| No destination is supplied | Uses the external Pi agent state directory, canonical-path-derived project key, and dated subject directory | Writes generated records into the skill checkout or project tree |
-| Historical flat records exist | Leaves them valid and untouched; creates new records in directory form | Migrates or rewrites old Markdown records automatically |
+| No destination is supplied | Uses `<skill-dir>/records/<project-key>/YYYYMMDD-<subject>/`, resolving the skill directory from its `SKILL.md` and the project key from the canonical project path | Uses the former external-state default or resolves the skill path relative to the working directory |
+| The skill directory is not writable | Reports the blocker without silently selecting another destination | Falls back to the project tree or external state directory without user direction |
+| Historical records exist in the former external state directory or flat format | Leaves them valid and untouched; creates new records in directory form at the selected destination | Migrates or rewrites old records automatically |
 
 For every completed artifact scenario, also verify:
 
@@ -46,4 +47,4 @@ For every completed artifact scenario, also verify:
 - all IDs are unique in scope, relative links resolve under final names, dependency targets exist, and unexplained cycles are absent before PLAN publication;
 - every PLAN completion condition maps to direct proof or linked spec acceptance evidence before the pending PLAN is atomically published;
 - shared decisions are not needlessly duplicated and no child contradicts PLAN;
-- an explicit destination still overrides the external-state default.
+- an explicit destination still overrides the skill-local default.
