@@ -22,7 +22,7 @@ mock.module("../src/config.js", () => ({
 let compactionModel: any;
 
 beforeAll(async () => {
-  compactionModel = (await import("../src/index.js")).default;
+  compactionModel = (await import("../index.js")).default;
 });
 
 beforeEach(() => {
