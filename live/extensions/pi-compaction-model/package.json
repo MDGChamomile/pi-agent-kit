@@ -1,0 +1,49 @@
+{
+  "name": "pi-compaction-model",
+  "private": true,
+  "description": "Choose a dedicated model for Pi's native compaction without changing its compaction algorithm or prompts.",
+  "license": "MIT",
+  "author": "JMHSV",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MDGChamomile/pi-agent-kit.git",
+    "directory": "live/extensions/pi-compaction-model"
+  },
+  "homepage": "https://github.com/MDGChamomile/pi-agent-kit/tree/main/live/extensions/pi-compaction-model#readme",
+  "bugs": {
+    "url": "https://github.com/MDGChamomile/pi-agent-kit/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi-coding-agent",
+    "compaction",
+    "llm"
+  ],
+  "type": "module",
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "bun test ./test/config.test.ts && bun test ./test/index.test.ts",
+    "typecheck": "tsc --noEmit",
+    "check": "bun run typecheck && bun run test"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.80.7"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.80.7",
+    "@types/bun": "latest",
+    "typescript": "^7.0.2"
+  },
+  "packageManager": "bun@1.3.14"
+}
