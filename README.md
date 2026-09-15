@@ -23,6 +23,7 @@ The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): r
 | Isolate noisy investigation from the main context | [`pi-subagent`](live/extensions/pi-subagent/README.md) | Installing the paired skill and extension from npm |
 | Turn a vague repository change into an executable plan | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Copying the skill from source and providing a compatible `ask_user` tool |
 | Analyze patterns across local Pi sessions | [`session-search`](live/skills/session-search/README.md) | Copying the standalone skill from source |
+| Analyze Korean stocks with separate Trading and Investing ratings | [`simplykst`](live/skills/simplykst/README.md) | Copying the skill from source and providing web research tools |
 
 ### Install Pi Subagent
 
