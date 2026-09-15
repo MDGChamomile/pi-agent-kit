@@ -148,6 +148,8 @@ bun install --frozen-lockfile
 bun run check
 ```
 
+The `live-validation` CI workflow runs these commands with Bun 1.3.14. A fresh frozen-lockfile installation (Pi 0.80.7) passed typechecking and all 13 tests.
+
 The inherited lockfile pins the original development environment. To check a newer Pi version, typecheck and run the tests against that version in an isolated development copy; do not treat the inherited dependency range as verification of every later release.
 
 Kit verification: Pi 0.85.1 typecheck passed with TypeScript 7.0.2; all 13 tests passed with Bun 1.3.14 against an existing Pi 0.85.1 installation; Pi's extension loader registered exactly one compaction handler without errors. These checks used temporary copies and existing dependencies, not a fresh lockfile installation.
