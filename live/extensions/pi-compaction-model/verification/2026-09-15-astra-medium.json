@@ -1,0 +1,109 @@
+{
+  "date": "2026-09-15",
+  "provider": "openai-codex",
+  "pi_version": "0.85.1",
+  "node_version": "22.22.3",
+  "transport": "sse",
+  "request_timeout_seconds": 60,
+  "automatic_retries": false,
+  "active_settings_or_installation_modified": false,
+  "source_baseline_commit": "7a268e27b99c1be473a833222a8ee926be944049",
+  "scope": "Source compatibility smoke checks, not a performance or quality benchmark.",
+  "status": "pass",
+  "results": [
+    {
+      "round": 1,
+      "status": "pass",
+      "requestModel": "gpt-5.6-luna",
+      "requestThinking": "medium",
+      "responseModel": "gpt-5.6-luna",
+      "fromExtension": true,
+      "activeModel": "gpt-6-astra",
+      "activeThinking": "medium",
+      "readFiles": [
+        "read-1.ts"
+      ],
+      "modifiedFiles": [
+        "modified-1.ts"
+      ],
+      "summaryFileSectionsVerified": true,
+      "usage": {
+        "input_tokens": 353,
+        "output_tokens": 193,
+        "total_tokens": 546
+      }
+    },
+    {
+      "round": 2,
+      "status": "pass",
+      "requestModel": "gpt-5.6-luna",
+      "requestThinking": "medium",
+      "responseModel": "gpt-5.6-luna",
+      "fromExtension": true,
+      "activeModel": "gpt-6-astra",
+      "activeThinking": "medium",
+      "readFiles": [
+        "read-1.ts",
+        "read-2.ts"
+      ],
+      "modifiedFiles": [
+        "modified-1.ts",
+        "modified-2.ts"
+      ],
+      "summaryFileSectionsVerified": true,
+      "usage": {
+        "input_tokens": 885,
+        "output_tokens": 241,
+        "total_tokens": 1126
+      }
+    },
+    {
+      "round": 3,
+      "status": "pass",
+      "requestModel": "gpt-6-astra",
+      "requestThinking": "medium",
+      "responseModel": "gpt-6-astra",
+      "fromExtension": false,
+      "activeModel": "gpt-6-astra",
+      "activeThinking": "medium",
+      "readFiles": [
+        "read-1.ts",
+        "read-2.ts",
+        "read-3.ts"
+      ],
+      "modifiedFiles": [
+        "modified-1.ts",
+        "modified-2.ts",
+        "modified-3.ts"
+      ],
+      "summaryFileSectionsVerified": true,
+      "usage": {
+        "input_tokens": 963,
+        "output_tokens": 232,
+        "total_tokens": 1195
+      }
+    }
+  ],
+  "active_model": "gpt-6-astra",
+  "active_thinking": "medium",
+  "dedicated_model": "gpt-5.6-luna",
+  "dedicated_thinking": "medium",
+  "request_limit": 3,
+  "requests": 3,
+  "responses": 3,
+  "source_sha256": {
+    "index.ts": "537fab2794cca159ab9b004a3bead7c91b809941eb06043818403db7c2194f9f",
+    "src/index.ts": "b6bf284fb2c27b5bea5dfa3161bb7f9278a6ecd89b72d71279f5c989c0cacb45",
+    "src/config.ts": "7636dce7256dafb08b12088e7b02054754cba288cc0f887d9cbf82277905f8a1"
+  },
+  "test_only_harness_sha256": {
+    "preload.mjs": "bea0c5321acb663afab66e54a689661c5268d9afbc61d03f2ff85011ae4500f1",
+    "compaction.mjs": "cf25217ef13a94a4977d8a17d9f9cd2c2d073f68c3bf8cd153a4f1b1c4719a19"
+  },
+  "limitations": [
+    "Synthetic in-memory conversation; manual, non-split-turn compactions only.",
+    "Fallback was induced by a missing-model lookup, not by a real provider failure, cancellation, threshold trigger, or overflow.",
+    "SSE was forced and retries were disabled in a temporary harness. Native Codex transport does not forward maxTokens as a server-side output cap.",
+    "No summary-quality, latency, cost, or other-provider claims are supported."
+  ]
+}
