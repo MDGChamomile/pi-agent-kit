@@ -36,6 +36,9 @@ jobs:
       - name: Validate session-search
         working-directory: live/skills/session-search
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
+      - name: Validate simplykst
+        working-directory: live/skills/simplykst
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
       - name: Validate deep-plan publication
         run: node --test live/skills/deep-plan/scripts/publish-plan.test.mjs
       - name: Validate skill frontmatter and relative Markdown links

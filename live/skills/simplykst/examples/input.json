@@ -1,0 +1,74 @@
+{
+  "trading": {
+    "sector": "general",
+    "essentials_ready": true,
+    "factors": [
+      {
+        "id": "M",
+        "weight": 20,
+        "score": 4,
+        "grade": "A",
+        "reason": "Verified test evidence",
+        "sources": [
+          "S1:metric1",
+          "S1:metric2"
+        ]
+      },
+      {
+        "id": "L",
+        "weight": 15,
+        "score": 4,
+        "grade": "A",
+        "reason": "Verified test evidence",
+        "sources": [
+          "S1:metric1",
+          "S1:metric2"
+        ]
+      },
+      {
+        "id": "E",
+        "weight": 20,
+        "score": 4,
+        "grade": "A",
+        "reason": "Verified test evidence",
+        "sources": [
+          "S1:metric1",
+          "S1:metric2"
+        ]
+      },
+      {
+        "id": "F",
+        "weight": 20,
+        "score": 4,
+        "grade": "A",
+        "reason": "Verified test evidence",
+        "sources": [
+          "S1:metric1",
+          "S1:metric2"
+        ]
+      },
+      {
+        "id": "V",
+        "weight": 10,
+        "score": 4,
+        "grade": "A",
+        "reason": "Verified test evidence",
+        "sources": [
+          "S1:metric1",
+          "S1:metric2"
+        ]
+      },
+      {
+        "id": "S",
+        "weight": 15,
+        "score": 4,
+        "grade": "A",
+        "reason": "Verified test evidence",
+        "sources": [
+          "S1:metric1",
+          "S1:metric2"
+        ]
+      }
+    ]
+  }
+}
