@@ -50,6 +50,12 @@ The input schema is documented in the methodology's calculator section. Supply o
 
 The 23 tests cover unequal-score weighted means (including missing factors), display rounding, unknown fields, duplicate JSON keys, risk-field typos, missing evidence, coverage/confidence boundaries, essential-data gating, risk precedence, sector/mixed-sector limits, profile-table consistency, CLI input/error handling, and the runnable example. CI runs unittest discovery. They do not validate actual disclosures or investment outcomes. The [validation record](references/validation.md) distinguishes public-source/browser access smoke checks from still-incomplete real-company end-to-end analysis. Full reference loading remains unchanged until complete cases establish that selective loading preserves the same controls.
 
+## Report presentation
+
+Reports lead with the conclusion, valuation, and conditions that would change the assessment, followed by four-column factor tables and calculation/source detail. Material withholding reasons, missing-score ranges, and risk caps remain visible in the first summary. See the [synthetic before/after excerpts](examples/report-layout.md); these check information preservation, not measured reader comprehension or full real-company execution.
+
+The short report-writing guidance draws on the meaning-clarity principles of [fluent-korean's non-coding style at ce8683f](https://github.com/snflkd/fluent-korean/blob/ce8683f/plugins/fluent-korean/output-styles/fluent-korean-not-coding.md). The finance-specific rules and examples here are independently written adaptations, not a reproduction of the full style or a claim of equivalent results. No plugin, remote document loading during analysis, global configuration change, or editing agent is required.
+
 ## License
 
 MIT, as provided by the repository-level [`LICENSE`](../../../LICENSE) file. Retain that notice when redistributing the skill.
