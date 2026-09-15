@@ -49,7 +49,7 @@
 
 확인된 위험만 `confirmed_risks`에 넣고 `risk_evidence`에 출처·판정 근거를 비어 있지 않은 문자열 목록으로 기록합니다. 위험 코드는 `halted`(거래정지), `delisting_confirmed`(상장폐지 확정), `going_concern`(계속기업 중요 불확실성), `capital_impaired`(완전자본잠식), `default`(지급불이행), `adverse_audit`(부적정), `disclaimer_audit`(의견거절), `material_qualified_audit`(중요한 한정의견)입니다.
 
-출력 `recommendation`이 null이면 한눈에 보기에서 **보류**로 표시합니다. 이때 `observed_mean`은 계산 점검용일 뿐 추천도로 사용하지 않습니다. `contributions_full_weight`는 원래 100% 가중치 기준 기여도여서 결측 시 합이 관측 가중평균과 다릅니다. `uncapped_missing_range`와 `capped_missing_range`를 구분합니다. `withheld_reasons`는 커버리지 부족·필수자료 미확보·거래 제한을 구분합니다. 업종 선택·혼합 비율의 경제적 타당성·근거의 독립성과 타당성·필수자료 확보 판정은 분석자가 별도로 검증해야 하며 도구가 보증하지 않습니다. CLI는 안전한 고정 검증 메시지와 exit 2를 반환하고 입력 내용·파일 경로·예외 원문은 출력하지 않습니다.
+출력 `recommendation`이 null이면 한눈에 보기에서 **보류**로 표시합니다. 이때 `observed_mean`은 계산 점검용일 뿐 추천도로 사용하지 않습니다. `contributions_full_weight`는 원래 100% 가중치 기준 기여도여서 결측 시 합이 관측 가중평균과 다릅니다. 각 기여점수를 소수 둘째 자리로 개별 반올림하므로 결측이 없어도 표시 합계와 관측 평균이 다를 수 있습니다(예: 일반 Trading에서 모두 3.5점이면 기여점수 표시 합계 3.51, 추천도 3.50). 최종점수는 반올림 전 가중합으로 계산하며 표시 합계에 맞춰 조정하지 않습니다. 위험 상한이 적용되면 최종점수와의 차이는 반올림뿐 아니라 상한의 영향도 구분해 설명합니다. `uncapped_missing_range`와 `capped_missing_range`를 구분합니다. `withheld_reasons`는 커버리지 부족·필수자료 미확보·거래 제한을 구분합니다. 업종 선택·혼합 비율의 경제적 타당성·근거의 독립성과 타당성·필수자료 확보 판정은 분석자가 별도로 검증해야 하며 도구가 보증하지 않습니다. 관점·팩터 객체는 위에 정의한 필드만 허용하며 알 수 없는 키를 거부합니다. `confirmed_risks` 생략은 허용하지만 `confirmed_risk` 같은 오타를 위험 없음으로 처리하지 않습니다. CLI는 모든 깊이의 JSON 객체에서 중복 키를 거부하며, 잘못된 입력에는 안전한 고정 검증 메시지와 exit 2를 반환하고 입력 내용·파일 경로·예외 원문은 출력하지 않습니다.
 
 ## 2. 업종별 기본 가중치
 

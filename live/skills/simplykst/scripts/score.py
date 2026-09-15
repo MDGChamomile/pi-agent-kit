@@ -9,6 +9,9 @@ IDS = {"trading": set("MLEFVS"), "investing": set("VQGBRO")}
 RISKS = {"halted", "delisting_confirmed", "going_concern", "capital_impaired",
          "default", "adverse_audit", "disclaimer_audit", "material_qualified_audit"}
 SEVERE = RISKS - {"halted", "delisting_confirmed", "material_qualified_audit"}
+VIEW_KEYS = {'sector', 'essentials_ready', 'factors', 'weight_reason',
+             'confirmed_risks', 'risk_evidence'}
+FACTOR_KEYS = {'id', 'weight', 'score', 'reason', 'grade', 'sources'}
 
 
 class InputError(ValueError):
@@ -18,6 +21,16 @@ class InputError(ValueError):
 class Parser(argparse.ArgumentParser):
     def error(self, message):
         raise InputError('Usage: python3 score.py INPUT.json (or --help)')
+
+
+def unique_object(pairs):
+    """Reject duplicate JSON keys at every object depth, before values are lost."""
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise InputError('Duplicate JSON object key')
+        result[key] = value
+    return result
 
 
 def text(value):
@@ -59,6 +72,8 @@ def calculate(view, data):
         raise InputError("Unknown perspective")
     if not isinstance(data, dict):
         raise InputError('Perspective must be an object')
+    if not set(data) <= VIEW_KEYS:
+        raise InputError('Unknown perspective field; check the input schema')
     base = baseline(view, data)
     if type(data.get("essentials_ready")) is not bool:
         raise InputError("essentials_ready must be explicit boolean")
@@ -67,6 +82,8 @@ def calculate(view, data):
         not isinstance(f, dict) or not isinstance(f.get('id'), str) for f in factors
     ) or {f['id'] for f in factors} != IDS[view]:
         raise InputError("Exactly six unique perspective-specific factors required")
+    if any(not set(f) <= FACTOR_KEYS for f in factors):
+        raise InputError('Unknown factor field; check the input schema')
     flags = data.get("confirmed_risks", [])
     if not isinstance(flags, list) or any(not isinstance(r, str) or r not in RISKS for r in flags):
         raise InputError("Unknown confirmed risk")
@@ -147,7 +164,7 @@ def main():
     parser.add_argument('input', metavar='INPUT.json', help='One or both trading/investing objects; sector, essentials_ready and six factors required')
     args = parser.parse_args()
     with open(args.input, encoding="utf-8") as handle:
-        data = json.load(handle, parse_float=Decimal)
+        data = json.load(handle, parse_float=Decimal, object_pairs_hook=unique_object)
     if not isinstance(data, dict) or not data or not set(data) <= set(IDS):
         raise InputError("Input must contain one or both of trading and investing only")
     return {view: calculate(view, data[view]) for view in IDS if view in data}
