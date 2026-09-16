@@ -146,9 +146,10 @@ class EventFilters:
 
 
 def event_matches(event: dict[str, Any], filters: EventFilters) -> bool:
-    searchable = event["searchable"].casefold()
-    if filters.queries and not all(query in searchable for query in filters.queries):
-        return False
+    if filters.queries:
+        searchable = event["searchable"].casefold()
+        if not all(query in searchable for query in filters.queries):
+            return False
     if filters.roles and event["role"].casefold() not in filters.roles:
         return False
     if filters.tools and (not event.get("tool_name") or event["tool_name"].casefold() not in filters.tools):
@@ -185,7 +186,7 @@ def events_for_entry(
         text = "\n".join(filter(None, [text, error_message]))
     skills = direct_skills(text) if role == "user" else []
     is_error = bool(message.get("isError", False) or message.get("stopReason") == "error")
-    if (text or skills or is_error) and role != "toolResult":
+    if (text or is_error) and role != "toolResult":
         events.append({
             **base,
             "event": "message",
@@ -482,7 +483,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                         warnings.add(path, "invalid_entry")
                         continue
                     scanned_entries += 1
-                    if version >= 2:
+                    if result_limit and version >= 2:
                         entry_id = entry.get("id")
                         if isinstance(entry_id, str):
                             parent_by_id[entry_id] = entry.get("parentId")
@@ -523,22 +524,22 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                             elif event["event"] == "tool_result":
                                 skill_read_successes[skill_key] += 1
 
-                        result_sequence += 1
-                        result_key = parse_timestamp(event.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc)
-                        heap_key = (result_key, result_sequence)
-                        if result_limit and (
-                            len(result_heap) < result_limit or heap_key > result_heap[0][:2]
-                        ):
-                            item = (result_key, result_sequence, event)
-                            if len(result_heap) < result_limit:
-                                heapq.heappush(result_heap, item)
-                            else:
-                                heapq.heapreplace(result_heap, item)
+                        if result_limit:
+                            result_sequence += 1
+                            result_key = timestamp or datetime.min.replace(tzinfo=timezone.utc)
+                            heap_key = (result_key, result_sequence)
+                            if len(result_heap) < result_limit or heap_key > result_heap[0][:2]:
+                                item = (result_key, result_sequence, event)
+                                if len(result_heap) < result_limit:
+                                    heapq.heappush(result_heap, item)
+                                else:
+                                    heapq.heapreplace(result_heap, item)
 
-                leaf_path = latest_leaf_path(parent_by_id, leaf_id) if version >= 2 else set()
-                for _timestamp, _sequence, event in result_heap:
-                    if event["file"] == str(path):
-                        event["on_latest_leaf"] = version == 1 or event.get("entry_id") in leaf_path
+                if result_limit:
+                    leaf_path = latest_leaf_path(parent_by_id, leaf_id) if version >= 2 else set()
+                    for _timestamp, _sequence, event in result_heap:
+                        if event["file"] == str(path):
+                            event["on_latest_leaf"] = version == 1 or event.get("entry_id") in leaf_path
                 if session_matched:
                     matched_sessions += 1
         except (OSError, UnicodeError):
