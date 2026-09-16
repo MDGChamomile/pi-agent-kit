@@ -320,6 +320,82 @@ class SessionRecallTests(unittest.TestCase):
                     expected = {"unreadable_file": 1} if all_projects or scope == "selected" else {}
                     self.assertEqual(warnings.output(False)["by_kind"], expected)
 
+    def test_retained_entries_discard_unused_payloads_without_truncating_text(self):
+        text = "x" * 20000 + "인증 오류"
+        original = message("u", None, "2026-08-10T00:00:00Z", "user", [
+            {"type": "image", "data": "IMAGE_PAYLOAD"},
+            {"type": "thinking", "thinking": "THINKING_PAYLOAD"},
+            {"type": "text", "text": text},
+            {"type": "text", "text": "second block"},
+            {"type": "toolCall", "arguments": {"value": "CALL_PAYLOAD"}},
+        ], usage={"unused": "USAGE_PAYLOAD"})
+        tool = message("t", "u", "2026-08-10T00:00:01Z", "toolResult", "TOOL_PAYLOAD")
+        compact = entry("compaction", "c", "t", summary="SUMMARY_PAYLOAD", retainedTail=[original])
+        retained = [session_recall.retain_recall_entry(item) for item in (original, tool, compact)]
+        self.assertEqual(retained[0]["message"], {"role": "user", "content": text + "\nsecond block"})
+        self.assertEqual(retained[1]["message"], {"role": "toolResult"})
+        self.assertEqual(retained[2], {
+            key: compact[key] for key in ("type", "id", "parentId", "timestamp")
+        })
+        self.assertNotIn("PAYLOAD", json.dumps(retained))
+        self.assertEqual(session_recall.active_entry_ids(retained, 3), ["u", "t", "c"])
+        self.assertEqual(session_recall.recall_text(retained[0]), session_recall.recall_text(original))
+        self.assertIsInstance(original["message"]["content"], list)
+
+    def test_reader_retains_branch_nodes_and_full_text_across_versions(self):
+        stamp = "2026-08-10T00:00:00Z"
+        records = [
+            message("u", None, stamp, "user", "x" * 20000 + "인증 오류"),
+            message("old", "u", stamp, "assistant", "old branch"),
+            message("t", "u", stamp, "toolResult", "unused tool payload"),
+            entry("compaction", "c", "t", summary="unused summary"),
+            message("a", "c", stamp, "assistant", "answer"),
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "branch.jsonl"
+            for version in (1, 2, 3):
+                with self.subTest(version=version):
+                    write_session(path, header("branch", root, version), records)
+                    warnings = session_recall.session_search.WarningCollector()
+                    validate = session_recall.active_entry_ids
+                    with patch.object(session_recall, "active_entry_ids", wraps=validate) as observed:
+                        loaded = session_recall.read_active_messages(path, str(root), False, warnings)
+                    retained = observed.call_args.args[0]
+                    self.assertEqual(len(retained), len(records))
+                    self.assertNotIn("unused", json.dumps(retained))
+                    chosen = records[:2] + records[-1:] if version == 1 else [records[0], records[-1]]
+                    expected = [session_recall.recall_text(item) for item in chosen]
+                    self.assertEqual(loaded, (expected, len(records)))
+                    self.assertEqual(warnings.count, 0)
+                    candidate, _ = session_recall.candidate_for_messages(path, loaded[0], ("인증 오류",), None)
+                    self.assertIsNotNone(candidate)
+
+    def test_reader_preserves_invalid_branch_checks(self):
+        cases = {
+            "duplicate": [entry("custom", "a", None), entry("custom", "a", None)],
+            "cycle": [entry("custom", "a", "b"), entry("custom", "b", "a")],
+            "missing_parent": [entry("custom", "a", "missing")],
+            "invalid_parent": [entry("custom", "a", 42)],
+            "missing_id": [{"type": "custom", "parentId": None}],
+            "invalid_id": [entry("custom", 42, None)],
+        }
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "invalid.jsonl"
+            for version in (1, 2, 3):
+                for name, records in cases.items():
+                    with self.subTest(version=version, case=name):
+                        write_session(path, header("invalid", root, version), records)
+                        warnings = session_recall.session_search.WarningCollector()
+                        loaded = session_recall.read_active_messages(path, str(root), False, warnings)
+                        if version == 1:
+                            self.assertEqual(loaded, ([], len(records)))
+                            self.assertEqual(warnings.count, 0)
+                        else:
+                            self.assertIsNone(loaded)
+                            self.assertEqual(warnings.output(False)["by_kind"], {"invalid_branch_structure": 1})
+
     def test_extreme_timestamp_is_ignored_without_overflow(self):
         self.assertIsNone(session_recall.session_search.parse_timestamp("0001-01-01T00:00:00+14:00"))
 

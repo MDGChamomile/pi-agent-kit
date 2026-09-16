@@ -119,6 +119,23 @@ def recall_text(entry: dict[str, Any]) -> RecallMessage | None:
     )
 
 
+def retain_recall_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    # Keep every node for branch validation, but not its unused payloads.
+    retained = {
+        key: entry[key]
+        for key in ("type", "id", "parentId", "timestamp")
+        if key in entry
+    }
+    message = entry.get("message")
+    if entry.get("type") == "message" and isinstance(message, dict):
+        role = message.get("role")
+        retained["message"] = {"role": role}
+        if role in ("user", "assistant"):
+            # Preserve the full searchable text; output limits apply later.
+            retained["message"]["content"] = session_search.text_content(message.get("content"))
+    return retained
+
+
 def read_active_messages(
     path: Path,
     target_cwd: str,
@@ -161,7 +178,7 @@ def read_active_messages(
                     warnings.add(path, "invalid_entry")
                     continue
                 scanned += 1
-                entries.append(entry)
+                entries.append(retain_recall_entry(entry))
     except (OSError, UnicodeError):
         if all_projects or scope_confirmed:
             warnings.add(path, "unreadable_file")
