@@ -273,6 +273,53 @@ class SessionRecallTests(unittest.TestCase):
         self.assertNotIn("files_discovered", result["summary"])
         self.assertEqual(result["warnings"], {"count": 0, "by_kind": {}})
 
+    def test_selected_project_decode_failure_has_path_free_warning(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "corrupt.jsonl"
+            write_session(path, header("private-id", root), [
+                message("u", None, "2026-08-10T00:00:00Z", "user", "인증 오류"),
+                # Put the invalid byte beyond the header's decoding buffer.
+                message("t", "u", "2026-08-10T00:00:01Z", "toolResult", "x" * 20000),
+            ])
+            with path.open("ab") as handle:
+                handle.write(b"\xff\n")
+            for all_projects in (False, True):
+                with self.subTest(all_projects=all_projects):
+                    args = self.args("find", root, root)
+                    args.all_projects = all_projects
+                    result = session_recall.find_output(args, self.NOW)
+                    self.assertEqual(result["summary"]["matched_sessions"], 0)
+                    self.assertEqual(result["warnings"], {
+                        "count": 1, "by_kind": {"unreadable_file": 1},
+                    })
+                    self.assertNotIn(str(root), json.dumps(result))
+
+    def test_read_failures_warn_only_after_scope_is_known(self):
+        class FailingBody(io.StringIO):
+            def __next__(self):
+                raise OSError("synthetic read failure")
+
+        class FailingHeader(FailingBody):
+            def readline(self, *args, **kwargs):
+                raise UnicodeError("synthetic header failure")
+
+        path = Path("/synthetic/session.jsonl")
+        cwd = session_recall.session_search.normalized_path("/synthetic/project")
+        for all_projects in (False, True):
+            for scope in ("selected", "foreign", "unknown", "open_failure"):
+                with self.subTest(all_projects=all_projects, scope=scope):
+                    warnings = session_recall.session_search.WarningCollector()
+                    head = header("private-id", Path(cwd if scope == "selected" else "/foreign"))
+                    stream_type = FailingHeader if scope == "unknown" else FailingBody
+                    stream = stream_type(json.dumps(head) + "\n")
+                    options = ({"side_effect": OSError("synthetic open failure")}
+                               if scope == "open_failure" else {"return_value": stream})
+                    with patch.object(Path, "open", **options):
+                        session_recall.read_active_messages(path, cwd, all_projects, warnings)
+                    expected = {"unreadable_file": 1} if all_projects or scope == "selected" else {}
+                    self.assertEqual(warnings.output(False)["by_kind"], expected)
+
     def test_extreme_timestamp_is_ignored_without_overflow(self):
         self.assertIsNone(session_recall.session_search.parse_timestamp("0001-01-01T00:00:00+14:00"))
 

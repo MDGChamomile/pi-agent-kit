@@ -125,6 +125,7 @@ def read_active_messages(
     all_projects: bool,
     warnings: session_search.WarningCollector,
 ) -> tuple[list[RecallMessage], int] | None:
+    scope_confirmed = False
     try:
         with path.open("r", encoding="utf-8") as handle:
             try:
@@ -143,6 +144,7 @@ def read_active_messages(
                 or session_search.normalized_path(header_cwd) != target_cwd
             ):
                 return ([], -1)
+            scope_confirmed = True
             version = session_search.session_version(header, path, warnings)
             if version is None:
                 return None
@@ -161,7 +163,7 @@ def read_active_messages(
                 scanned += 1
                 entries.append(entry)
     except (OSError, UnicodeError):
-        if all_projects:
+        if all_projects or scope_confirmed:
             warnings.add(path, "unreadable_file")
         return None
 
