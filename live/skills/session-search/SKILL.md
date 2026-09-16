@@ -1,27 +1,41 @@
 ---
 name: session-search
-description: Aggregate factual evidence across multiple local Pi sessions, including counts, repeated errors, and tool or skill usage. Use for cross-session analysis; do not use to find, open, or resume a single session.
+description: Analyze patterns across local Pi sessions or recall how a topic was handled in a prior session. Use for cross-session counts, repeated errors, tool or skill usage, and questions such as "How did we solve X before?" Do not use to open or resume a session.
 license: MIT
 compatibility: Requires Pi session JSONL files and Python 3.10 or later.
 ---
 
 # Session Search
 
-Use this skill only when a request needs factual aggregation across multiple Pi sessions. For finding, opening, or resuming one session—or ordinary past-conversation search—use Pi's `/resume` instead.
+Use this skill for factual aggregation across multiple Pi sessions and for bounded recall of relevant text from a prior session. Use Pi's `/resume` instead when the user wants to find interactively, open, or continue a session.
 
-## Workflow
+## Choose the workflow
 
-1. Resolve paths relative to this `SKILL.md`, then run `python3 <skill-directory>/scripts/session_search.py --help` on first use in the current session. Reuse that output unless the script has changed, options are unclear, or the earlier output is no longer available in context. Treat that output as the single source of truth for current options, defaults, repetition rules, and mutually exclusive flags; never invent plausible aliases.
-2. Translate only the user's stated scope and filters into options shown by `--help`. With no explicit scope, retain the script's current-working-directory default and path-free aggregate output. Add search directories only when specified by the user or their local instructions, using `--additional-sessions-root`; do not infer archive locations. Extra directories do not change the project filter or evidence-consent requirement.
-3. Run the script locally. It reads session JSONL files without modifying them or creating an index.
-4. Interpret the returned JSON as evidence, not as an automatic judgment. Direct invocation means a user-role message matching Pi's complete skill envelope; keep it separate from reads of a skill's `SKILL.md`, mentions, and quoted XML.
-5. Report only what is needed to answer the request. Use the bounded evidence mode shown by `--help` only after the user explicitly approves sending masked snippets, local paths, and session identifiers to the active model provider.
+- For counts, repeated errors, or tool and skill usage, use `scripts/session_search.py` and the aggregate workflow below.
+- For questions about what was discussed, decided, or done in a prior session, use `scripts/session_recall.py` and the find-then-recall workflow below.
 
-## Privacy
+Resolve paths relative to this `SKILL.md`. Run the selected script with `--help` on its first use in the current session, and run subcommand help when using recall. Reuse that output unless the script changed, options are unclear, or the earlier output is no longer available. Treat help output as the source of truth; never invent aliases.
 
-Session data can contain credentials, personal information, private source code, and local paths. Tool results become context for the active model, so an agent-run search can send returned data to that model provider. The user's cross-session analysis request authorizes only the default path-free aggregate unless they explicitly approve evidence disclosure.
+## Aggregate workflow
 
-- Keep the default summary mode unless the user explicitly approves `--include-evidence` after being told that masked snippets, local paths, session identifiers, and warning paths will reach the active model provider. When approval is still being requested, ask only for consent: do not run or emit a prepared evidence command, keep command arguments empty, and treat the report scope as none until approval arrives.
-- Best-effort masking is not a data-loss-prevention guarantee. Do not quote raw evidence beyond what the user approved and needs.
-- Preserve masked values exactly; never attempt to reconstruct them.
+1. Translate only the user's stated scope and filters into options shown by `session_search.py --help`. With no explicit scope, retain the current-working-directory default and path-free summary output. Add directories only when the user or local instructions specify them.
+2. Run the script locally. It reads session JSONL files without modifying them or creating an index.
+3. Interpret the JSON as evidence, not as an automatic judgment. Keep direct skill invocations separate from reads of a skill's `SKILL.md`, mentions, and quoted XML.
+4. Use `--include-evidence` only after the evidence consent described below.
+
+## Find-then-recall workflow
+
+1. Translate the natural-language topic into two to eight meaningful literal terms. Prefer distinctive words or short phrases, including Unicode and Korean terms; do not pass the whole question as one exact phrase.
+2. Run `session_recall.py find` first. Repeated terms are alternatives used to rank matching sessions. Keep the default current-project scope unless the user explicitly requests another scope.
+3. Treat the returned candidate ranks and scores only as a local relevance ordering. Do not infer an outcome from them.
+4. Before running `session_recall.py recall`, obtain the evidence consent described below. Recall the minimum candidate ranks needed to answer the question.
+5. Explain omitted context when material. Recall searches only the active branch, includes bounded user and assistant text around matches, and excludes thinking, tool calls, tool results, and unrelated first or last messages.
+
+## Privacy and consent
+
+Session data can contain credentials, personal information, private source code, and local paths. Tool results become context for the active model and may therefore reach its provider. A cross-session or recall request authorizes only path-free aggregate or candidate metadata unless the user explicitly approves evidence disclosure.
+
+- Before any `--include-evidence` invocation, tell the user that masked conversation snippets and associated timestamps will reach the active model provider. For aggregate evidence, also disclose that local paths, session identifiers, and warning paths will be included. Ask only for consent; do not run or emit a prepared evidence command while approval is pending.
+- Best-effort masking is not a data-loss-prevention guarantee. Quote only the approved evidence needed for the answer.
+- Preserve masked values exactly and never attempt to reconstruct them.
 - Do not send session contents or script output to any additional external tool or service.

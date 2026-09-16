@@ -1,19 +1,21 @@
 # Session Search
 
-`session-search` is an [Agent Skill](https://agentskills.io/) for factual analysis across multiple local [Pi](https://github.com/earendil-works/pi) session files. Its helper script can count matching entries, identify repeated tool errors, and distinguish direct skill invocations from reads of a skill's `SKILL.md`.
+`session-search` is an [Agent Skill](https://agentskills.io/) for factual analysis across multiple local [Pi](https://github.com/earendil-works/pi) session files. Its aggregate helper can count matching entries, identify repeated tool errors, and distinguish direct skill invocations from reads of a skill's `SKILL.md`. Its recall helper can rank related prior sessions and return bounded conversation windows from one candidate.
 
-Read [`SKILL.md`](SKILL.md) for the executable agent workflow. Use Pi's built-in `/resume` command instead when you only need to find, open, or continue one session.
+Read [`SKILL.md`](SKILL.md) for the executable agent workflow. Use Pi's built-in `/resume` command instead when you want to open or continue a session interactively.
 
 ## Safety model
 
 - Reads session JSONL files without changing them or building an index.
 - Searches only sessions whose recorded working directory exactly matches the current directory by default.
 - Excludes the active session by default when `PI_SESSION_FILE` is set.
-- Returns a path-free aggregate summary by default.
+- Returns a path-free aggregate summary or path-free recall candidate list by default.
+- Searches only the active branch for recall; existing aggregate semantics remain unchanged.
 - Returns bounded, best-effort-masked evidence only with `--include-evidence`.
+- Excludes thinking, tool calls, tool results, and unrelated session bookends from recall evidence.
 - Uses only the Python standard library and makes no network requests.
 
-Session data is inherently sensitive. In an agent workflow, local tool output becomes context for the active model and may therefore reach a remote model provider. A cross-session request authorizes the default aggregate only. Use `--include-evidence` only after the user explicitly approves sending masked snippets, local paths, session identifiers, and warning paths to that provider. Masking cannot recognize every credential or personal detail.
+Session data is inherently sensitive. In an agent workflow, local tool output becomes context for the active model and may therefore reach a remote model provider. A cross-session request authorizes only the default aggregate or path-free candidate metadata. Aggregate evidence requires explicit approval to send masked snippets, local paths, session identifiers, and warning paths. Recall evidence requires explicit approval to send masked conversation snippets and associated timestamps. Masking cannot recognize every credential or personal detail.
 
 ## Requirements
 
@@ -35,10 +37,13 @@ Restart Pi after installing it. Pi will expose the skill as `/skill:session-sear
 
 ## Script usage
 
-The agent normally runs the helper script for you. You can also invoke it directly:
+The agent normally runs the helper scripts for you. You can also invoke them directly:
 
 ```bash
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --help
+python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py --help
+python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py find --help
+python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py recall --help
 ```
 
 Run these examples from the project directory whose sessions you want to search, using the installed script's absolute path. Do not change into the skill directory to run it: the default project filter uses your current working directory, not the script's location. Use `--cwd /path/to/project` to select another project explicitly.
@@ -73,9 +78,35 @@ Repeated or overlapping directories and file symlink aliases are deduplicated by
 
 For recurring agent use, specify your additional directories in your own local instructions. Keep personal paths out of the shared skill; this feature neither moves sessions nor changes Pi's `/resume` storage.
 
-Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each filter.
+Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each aggregate filter.
 
-With `--include-evidence`, each snippet stays within 300 characters, including omission markers. The full evidence text is masked before whitespace is collapsed and a window is selected. For long text, the window centers on the earliest remaining query occurrence (case-insensitive, with query whitespace collapsed too), regardless of query order. Distant AND terms need not all appear in that single window; matching still uses the full original searchable event. If no query remains visible—for example, it was masked or matched only tool metadata—or no query was supplied, the snippet uses the masked text's beginning. Hidden values are never restored. Results remain newest first.
+## Prior-session recall
+
+Recall uses a separate CLI so the existing aggregate command and JSON contract remain unchanged. Start with a path-free candidate search:
+
+```bash
+python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py find \
+  --term authentication --term cache
+```
+
+Each `--term` is a case-insensitive literal alternative (OR), not part of one exact phrase. Supply one to eight distinct terms of 2–100 characters. Candidate ranking first favors the number of distinct terms found, then matching message count and recency. The output contains ranks and scores but no session ID, path, cwd, query text, or conversation snippet.
+
+After explicit evidence approval, recall one candidate by rank using the same terms and scope:
+
+```bash
+python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py recall \
+  --term authentication --term cache --candidate-rank 1 --include-evidence
+```
+
+Recall re-runs the deterministic candidate ranking rather than accepting a user-provided path or session ID. It validates discovered files against the selected session roots, applies the same cwd and current-session defaults as aggregate search, and reads only the selected candidate again for evidence. If the selected candidate changes during that second read, recall returns `CANDIDATE_NOT_FOUND` rather than mixing stale rank metadata with new evidence. A rank can still refer to a different candidate when files change between separate find and recall invocations, so run `find` again when the session store may have changed.
+
+For v2 and v3 sessions, recall follows the parent chain from the last recorded entry and searches user and assistant text on that active branch. For v1 it uses the linear entry sequence. Compaction entries and `retainedTail` are not emitted as messages, so they do not duplicate original branch messages. Invalid or cyclic branch structures are skipped with path-free warning counts.
+
+A recall window contains a matching message and at most one neighboring text message on each side. Overlapping windows are merged up to five messages. Output is capped at three windows, 300 characters per message, and 6,000 evidence characters overall. Omitted-message counts make gaps visible. Thinking blocks, tool calls, tool results, compaction summaries, and unrelated first or last messages are excluded. First or last messages can still appear when they are naturally adjacent to a match.
+
+`find` never requires evidence consent because it returns only path-free candidate metadata. `recall` requires `--include-evidence`; in an agent workflow this flag may be used only after the user explicitly approves sending the masked snippets and timestamps to the active model provider.
+
+For the aggregate CLI, with `--include-evidence`, each snippet stays within 300 characters, including omission markers. The full evidence text is masked before whitespace is collapsed and a window is selected. For long text, the window centers on the earliest remaining query occurrence (case-insensitive, with query whitespace collapsed too), regardless of query order. Distant AND terms need not all appear in that single window; matching still uses the full original searchable event. If no query remains visible—for example, it was masked or matched only tool metadata—or no query was supplied, the snippet uses the masked text's beginning. Hidden values are never restored. Results remain newest first.
 
 Assistant failures are counted by `--error` even when their content is empty. Their `errorMessage` text is searchable alongside any partial response and is subject to the same opt-in evidence and masking rules.
 
@@ -97,9 +128,10 @@ In `summary`, `evidence_omitted` distinguishes the safe default from `evidence_t
 ## Known limitations
 
 - Searches are case-insensitive literal matches, not regular expressions or semantic search.
-- Counts describe recorded events and entries, not inferred tasks or outcomes.
-- For v2 and v3, the latest branch marker is inferred from the parent chain of the last recorded entry; v1 is treated as a linear sequence.
-- Every candidate file is opened once. Only its header is read until cwd and version selection succeeds; each selected body is then scanned once. There is no persistent index. Memory includes the discovered file paths used for deduplication, compact per-session branch metadata, aggregate counters, warning caps, call-correlation metadata, and the requested result limit.
+- Counts and candidate scores describe recorded messages and entries, not inferred tasks or outcomes.
+- Aggregate search still scans recorded branches and only marks evidence from the inferred latest branch. Recall restricts matching and evidence to the active branch.
+- Aggregate opens each selected session body once. Recall find must read a selected body to determine its active branch; recall then reads the chosen candidate again to build evidence. There is no persistent index.
+- Recall candidate ranks can change if session files change between find and recall invocations.
 - Secret masking is deliberately best-effort and is not a data-loss-prevention guarantee.
 
 ## Tests
