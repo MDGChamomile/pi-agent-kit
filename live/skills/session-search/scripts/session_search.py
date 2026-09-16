@@ -245,20 +245,14 @@ class WarningCollector:
         self._count = 0
         self._counts: Counter[str] = Counter()
         self._items: list[dict[str, str]] = []
-        self._current_path: str | None = None
-        self._current_kinds: set[str] = set()
-
-    def begin_file(self, path: Path) -> None:
-        self._current_path = str(path)
-        self._current_kinds.clear()
+        self._seen: set[tuple[str, str]] = set()
 
     def add(self, path: Path, kind: str) -> None:
         path_text = str(path)
-        if path_text != self._current_path:
-            self.begin_file(path)
-        if kind in self._current_kinds:
+        key = (path_text, kind)
+        if key in self._seen:
             return
-        self._current_kinds.add(kind)
+        self._seen.add(key)
         self._count += 1
         self._counts[kind] += 1
         if len(self._items) < MAX_WARNING_ITEMS:
@@ -444,7 +438,6 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             excluded_current += 1
             continue
         attempted_files += 1
-        warnings.begin_file(path)
         try:
             with path.open("r", encoding="utf-8") as handle:
                 try:

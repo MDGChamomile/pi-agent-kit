@@ -89,7 +89,7 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py find \
   --term authentication --term cache
 ```
 
-Each `--term` is a case-insensitive literal alternative (OR), not part of one exact phrase. Supply one to eight distinct terms of 2–100 characters. Candidate ranking first favors the number of distinct terms found, then matching message count and recency. The output contains ranks and scores but no session ID, path, cwd, query text, or conversation snippet.
+Each `--term` is a case-insensitive literal alternative (OR), not part of one exact phrase. Supply one to eight distinct terms of 2–100 characters. Candidate ranking first favors the number of distinct terms found, then matching message count and recency. The output contains ranks and match counts but no session ID, path, cwd, query text, or conversation snippet.
 
 After explicit evidence approval, recall one candidate by rank using the same terms and scope:
 
@@ -128,7 +128,7 @@ In `summary`, `evidence_omitted` distinguishes the safe default from `evidence_t
 ## Known limitations
 
 - Searches are case-insensitive literal matches, not regular expressions or semantic search.
-- Counts and candidate scores describe recorded messages and entries, not inferred tasks or outcomes.
+- Counts and candidate ranks describe recorded messages and entries, not inferred tasks or outcomes.
 - Aggregate search still scans recorded branches and only marks evidence from the inferred latest branch. Recall restricts matching and evidence to the active branch.
 - Aggregate opens each selected session body once. Recall find must read a selected body to determine its active branch; recall then reads the chosen candidate again to build evidence. There is no persistent index.
 - Recall candidate ranks can change if session files change between find and recall invocations.

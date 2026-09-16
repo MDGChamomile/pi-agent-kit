@@ -27,7 +27,7 @@ Resolve paths relative to this `SKILL.md`. Run the selected script with `--help`
 
 1. Translate the natural-language topic into two to eight meaningful literal terms. Prefer distinctive words or short phrases, including Unicode and Korean terms; do not pass the whole question as one exact phrase.
 2. Run `session_recall.py find` first. Repeated terms are alternatives used to rank matching sessions. Keep the default current-project scope unless the user explicitly requests another scope.
-3. Treat the returned candidate ranks and scores only as a local relevance ordering. Do not infer an outcome from them.
+3. Treat the returned candidate ranks and match counts only as a local relevance ordering. Do not infer an outcome from them.
 4. Before running `session_recall.py recall`, obtain the evidence consent described below. Recall the minimum candidate ranks needed to answer the question.
 5. Explain omitted context when material. Recall searches only the active branch, includes bounded user and assistant text around matches, and excludes thinking, tool calls, tool results, and unrelated first or last messages.
 

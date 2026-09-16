@@ -305,6 +305,22 @@ class SessionRecallTests(unittest.TestCase):
         self.assertEqual(result["summary"]["matched_sessions"], 0)
         self.assertEqual(result["warnings"]["by_kind"], {"file_outside_session_root": 1})
 
+    def test_recall_days_uses_same_candidate_calculation_on_second_read(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "sessions"
+            project = Path(temp) / "project"
+            project.mkdir()
+            write_session(root / "days.jsonl", header("days", project), [
+                message("old", None, "2026-08-01T00:00:00Z", "user", "인증 오류 old"),
+                message("new", "old", "2026-08-14T00:00:00Z", "assistant", "인증 오류 recent"),
+            ])
+            result = session_recall.recall_output(self.args(
+                "recall", root, project, "--days", "2"
+            ), self.NOW)
+        serialized = json.dumps(result, ensure_ascii=False)
+        self.assertIn("인증 오류 recent", serialized)
+        self.assertNotIn("인증 오류 old", serialized)
+
     def test_recall_requires_explicit_evidence_flag(self):
         stdout = io.StringIO()
         with redirect_stdout(stdout):

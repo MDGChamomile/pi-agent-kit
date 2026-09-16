@@ -9,7 +9,6 @@ import json
 import math
 import os
 import sys
-from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -44,31 +43,8 @@ class Candidate:
     latest_match: datetime
     message_fingerprint: str
 
-    @property
-    def score(self) -> int:
-        return self.matched_terms * 100 + min(self.matching_messages, 99)
-
-
 class CandidateNotFoundError(Exception):
     pass
-
-
-class WarningCounts:
-    def __init__(self) -> None:
-        self._counts: Counter[str] = Counter()
-        self._seen: set[tuple[str, str]] = set()
-
-    def add(self, path: Path, kind: str) -> None:
-        key = (str(path), kind)
-        if key not in self._seen:
-            self._seen.add(key)
-            self._counts[kind] += 1
-
-    def output(self) -> dict[str, Any]:
-        return {
-            "count": sum(self._counts.values()),
-            "by_kind": dict(sorted(self._counts.items())),
-        }
 
 
 def normalize_terms(values: Iterable[str]) -> tuple[str, ...]:
@@ -147,7 +123,7 @@ def read_active_messages(
     path: Path,
     target_cwd: str,
     all_projects: bool,
-    warnings: WarningCounts,
+    warnings: session_search.WarningCollector,
 ) -> tuple[list[RecallMessage], int] | None:
     try:
         with path.open("r", encoding="utf-8") as handle:
@@ -167,12 +143,7 @@ def read_active_messages(
                 or session_search.normalized_path(header_cwd) != target_cwd
             ):
                 return ([], -1)
-            collector = session_search.WarningCollector()
-            collector.begin_file(path)
-            version = session_search.session_version(header, path, collector)
-            for kind, count in collector.output(False)["by_kind"].items():
-                if count:
-                    warnings.add(path, kind)
+            version = session_search.session_version(header, path, warnings)
             if version is None:
                 return None
 
@@ -208,7 +179,9 @@ def read_active_messages(
     return messages, scanned
 
 
-def permitted_files(roots: list[Path], warnings: WarningCounts) -> list[Path]:
+def permitted_files(
+    roots: list[Path], warnings: session_search.WarningCollector
+) -> list[Path]:
     discovered = session_search.discover_session_files(roots)
     allowed_roots = [Path(session_search.normalized_path(root)) for root in roots]
     result: list[Path] = []
@@ -243,26 +216,66 @@ def message_fingerprint(messages: Iterable[RecallMessage]) -> str:
     return digest.hexdigest()
 
 
+def cutoff_from_args(
+    args: argparse.Namespace, now: datetime | None = None
+) -> datetime | None:
+    if args.days is None:
+        return None
+    if not math.isfinite(args.days) or args.days < 0:
+        raise ValueError("--days must be a finite non-negative number")
+    current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    try:
+        return current_time.astimezone(timezone.utc) - timedelta(days=args.days)
+    except OverflowError as error:
+        raise ValueError("--days exceeds the supported date range") from error
+
+
+def candidate_for_messages(
+    path: Path,
+    messages: list[RecallMessage],
+    terms: tuple[str, ...],
+    cutoff: datetime | None,
+) -> tuple[Candidate | None, list[RecallMessage]]:
+    eligible = [
+        message for message in messages
+        if cutoff is None
+        or ((timestamp := session_search.parse_timestamp(message.timestamp)) is not None
+            and timestamp >= cutoff)
+    ]
+    matched_terms: set[str] = set()
+    matching_messages = 0
+    latest_match = datetime.min.replace(tzinfo=timezone.utc)
+    for message in eligible:
+        timestamp = session_search.parse_timestamp(message.timestamp)
+        searchable = message.text.casefold()
+        present = {term for term in terms if term in searchable}
+        if not present:
+            continue
+        matching_messages += 1
+        matched_terms.update(present)
+        if timestamp is not None and timestamp > latest_match:
+            latest_match = timestamp
+    if not matching_messages:
+        return None, eligible
+    return Candidate(
+        path,
+        matching_messages,
+        len(matched_terms),
+        latest_match,
+        message_fingerprint(messages),
+    ), eligible
+
+
 def scan_candidates(
     args: argparse.Namespace,
     terms: tuple[str, ...],
     now: datetime | None = None,
-) -> tuple[list[Candidate], dict[str, int], WarningCounts]:
-    if args.days is not None:
-        if not math.isfinite(args.days) or args.days < 0:
-            raise ValueError("--days must be a finite non-negative number")
-        current_time = now or datetime.now(timezone.utc)
-        if current_time.tzinfo is None:
-            current_time = current_time.replace(tzinfo=timezone.utc)
-        try:
-            cutoff = current_time.astimezone(timezone.utc) - timedelta(days=args.days)
-        except OverflowError as error:
-            raise ValueError("--days exceeds the supported date range") from error
-    else:
-        cutoff = None
-
+) -> tuple[list[Candidate], dict[str, int], session_search.WarningCollector]:
+    cutoff = cutoff_from_args(args, now)
     roots = [args.sessions_root, *args.additional_sessions_root]
-    warnings = WarningCounts()
+    warnings = session_search.WarningCollector()
     paths = permitted_files(roots, warnings)
     target_cwd = session_search.normalized_path(args.cwd)
     current = (
@@ -287,29 +300,9 @@ def scan_candidates(
             continue
         files_selected += 1
         scanned_entries += scanned
-        matched_terms: set[str] = set()
-        matching_messages = 0
-        latest_match = datetime.min.replace(tzinfo=timezone.utc)
-        for message in messages:
-            timestamp = session_search.parse_timestamp(message.timestamp)
-            if cutoff is not None and (timestamp is None or timestamp < cutoff):
-                continue
-            searchable = message.text.casefold()
-            present = {term for term in terms if term in searchable}
-            if not present:
-                continue
-            matching_messages += 1
-            matched_terms.update(present)
-            if timestamp is not None and timestamp > latest_match:
-                latest_match = timestamp
-        if matching_messages:
-            candidates.append(Candidate(
-                path,
-                matching_messages,
-                len(matched_terms),
-                latest_match,
-                message_fingerprint(messages),
-            ))
+        candidate, _eligible = candidate_for_messages(path, messages, terms, cutoff)
+        if candidate is not None:
+            candidates.append(candidate)
 
     candidates.sort(key=candidate_sort_key, reverse=True)
     summary = {
@@ -470,14 +463,13 @@ def find_output(args: argparse.Namespace, now: datetime | None = None) -> dict[s
         "candidates": [
             {
                 "rank": rank,
-                "score": candidate.score,
                 "matched_terms": candidate.matched_terms,
                 "matching_messages": candidate.matching_messages,
             }
             for rank, candidate in enumerate(returned, 1)
         ],
         "results": [],
-        "warnings": warnings.output(),
+        "warnings": warnings.output(False),
     }
 
 
@@ -499,44 +491,16 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
     if loaded is None or loaded[1] < 0:
         raise CandidateNotFoundError
     messages, _scanned = loaded
-    if args.days is not None:
-        if reference_time.tzinfo is None:
-            reference_time = reference_time.replace(tzinfo=timezone.utc)
-        cutoff = reference_time.astimezone(timezone.utc) - timedelta(days=args.days)
-        messages = [
-            message for message in messages
-            if (timestamp := session_search.parse_timestamp(message.timestamp)) is not None
-            and timestamp >= cutoff
-        ]
-
-    present_terms: set[str] = set()
-    matching_messages = 0
-    latest_match = datetime.min.replace(tzinfo=timezone.utc)
-    for message in messages:
-        searchable = message.text.casefold()
-        present = {term for term in terms if term in searchable}
-        if not present:
-            continue
-        matching_messages += 1
-        present_terms.update(present)
-        timestamp = session_search.parse_timestamp(message.timestamp)
-        if timestamp is not None and timestamp > latest_match:
-            latest_match = timestamp
-    refreshed = Candidate(
-        candidate.path,
-        matching_messages,
-        len(present_terms),
-        latest_match,
-        message_fingerprint(messages),
+    refreshed, eligible = candidate_for_messages(
+        candidate.path, messages, terms, cutoff_from_args(args, reference_time)
     )
     if refreshed != candidate:
         raise CandidateNotFoundError
 
-    windows, evidence_summary = recall_windows(messages, terms)
+    windows, evidence_summary = recall_windows(eligible, terms)
     summary = {
         **scan_summary,
         "selected_candidate_rank": args.candidate_rank,
-        "selected_candidate_score": candidate.score,
         **evidence_summary,
     }
     return {
@@ -546,17 +510,8 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
         "scope": scope_view(args),
         "summary": summary,
         "results": windows,
-        "warnings": warnings.output(),
+        "warnings": warnings.output(False),
     }
-
-
-def emit_error(code: str, message: str) -> int:
-    print(json.dumps({
-        "status": "error",
-        "error": {"code": code, "message": message},
-        "results": [],
-    }, ensure_ascii=False, sort_keys=True))
-    return 2
 
 
 def main(argv: Iterable[str] | None = None) -> int:
@@ -565,11 +520,11 @@ def main(argv: Iterable[str] | None = None) -> int:
         args = parser.parse_args(argv)
         output = find_output(args) if args.mode == "find" else recall_output(args)
     except (session_search.InvalidArgumentError, ValueError):
-        return emit_error("INVALID_ARGUMENT", "Arguments are invalid.")
+        return session_search.emit_error("INVALID_ARGUMENT", "Arguments are invalid.")
     except CandidateNotFoundError:
-        return emit_error("CANDIDATE_NOT_FOUND", "The selected candidate is unavailable.")
+        return session_search.emit_error("CANDIDATE_NOT_FOUND", "The selected candidate is unavailable.")
     except (OSError, RuntimeError):
-        return emit_error("SESSION_STORAGE_UNAVAILABLE", "Session storage could not be read.")
+        return session_search.emit_error("SESSION_STORAGE_UNAVAILABLE", "Session storage could not be read.")
     print(json.dumps(output, ensure_ascii=False, sort_keys=True))
     return 0
 
