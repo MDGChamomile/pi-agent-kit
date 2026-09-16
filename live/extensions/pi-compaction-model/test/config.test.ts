@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   COMPACTION_REASONS,
+  isInstallTelemetryEnabled,
   parseModelReference,
   resolveConfig,
 } from "../src/config.js";
@@ -71,6 +72,29 @@ describe("resolveConfig", () => {
       reasons: [...COMPACTION_REASONS],
     });
     expect(warnings).toHaveLength(2);
+  });
+});
+
+describe("isInstallTelemetryEnabled", () => {
+  const settings = (enabled: boolean) => ({
+    getEnableInstallTelemetry: () => enabled,
+  });
+
+  test("uses the settings value when PI_TELEMETRY is unset", () => {
+    expect(isInstallTelemetryEnabled(settings(true), undefined)).toBe(true);
+    expect(isInstallTelemetryEnabled(settings(false), undefined)).toBe(false);
+  });
+
+  test("recognizes truthy PI_TELEMETRY values", () => {
+    for (const value of ["1", "true", "TRUE", "yes", "Yes"]) {
+      expect(isInstallTelemetryEnabled(settings(false), value)).toBe(true);
+    }
+  });
+
+  test("treats other PI_TELEMETRY values as disabled", () => {
+    for (const value of ["0", "false", "no", ""]) {
+      expect(isInstallTelemetryEnabled(settings(true), value)).toBe(false);
+    }
   });
 });
 

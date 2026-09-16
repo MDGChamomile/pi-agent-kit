@@ -2,7 +2,12 @@ import {
   compact,
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
-import { loadConfig, parseModelReference } from "./config.js";
+import {
+  createSettings,
+  isInstallTelemetryEnabled,
+  loadConfig,
+  parseModelReference,
+} from "./config.js";
 
 function warn(message: string, error?: unknown): void {
   if (error === undefined) {
@@ -10,6 +15,25 @@ function warn(message: string, error?: unknown): void {
   } else {
     console.warn(`[pi-compaction-model] ${message}`, error);
   }
+}
+
+const OPENROUTER_ATTRIBUTION_HEADERS = {
+  "HTTP-Referer": "https://pi.dev",
+  "X-OpenRouter-Title": "pi",
+  "X-OpenRouter-Categories": "cli-agent",
+} as const;
+
+/** Add the same gated OpenRouter app attribution as Pi's normal request path. */
+export function withOpenRouterAttribution(
+  model: { provider: string; baseUrl: string },
+  telemetryEnabled: boolean,
+  headers: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!telemetryEnabled) return headers;
+  const isOpenRouter =
+    model.provider === "openrouter" || model.baseUrl.includes("openrouter.ai");
+  if (!isOpenRouter) return headers;
+  return { ...OPENROUTER_ATTRIBUTION_HEADERS, ...headers };
 }
 
 /**
@@ -50,7 +74,8 @@ export default function compactionModel(pi: ExtensionAPI): void {
   pi.on("session_before_compact", async (event, ctx) => {
     restorePreviousFileOperations(event.preparation, event.branchEntries);
 
-    const config = loadConfig(ctx);
+    const settings = createSettings(ctx);
+    const config = loadConfig(ctx, settings);
     if (!config || !config.reasons.includes(event.reason)) return;
 
     const reference = parseModelReference(config.model);
@@ -72,16 +97,23 @@ export default function compactionModel(pi: ExtensionAPI): void {
         return;
       }
 
+      // Match Pi's native compaction bridge: null marks a deleted header.
+      const authHeaders = auth.headers
+        ? Object.fromEntries(
+            Object.entries(auth.headers).filter((entry): entry is [string, string] => entry[1] !== null),
+          )
+        : undefined;
+      const headers = withOpenRouterAttribution(
+        model,
+        isInstallTelemetryEnabled(settings),
+        authHeaders,
+      );
+
       const result = await compact(
         event.preparation,
         model,
         auth.apiKey,
-        // Match Pi's native compaction bridge: null marks a deleted header.
-        auth.headers
-          ? Object.fromEntries(
-              Object.entries(auth.headers).filter((entry): entry is [string, string] => entry[1] !== null),
-            )
-          : undefined,
+        headers,
         event.customInstructions,
         event.signal,
         config.thinkingLevel,

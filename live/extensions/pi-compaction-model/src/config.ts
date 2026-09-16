@@ -95,14 +95,32 @@ export function resolveConfig(
   };
 }
 
-export function loadConfig(ctx: ExtensionContext): CompactionModelConfig | null {
-  const settings = SettingsManager.create(ctx.cwd, getAgentDir(), {
+export function createSettings(ctx: ExtensionContext): SettingsManager {
+  return SettingsManager.create(ctx.cwd, getAgentDir(), {
     projectTrusted: ctx.isProjectTrusted(),
   });
+}
 
+export function loadConfig(
+  ctx: ExtensionContext,
+  settings: SettingsManager,
+): CompactionModelConfig | null {
   return resolveConfig(
     settings.getGlobalSettings(),
     ctx.isProjectTrusted() ? settings.getProjectSettings() : undefined,
+  );
+}
+
+/** Match Pi's telemetry gate for provider app-attribution headers. */
+export function isInstallTelemetryEnabled(
+  settings: { getEnableInstallTelemetry(): boolean },
+  telemetryEnv: string | undefined = process.env.PI_TELEMETRY,
+): boolean {
+  if (telemetryEnv === undefined) return settings.getEnableInstallTelemetry();
+  return (
+    telemetryEnv === "1" ||
+    telemetryEnv.toLowerCase() === "true" ||
+    telemetryEnv.toLowerCase() === "yes"
   );
 }
 

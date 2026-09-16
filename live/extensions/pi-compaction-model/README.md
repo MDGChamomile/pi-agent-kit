@@ -128,6 +128,10 @@ The resulting routing is:
 | Overflow recovery | Pi native compaction algorithm with the configured model |
 | Configured-model failure | Pi native fallback with the active model |
 
+## OpenRouter attribution
+
+For OpenRouter models, the extension adds the same app-attribution headers as Pi's normal request path before calling the exported `compact()` function. This also applies to custom providers whose base URL is on `openrouter.ai`. Attribution is sent only when Pi's install telemetry is enabled through `enableInstallTelemetry` or `PI_TELEMETRY`; explicitly configured request headers take precedence.
+
 ## Failure behavior
 
 The extension logs a warning and falls back to Pi's active model when:

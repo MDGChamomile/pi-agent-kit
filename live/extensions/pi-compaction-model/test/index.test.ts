@@ -2,6 +2,8 @@ import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 let config: { model: string; reasons: string[]; thinkingLevel?: string } | null;
 let compactImplementation: (...args: any[]) => Promise<any>;
+let telemetryEnabled: boolean;
+const settings = {};
 
 mock.module("@earendil-works/pi-coding-agent", () => ({
   compact: (...args: any[]) => compactImplementation(...args),
@@ -10,6 +12,8 @@ mock.module("@earendil-works/pi-coding-agent", () => ({
 mock.module("../src/config.js", () => ({
   COMPACTION_REASONS: ["manual", "threshold", "overflow"],
   THINKING_LEVELS: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+  createSettings: () => settings,
+  isInstallTelemetryEnabled: () => telemetryEnabled,
   loadConfig: () => config,
   parseModelReference: (reference: string) => {
     const separator = reference.indexOf("/");
@@ -28,15 +32,21 @@ beforeAll(async () => {
 beforeEach(() => {
   config = { model: "provider/model", reasons: ["manual", "threshold", "overflow"] };
   compactImplementation = async () => ({ summary: "compacted" });
+  telemetryEnabled = true;
 });
 
 function harness(options: {
   reason?: string;
   findModel?: boolean;
+  model?: { provider: string; id: string; baseUrl: string };
   auth?: { ok: boolean; error?: string; apiKey?: string; headers?: Record<string, string | null>; env?: Record<string, string> };
 } = {}) {
   let handler: any;
-  const model = { provider: "provider", id: "model" };
+  const model = options.model ?? {
+    provider: "provider",
+    id: "model",
+    baseUrl: "https://api.example.com",
+  };
   const preparation = {
     fileOps: {
       read: new Set(["current-read.ts"]),
@@ -139,6 +149,82 @@ describe("session_before_compact", () => {
       headers: { "x-test": "retained", "x-deleted": null },
       env: { TEST_ENV: "test-value" },
     });
+  });
+
+  test("adds Pi attribution for an OpenRouter compaction request", async () => {
+    config = { model: "openrouter/model", reasons: ["manual"] };
+    const state = harness({
+      model: {
+        provider: "openrouter",
+        id: "model",
+        baseUrl: "https://openrouter.ai/api/v1",
+      },
+      auth: {
+        ok: true,
+        apiKey: "test-key",
+        headers: { "HTTP-Referer": "https://caller.example", "x-deleted": null },
+      },
+    });
+    let receivedHeaders: unknown;
+    compactImplementation = async (_preparation, _model, _apiKey, headers) => {
+      receivedHeaders = headers;
+      return { summary: "dedicated" };
+    };
+
+    await state.handler(state.event, state.ctx);
+    expect(receivedHeaders).toEqual({
+      "HTTP-Referer": "https://caller.example",
+      "X-OpenRouter-Title": "pi",
+      "X-OpenRouter-Categories": "cli-agent",
+    });
+  });
+
+  test("detects OpenRouter by base URL for a custom provider", async () => {
+    const state = harness({
+      model: {
+        provider: "custom",
+        id: "model",
+        baseUrl: "https://openrouter.ai/api/v1",
+      },
+    });
+    let receivedHeaders: unknown;
+    compactImplementation = async (_preparation, _model, _apiKey, headers) => {
+      receivedHeaders = headers;
+      return { summary: "dedicated" };
+    };
+
+    await state.handler(state.event, state.ctx);
+    expect(receivedHeaders).toEqual({
+      "HTTP-Referer": "https://pi.dev",
+      "X-OpenRouter-Title": "pi",
+      "X-OpenRouter-Categories": "cli-agent",
+    });
+  });
+
+  test("does not add attribution for other providers or when telemetry is disabled", async () => {
+    const otherProvider = harness({
+      auth: { ok: true, apiKey: "test-key", headers: { "x-test": "retained" } },
+    });
+    let receivedHeaders: unknown;
+    compactImplementation = async (_preparation, _model, _apiKey, headers) => {
+      receivedHeaders = headers;
+      return { summary: "dedicated" };
+    };
+    await otherProvider.handler(otherProvider.event, otherProvider.ctx);
+    expect(receivedHeaders).toEqual({ "x-test": "retained" });
+
+    telemetryEnabled = false;
+    config = { model: "openrouter/model", reasons: ["manual"] };
+    const telemetryOff = harness({
+      model: {
+        provider: "openrouter",
+        id: "model",
+        baseUrl: "https://openrouter.ai/api/v1",
+      },
+      auth: { ok: true, apiKey: "test-key", headers: { "x-test": "retained" } },
+    });
+    await telemetryOff.handler(telemetryOff.event, telemetryOff.ctx);
+    expect(receivedHeaders).toEqual({ "x-test": "retained" });
   });
 
   test("keeps restored file operations when dedicated compaction throws", async () => {
