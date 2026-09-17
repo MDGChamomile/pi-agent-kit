@@ -2,9 +2,16 @@
 
 A manually invoked, defensive source-review skill. It is not an autonomous penetration-testing system and does not generate exploits or probe deployed services.
 
-## Invoke
+## Installation and invocation
 
-Review and copy this directory into your chosen Pi skills location, then reload Pi. Adoption is a user action; this repository does not install or activate it.
+Review and copy this directory into your chosen Pi skills location, then reload Pi. Adoption is a user action; this repository does not install or activate it. From the repository root, for a destination that does not already exist:
+
+```bash
+mkdir -p ~/.pi/agent/skills
+cp -R live/skills/security-audit ~/.pi/agent/skills/
+```
+
+Retain `LICENSE` and `NOTICE.md`. Restart Pi or use `/reload`, then invoke one of these modes with skill commands enabled:
 
 ```text
 /skill:security-audit guidance <question or target>
@@ -23,4 +30,10 @@ Target-controlled execution requires independently verified OS isolation describ
 
 Use Pi's `loadSkillsFromDir` and `formatSkillsForPrompt` to check discovery, diagnostics, and exclusion from automatic prompting. Review these scenarios without launching an audit: guidance creates no files; parent-only full retains its boundary map and coverage ledger; partial children retain gaps under the installed result contract; denied or unclear provider permission prevents delegation; private evidence does not enter web tasks; incomplete host isolation prevents target execution; unconfirmed findings have no severity; full without an output request creates no files. Loader checks verify metadata, not model compliance with instructions.
 
+For documentation-only changes, check links and skill frontmatter; no live model call is required just to validate wording.
+
 See [full review](references/full-audit.md), [evidence contract](references/evidence-and-reporting.md), [upstream notice](NOTICE.md), and [repository principles](../../../PRINCIPLE.md).
+
+## License
+
+[MIT](LICENSE). This skill adapts upstream concepts and wording; retain the separate [Cloudflare attribution and MIT notice](NOTICE.md) when copying or redistributing it.

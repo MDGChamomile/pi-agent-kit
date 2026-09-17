@@ -144,4 +144,4 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 
 ## License
 
-MIT, as provided by the repository-level `LICENSE` file.
+[MIT](LICENSE). Keep the bundled license notice when copying or redistributing this skill.

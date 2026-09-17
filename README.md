@@ -22,6 +22,7 @@ The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): r
 | Use a dedicated model for native compaction | [`pi-compaction-model`](live/extensions/pi-compaction-model/README.md) | Copying the standalone extension from source |
 | Isolate noisy investigation from the main context | [`pi-subagent`](live/extensions/pi-subagent/README.md) | Installing the paired skill and extension from npm |
 | Turn a vague repository change into an executable plan | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Copying the skill from source and providing a compatible `ask_user` tool |
+| Review source defensively with explicit scope and evidence | [`security-audit`](live/skills/security-audit/README.md) | Copying the standalone skill from source and invoking it manually |
 | Analyze patterns across local Pi sessions | [`session-search`](live/skills/session-search/README.md) | Copying the standalone skill from source |
 | Analyze Korean stocks with separate Trading and Investing ratings | [`simplykst`](live/skills/simplykst/README.md) | Copying the skill from source and providing web research tools |
 
@@ -35,7 +36,7 @@ pi install npm:@mdgchamomile/pi-subagent
 
 ### Copy an individual resource
 
-Clone the repository, review the resource and its requirements, and copy or link only the directory you want into the applicable Pi location.
+Clone the repository, review the resource and its requirements, and copy or link only the directory you want into the applicable Pi location. Keep the bundled `LICENSE` and any `NOTICE.md` with the resource when copying or redistributing it.
 
 For `deep-plan`, a compatible `ask_user` tool is required at decision gates; copying the skill does not install that tool. If you do not already have a compatible extension, the reference implementation can be installed with `pi install npm:pi-ask-user`. See the skill's [requirements](live/skills/deep-plan/SKILL.md#requirement) before adopting it.
 

@@ -58,4 +58,4 @@ The short report-writing guidance draws on the meaning-clarity principles of [fl
 
 ## License
 
-MIT, as provided by the repository-level [`LICENSE`](../../../LICENSE) file. Retain that notice when redistributing the skill.
+[MIT](LICENSE). Keep the bundled license notice when copying or redistributing this skill.
