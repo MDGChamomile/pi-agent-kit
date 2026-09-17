@@ -50,7 +50,7 @@ def normalize_terms(values: Iterable[str]) -> tuple[str, ...]:
     terms: list[str] = []
     seen: set[str] = set()
     for value in values:
-        normalized = " ".join(value.split()).casefold()
+        normalized = value.strip().casefold()
         if len(normalized) < MIN_TERM_CHARS or len(normalized) > MAX_TERM_CHARS:
             raise ValueError("recall terms have invalid lengths")
         if normalized not in seen:
@@ -59,6 +59,11 @@ def normalize_terms(values: Iterable[str]) -> tuple[str, ...]:
     if not terms or len(terms) > MAX_TERMS:
         raise ValueError("recall requires a bounded number of terms")
     return tuple(terms)
+
+
+def matching_terms(text: str, terms: tuple[str, ...]) -> set[str]:
+    searchable = text.casefold()
+    return {term for term in terms if term in searchable}
 
 
 def active_entries(entries: list[dict[str, Any]], version: int) -> list[dict[str, Any]] | None:
@@ -97,7 +102,7 @@ def recall_text(entry: dict[str, Any]) -> RecallMessage | None:
         return None
     message = entry["message"]
     role = message.get("role")
-    if role not in {"user", "assistant"}:
+    if not isinstance(role, str) or role not in {"user", "assistant"}:
         return None
     # text_content deliberately ignores thinking and tool-call blocks.
     text = session_search.text_content(message.get("content"))
@@ -143,9 +148,11 @@ def read_active_messages(
 ) -> tuple[list[RecallMessage], int] | None:
     scope_confirmed = False
     try:
-        with path.open("r", encoding="utf-8") as handle:
+        # Decode only the header line before deciding scope. TextIOWrapper can
+        # decode body bytes ahead of readline() and hide an in-scope failure.
+        with path.open("rb") as handle:
             try:
-                header = json.loads(handle.readline())
+                header = json.loads(handle.readline().decode("utf-8"))
             except (json.JSONDecodeError, TypeError):
                 if all_projects:
                     warnings.add(path, "invalid_header")
@@ -169,7 +176,7 @@ def read_active_messages(
             scanned = 0
             for line in handle:
                 try:
-                    entry = json.loads(line)
+                    entry = json.loads(line.decode("utf-8"))
                 except (json.JSONDecodeError, TypeError):
                     warnings.add(path, "invalid_json_line")
                     continue
@@ -245,8 +252,7 @@ def candidate_for_messages(
     latest_match = datetime.min.replace(tzinfo=timezone.utc)
     for message in eligible:
         timestamp = session_search.parse_timestamp(message.timestamp)
-        searchable = message.text.casefold()
-        present = {term for term in terms if term in searchable}
+        present = matching_terms(message.text, terms)
         if not present:
             continue
         matching_messages += 1
@@ -314,7 +320,7 @@ def matching_indices(messages: list[RecallMessage], terms: tuple[str, ...]) -> l
     return [
         index
         for index, message in enumerate(messages)
-        if any(term in message.text.casefold() for term in terms)
+        if matching_terms(message.text, terms)
     ]
 
 

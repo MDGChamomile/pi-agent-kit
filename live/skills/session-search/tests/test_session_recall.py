@@ -253,6 +253,63 @@ class SessionRecallTests(unittest.TestCase):
             with self.subTest(values=values), self.assertRaises(ValueError):
                 session_recall.normalize_terms(values)
 
+    def test_literal_terms_preserve_internal_whitespace_in_find_and_recall(self):
+        self.assertEqual(session_recall.normalize_terms(['  Foo  BAR  ', 'foo  bar', 'foo bar']),
+                         ('foo  bar', 'foo bar'))
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for whitespace in ('  ', '\t', '\n'):
+                with self.subTest(whitespace=whitespace):
+                    text = f'인증{whitespace}오류'
+                    write_session(root / 'literal.jsonl', header('literal', root), [
+                        message('m1', None, '2026-08-10T00:00:00Z', 'user', text),
+                    ])
+                    args = self.args('find', root, root)
+                    args.term = [text]
+                    result = session_recall.find_output(args, self.NOW)
+                    self.assertEqual(result['summary']['matched_sessions'], 1)
+                    args = self.args('recall', root, root)
+                    args.term = [text]
+                    result = session_recall.recall_output(args, self.NOW)
+                    self.assertEqual(result['summary']['matching_messages'], 1)
+                    self.assertTrue(result['results'][0]['messages'][0]['matches_term'])
+                    args = self.args('find', root, root)
+                    self.assertEqual(session_recall.find_output(args, self.NOW)['candidates'], [])
+                    write_session(root / 'literal.jsonl', header('literal', root), [
+                        message('m1', None, '2026-08-10T00:00:00Z', 'user', '인증 오류'),
+                    ])
+                    args.term = [text]
+                    self.assertEqual(session_recall.find_output(args, self.NOW)['candidates'], [])
+
+    def test_invalid_message_roles_preserve_branch_links_and_do_not_abort_cli(self):
+        stamp = '2026-08-10T00:00:00Z'
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for version in (1, 2, 3):
+                for role in ([], {}, None, 42):
+                    with self.subTest(version=version, role=role):
+                        malformed = message('bad', 'u', stamp, role, 'BAD_ROLE_CONTENT')
+                        self.assertIsNone(session_recall.recall_text(malformed))
+                        retained = session_recall.retain_recall_entry(malformed)
+                        self.assertEqual(retained['id'], 'bad')
+                        self.assertEqual(retained['parentId'], 'u')
+                        write_session(root / 'roles.jsonl', header('roles', root, version), [
+                            message('u', None, stamp, 'user', '인증 오류 before'),
+                            malformed,
+                            message('a', 'bad', stamp, 'assistant', '인증 오류 after'),
+                        ])
+                        stdout = io.StringIO()
+                        with redirect_stdout(stdout):
+                            code = session_recall.main([
+                                'recall', '--sessions-root', str(root), '--cwd', str(root),
+                                '--term', '인증 오류', '--include-evidence',
+                            ])
+                        self.assertEqual(code, 0)
+                        result = json.loads(stdout.getvalue())
+                        self.assertEqual(result['summary']['matching_messages'], 2)
+                        self.assertEqual(result['warnings']['count'], 0)
+                        self.assertNotIn('BAD_ROLE_CONTENT', stdout.getvalue())
+
     def test_recall_evidence_masks_quoted_password_and_all_cookies(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -306,8 +363,25 @@ class SessionRecallTests(unittest.TestCase):
                     })
                     self.assertNotIn(str(root), json.dumps(result))
 
+    def test_near_header_decode_failure_warns_only_for_selected_scope(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / 'corrupt.jsonl'
+            for scope in ('selected', 'foreign', 'unknown'):
+                for all_projects in (False, True):
+                    with self.subTest(scope=scope, all_projects=all_projects):
+                        head = header('synthetic', root if scope == 'selected' else root / 'foreign')
+                        prefix = (json.dumps(head) + '\n').encode('utf-8') if scope != 'unknown' else b'\xff\n'
+                        path.write_bytes(prefix + b'\xff\n')
+                        args = self.args('find', root, root)
+                        args.all_projects = all_projects
+                        result = session_recall.find_output(args, self.NOW)
+                        expected = {'unreadable_file': 1} if all_projects or scope == 'selected' else {}
+                        self.assertEqual(result['warnings']['by_kind'], expected)
+                        self.assertNotIn(str(root), json.dumps(result))
+
     def test_read_failures_warn_only_after_scope_is_known(self):
-        class FailingBody(io.StringIO):
+        class FailingBody(io.BytesIO):
             def __next__(self):
                 raise OSError("synthetic read failure")
 
@@ -323,7 +397,7 @@ class SessionRecallTests(unittest.TestCase):
                     warnings = session_recall.session_search.WarningCollector()
                     head = header("private-id", Path(cwd if scope == "selected" else "/foreign"))
                     stream_type = FailingHeader if scope == "unknown" else FailingBody
-                    stream = stream_type(json.dumps(head) + "\n")
+                    stream = stream_type((json.dumps(head) + "\n").encode("utf-8"))
                     options = ({"side_effect": OSError("synthetic open failure")}
                                if scope == "open_failure" else {"return_value": stream})
                     with patch.object(Path, "open", **options):

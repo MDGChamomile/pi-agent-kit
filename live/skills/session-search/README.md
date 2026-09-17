@@ -89,7 +89,7 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py find \
   --term authentication --term cache
 ```
 
-Each `--term` is a case-insensitive literal alternative (OR), not part of one exact phrase. Supply one to eight distinct terms of 2–100 characters. Candidate ranking first favors the number of distinct terms found, then matching message count and recency. The output contains ranks and match counts but no session ID, path, cwd, query text, or conversation snippet.
+Each `--term` is a case-insensitive literal alternative (OR), not part of one exact phrase. Leading and trailing whitespace is trimmed; internal spaces, tabs, and newlines are preserved and must match the message literally. Supply one to eight distinct terms of 2–100 characters. Candidate ranking first favors the number of distinct terms found, then matching message count and recency. The output contains ranks and match counts but no session ID, path, cwd, query text, or conversation snippet.
 
 After explicit evidence approval, recall one candidate by rank using the same terms and scope:
 
@@ -100,7 +100,7 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py recall \
 
 Recall re-runs the deterministic candidate ranking rather than accepting a user-provided path or session ID. It validates discovered files against the selected session roots, applies the same cwd and current-session defaults as aggregate search, and reads only the selected candidate again for evidence. If the selected candidate changes during that second read, recall returns `CANDIDATE_NOT_FOUND` rather than mixing stale rank metadata with new evidence. A rank can still refer to a different candidate when files change between separate find and recall invocations, so run `find` again when the session store may have changed.
 
-For v2 and v3 sessions, recall follows the parent chain from the last recorded entry and searches user and assistant text on that active branch. For v1 it uses the linear entry sequence. Compaction entries and `retainedTail` are not emitted as messages, so they do not duplicate original branch messages. Invalid or cyclic branch structures are skipped with path-free warning counts.
+For v2 and v3 sessions, recall follows the parent chain from the last recorded entry and searches user and assistant text on that active branch. For v1 it uses the linear entry sequence. Compaction entries and `retainedTail` are not emitted as messages, so they do not duplicate original branch messages. Invalid or cyclic branch structures are skipped with path-free warning counts. Non-string message roles are ignored for matching and evidence without discarding their branch links. UTF-8 body failures produce a path-free warning once the header confirms the selected project; files with an unknown or different project remain undisclosed in the default scope.
 
 A recall window contains a matching message and at most one neighboring text message on each side. Overlapping windows are merged up to five messages. Output is capped at three windows, 300 characters per message, and 6,000 evidence characters overall. Omitted-message counts make gaps visible. Thinking blocks, tool calls, tool results, compaction summaries, and unrelated first or last messages are excluded. First or last messages can still appear when they are naturally adjacent to a match.
 
