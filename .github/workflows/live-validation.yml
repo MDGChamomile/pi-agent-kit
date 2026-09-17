@@ -9,6 +9,7 @@ on:
       - "packaging/pi-subagent/**"
       - ".github/workflows/pi-subagent-canary.yml"
       - ".github/workflows/live-validation.yml"
+      - ".github/scripts/**"
   pull_request:
     paths:
       - "live/extensions/pi-compaction-model/**"
@@ -17,6 +18,7 @@ on:
       - "packaging/pi-subagent/**"
       - ".github/workflows/pi-subagent-canary.yml"
       - ".github/workflows/live-validation.yml"
+      - ".github/scripts/**"
 
 permissions:
   contents: read
@@ -43,24 +45,8 @@ jobs:
         run: node --test live/skills/deep-plan/scripts/publish-plan.test.mjs
       - name: Validate skill frontmatter and relative Markdown links
         run: |
-          python3 - <<'PY'
-          import re
-          from pathlib import Path
-
-          failures = []
-          for skill in sorted(Path("live/skills").glob("**/SKILL.md")):
-              text = skill.read_text(encoding="utf-8")
-              if not text.startswith("---\n") or "\nname:" not in text or "\ndescription:" not in text:
-                  failures.append(f"invalid frontmatter: {skill}")
-              for target in re.findall(r"\[[^]]*\]\(([^)]+)\)", text):
-                  if "://" in target or target.startswith("#"):
-                      continue
-                  path = (skill.parent / target.split("#", 1)[0]).resolve()
-                  if not path.exists():
-                      failures.append(f"broken link: {skill} -> {target}")
-          if failures:
-              raise SystemExit("\n".join(failures))
-          PY
+          python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
+          python3 -B .github/scripts/validate_skills.py
 
   pi-compaction-model:
     runs-on: ubuntu-24.04
