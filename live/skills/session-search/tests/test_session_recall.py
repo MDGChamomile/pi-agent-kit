@@ -253,6 +253,17 @@ class SessionRecallTests(unittest.TestCase):
             with self.subTest(values=values), self.assertRaises(ValueError):
                 session_recall.normalize_terms(values)
 
+    def test_recall_evidence_masks_quoted_password_and_all_cookies(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_session(root / 'secrets.jsonl', header('synthetic', root), [
+                message('m1', None, '2026-08-10T00:00:00Z', 'user',
+                        '인증 오류 password="FAKE FIRST SECOND"\nCookie: session=FAKE_A; sid=FAKE_B'),
+            ])
+            result = session_recall.recall_output(self.args('recall', root, root), self.NOW)
+        self.assertEqual(result['results'][0]['messages'][0]['evidence'],
+                         '인증 오류 password=[REDACTED] Cookie: [REDACTED]')
+
     def test_default_scope_does_not_report_foreign_project_metadata(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)

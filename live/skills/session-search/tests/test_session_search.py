@@ -485,6 +485,55 @@ class SessionSearchTests(unittest.TestCase):
         self.assertNotIn("KEY_SHOULD_HIDE_123", serialized)
         self.assertIn("REDACTED", serialized)
 
+    def test_quoted_secrets_are_masked_in_full(self):
+        cases = (
+            ('password="FAKE FIRST SECOND" visible', 'password=[REDACTED] visible'),
+            ("passwd='FAKE FIRST; SECOND' visible", 'passwd=[REDACTED] visible'),
+            ('{"password": "FAKE FIRST SECOND"}', '{"password": [REDACTED]}'),
+            (r'password="FAKE\" SECOND" visible', 'password=[REDACTED] visible'),
+            (r"secret='FAKE\' SECOND' visible", 'secret=[REDACTED] visible'),
+            ('token="FAKE\nSECOND" visible', 'token=[REDACTED] visible'),
+            ('password="FAKE FIRST SECOND', 'password=[REDACTED]'),
+            ('password="FAKE FIRST' + '\\', 'password=[REDACTED]'),
+            ("secret='FAKE FIRST" + '\\', 'secret=[REDACTED]'),
+            ('token=FAKE_VALUE visible', 'token=[REDACTED] visible'),
+        )
+        for raw, expected in cases:
+            with self.subTest(raw=raw):
+                self.assertEqual(session_search.mask_and_shorten(raw), expected)
+        raw = 'prefix ' * 100 + ' password="' + 'FAKE_SECRET ' * 100 + '" visible-target'
+        evidence = session_search.mask_and_shorten(raw, queries=('FAKE_SECRET', 'visible-target'))
+        self.assertNotIn('FAKE_SECRET', evidence)
+        self.assertIn('visible-target', evidence)
+        self.assertLessEqual(len(evidence), session_search.MAX_EVIDENCE_CHARS)
+
+    def test_cookie_headers_are_masked_before_whitespace_collapses(self):
+        cases = (
+            'Cookie: session=FAKE_A; sid=FAKE_B',
+            'set-cookie: session=FAKE_A; Path=/; HttpOnly',
+            'Cookie: session=FAKE_A;\r\n\tsid=FAKE_B',
+            'Cookie: session=FAKE_A\nSet-Cookie: sid=FAKE_B; Secure',
+            '{"Cookie": "session=FAKE_A; sid=FAKE_B"}',
+            '{"Set-Cookie": "session=FAKE_A; Path=/"}',
+        )
+        for raw in cases:
+            with self.subTest(raw=raw):
+                evidence = session_search.mask_and_shorten(raw + '\nVisible: keep-me')
+                self.assertNotIn('FAKE_', evidence)
+                self.assertIn('[REDACTED]', evidence)
+                self.assertIn('Visible: keep-me', evidence)
+
+    def test_aggregate_evidence_masks_quoted_password_and_all_cookies(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            raw = 'password="FAKE FIRST SECOND"\nCookie: session=FAKE_A; sid=FAKE_B'
+            write_session(root / 'secrets.jsonl', header('synthetic', root), [
+                message('e1', None, '2026-08-14T00:00:00Z', 'user', raw),
+            ])
+            result = session_search.aggregate(self.args(root, root, '--include-evidence'), now=self.NOW)
+        self.assertEqual(result['results'][0]['evidence'],
+                         'password=[REDACTED] Cookie: [REDACTED]')
+
     def test_private_key_url_credentials_and_boundary_secret_are_masked(self):
         raw = (
             "https://alice:correct-horse@example.test/path "

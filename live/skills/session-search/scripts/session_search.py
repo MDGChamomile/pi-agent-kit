@@ -33,7 +33,15 @@ MASK_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"-----BEGIN [^-\n]*PRIVATE KEY-----.*?-----END [^-\n]*PRIVATE KEY-----", re.I | re.S), "[REDACTED_PRIVATE_KEY]"),
     (re.compile(r"\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+", re.I), r"\1 [REDACTED]"),
     (re.compile(r"(?i)(https?://)([^\s/@:]+):([^\s/@]+)@"), r"\1[REDACTED]@"),
-    (re.compile(r'(?i)(["\']?(?:api[_-]?key|access[_-]?token|auth(?:orization)?|cookie|password|passwd|secret|token)["\']?\s*[:=]\s*)["\']?([^"\'\s,;}]+)'), r"\1[REDACTED]"),
+    # Header values can contain several cookies and folded continuation lines.
+    (re.compile(r"(?im)(?<![\w-])((?:set-cookie|cookie)[ \t]*:[ \t]*)[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*"), r"\1[REDACTED]"),
+    # Quoted values may contain whitespace, separators, and escaped quotes.
+    # An unterminated quoted value is masked through the end of the input.
+    (re.compile(
+        r'''(["']?(?:api[_-]?key|access[_-]?token|auth(?:orization)?|(?:set-)?cookie|password|passwd|secret|token)["']?\s*[:=]\s*)'''
+        r'''(?:"(?:\\.|[^"\\])*(?:"|\\?$)|'(?:\\.|[^'\\])*(?:'|\\?$)|[^"'\s,;}]+)''',
+        re.I | re.S,
+    ), r"\1[REDACTED]"),
     (re.compile(r"(?i)([?&](?:api[_-]?key|access[_-]?token|auth|password|secret|token)=)[^&#\s]+"), r"\1[REDACTED]"),
     (re.compile(r"\b(?:sk|pk)-[A-Za-z0-9_-]{12,}\b"), "[REDACTED_KEY]"),
 )
