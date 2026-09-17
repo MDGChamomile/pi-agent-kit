@@ -6,11 +6,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import math
 import os
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -62,33 +61,33 @@ def normalize_terms(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(terms)
 
 
-def active_entry_ids(entries: list[dict[str, Any]], version: int) -> list[str] | None:
+def active_entries(entries: list[dict[str, Any]], version: int) -> list[dict[str, Any]] | None:
     if version == 1:
-        return [entry["id"] for entry in entries if isinstance(entry.get("id"), str)]
+        return entries
 
-    parent_by_id: dict[str, str | None] = {}
+    by_id: dict[str, dict[str, Any]] = {}
     leaf_id: str | None = None
     for entry in entries:
         entry_id = entry.get("id")
-        if not isinstance(entry_id, str) or entry_id in parent_by_id:
+        if not isinstance(entry_id, str) or entry_id in by_id:
             return None
         parent_id = entry.get("parentId")
         if parent_id is not None and not isinstance(parent_id, str):
             return None
-        parent_by_id[entry_id] = parent_id
+        by_id[entry_id] = entry
         leaf_id = entry_id
 
     if leaf_id is None:
         return []
-    path: list[str] = []
+    path: list[dict[str, Any]] = []
     seen: set[str] = set()
     current: str | None = leaf_id
     while current is not None:
-        if current in seen or current not in parent_by_id:
+        if current in seen or current not in by_id:
             return None
         seen.add(current)
-        path.append(current)
-        current = parent_by_id[current]
+        path.append(by_id[current])
+        current = by_id[current].get("parentId")
     path.reverse()
     return path
 
@@ -184,17 +183,11 @@ def read_active_messages(
             warnings.add(path, "unreadable_file")
         return None
 
-    active_ids = active_entry_ids(entries, version)
-    if active_ids is None:
+    branch = active_entries(entries, version)
+    if branch is None:
         warnings.add(path, "invalid_branch_structure")
         return None
-    by_id = {
-        entry["id"]: entry
-        for entry in entries
-        if isinstance(entry.get("id"), str)
-    }
-    active_entries = entries if version == 1 else [by_id[entry_id] for entry_id in active_ids]
-    messages = [message for entry in active_entries if (message := recall_text(entry)) is not None]
+    messages = [message for entry in branch if (message := recall_text(entry)) is not None]
     return messages, scanned
 
 
@@ -233,22 +226,6 @@ def message_fingerprint(messages: Iterable[RecallMessage]) -> str:
         digest.update(len(encoded).to_bytes(8, "big"))
         digest.update(encoded)
     return digest.hexdigest()
-
-
-def cutoff_from_args(
-    args: argparse.Namespace, now: datetime | None = None
-) -> datetime | None:
-    if args.days is None:
-        return None
-    if not math.isfinite(args.days) or args.days < 0:
-        raise ValueError("--days must be a finite non-negative number")
-    current_time = now or datetime.now(timezone.utc)
-    if current_time.tzinfo is None:
-        current_time = current_time.replace(tzinfo=timezone.utc)
-    try:
-        return current_time.astimezone(timezone.utc) - timedelta(days=args.days)
-    except OverflowError as error:
-        raise ValueError("--days exceeds the supported date range") from error
 
 
 def candidate_for_messages(
@@ -292,7 +269,7 @@ def scan_candidates(
     terms: tuple[str, ...],
     now: datetime | None = None,
 ) -> tuple[list[Candidate], dict[str, int], session_search.WarningCollector]:
-    cutoff = cutoff_from_args(args, now)
+    cutoff = session_search.cutoff_for_days(args.days, now)
     roots = [args.sessions_root, *args.additional_sessions_root]
     warnings = session_search.WarningCollector()
     paths = permitted_files(roots, warnings)
@@ -511,7 +488,7 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
         raise CandidateNotFoundError
     messages, _scanned = loaded
     refreshed, eligible = candidate_for_messages(
-        candidate.path, messages, terms, cutoff_from_args(args, reference_time)
+        candidate.path, messages, terms, session_search.cutoff_for_days(args.days, reference_time)
     )
     if refreshed != candidate:
         raise CandidateNotFoundError

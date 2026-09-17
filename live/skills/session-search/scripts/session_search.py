@@ -242,7 +242,6 @@ def events_for_entry(
 
 class WarningCollector:
     def __init__(self) -> None:
-        self._count = 0
         self._counts: Counter[str] = Counter()
         self._items: list[dict[str, str]] = []
         self._seen: set[tuple[str, str]] = set()
@@ -253,14 +252,13 @@ class WarningCollector:
         if key in self._seen:
             return
         self._seen.add(key)
-        self._count += 1
         self._counts[kind] += 1
         if len(self._items) < MAX_WARNING_ITEMS:
             self._items.append({"path": path_text, "kind": kind})
 
     @property
     def count(self) -> int:
-        return self._count
+        return len(self._seen)
 
     def output(self, include_items: bool) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -390,18 +388,24 @@ def discover_session_files(roots: Iterable[Path]) -> list[Path]:
     return sorted(paths.values())
 
 
+def cutoff_for_days(
+    days: float | None, now: datetime | None = None
+) -> datetime | None:
+    if days is None:
+        return None
+    if not math.isfinite(days) or days < 0:
+        raise ValueError("--days must be a finite non-negative number")
+    current_time = now or datetime.now(timezone.utc)
+    if current_time.tzinfo is None:
+        current_time = current_time.replace(tzinfo=timezone.utc)
+    try:
+        return current_time.astimezone(timezone.utc) - timedelta(days=days)
+    except OverflowError as error:
+        raise ValueError("--days exceeds the supported date range") from error
+
+
 def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str, Any]:
-    cutoff = None
-    if args.days is not None:
-        if not math.isfinite(args.days) or args.days < 0:
-            raise ValueError("--days must be a finite non-negative number")
-        current_time = now or datetime.now(timezone.utc)
-        if current_time.tzinfo is None:
-            current_time = current_time.replace(tzinfo=timezone.utc)
-        try:
-            cutoff = current_time.astimezone(timezone.utc) - timedelta(days=args.days)
-        except OverflowError as error:
-            raise ValueError("--days exceeds the supported date range") from error
+    cutoff = cutoff_for_days(args.days, now)
     if args.limit < 0:
         raise ValueError("--limit must be non-negative")
     paths = discover_session_files([args.sessions_root, *args.additional_sessions_root])

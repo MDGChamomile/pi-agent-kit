@@ -338,7 +338,7 @@ class SessionRecallTests(unittest.TestCase):
             key: compact[key] for key in ("type", "id", "parentId", "timestamp")
         })
         self.assertNotIn("PAYLOAD", json.dumps(retained))
-        self.assertEqual(session_recall.active_entry_ids(retained, 3), ["u", "t", "c"])
+        self.assertEqual(session_recall.active_entries(retained, 3), retained)
         self.assertEqual(session_recall.recall_text(retained[0]), session_recall.recall_text(original))
         self.assertIsInstance(original["message"]["content"], list)
 
@@ -358,8 +358,8 @@ class SessionRecallTests(unittest.TestCase):
                 with self.subTest(version=version):
                     write_session(path, header("branch", root, version), records)
                     warnings = session_recall.session_search.WarningCollector()
-                    validate = session_recall.active_entry_ids
-                    with patch.object(session_recall, "active_entry_ids", wraps=validate) as observed:
+                    validate = session_recall.active_entries
+                    with patch.object(session_recall, "active_entries", wraps=validate) as observed:
                         loaded = session_recall.read_active_messages(path, str(root), False, warnings)
                     retained = observed.call_args.args[0]
                     self.assertEqual(len(retained), len(records))
