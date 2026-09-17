@@ -117,11 +117,7 @@ export function isInstallTelemetryEnabled(
   telemetryEnv: string | undefined = process.env.PI_TELEMETRY,
 ): boolean {
   if (telemetryEnv === undefined) return settings.getEnableInstallTelemetry();
-  return (
-    telemetryEnv === "1" ||
-    telemetryEnv.toLowerCase() === "true" ||
-    telemetryEnv.toLowerCase() === "yes"
-  );
+  return ["1", "true", "yes"].includes(telemetryEnv.toLowerCase());
 }
 
 export function parseModelReference(reference: string): { provider: string; modelId: string } | null {
