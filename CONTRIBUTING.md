@@ -15,7 +15,7 @@ For a proposed change:
 
 Use the smallest relevant set of checks. For prose-only changes, review examples, relative links, and consistency with the source; do not make model calls just to validate wording. Run the skill metadata check for `SKILL.md` changes. For behavior changes, add a regression test and run the affected resource's offline suite. Changes to the paired pi-subagent runtime or package require all three checks in its maintenance guide.
 
-The commands below match the relevant `live-validation` entry points. Python checks need Python 3.10+ and no third-party Python packages; JavaScript checks use Node.js 22.22+ unless noted. Install development dependencies only when needed; those installation commands may access package registries.
+The commands below match the relevant `live-validation` entry points. Python checks need Python 3.10+; only Jev's SDK-contract tests need a third-party Python package (`typesafe-sdk==0.6.0`). JavaScript checks use Node.js 22.22+ unless noted. Install development dependencies only when needed; those installation commands may access package registries.
 
 | Changed area | Working directory | Setup | Offline verification |
 | --- | --- | --- | --- |
@@ -26,7 +26,9 @@ The commands below match the relevant `live-validation` entry points. Python che
 | Deep-plan publication helper | Repository root | None | `node --test live/skills/deep-plan/scripts/publish-plan.test.mjs` |
 | Pi Subagent | `live/extensions/pi-subagent` | `npm ci --include=dev --ignore-scripts`; Python 3 and `rg` must be available | `npm run typecheck`, `npm test`, `npm run package:check` |
 | Compaction model extension | `live/extensions/pi-compaction-model` | Bun 1.3.14; `bun install --frozen-lockfile` | `bun run check` |
-| Jev reranking extension | Repository root | Existing Node/Python; existing SDK for mock HTTP tests | See the [Jev guide](live/extensions/pi-jev-tools/README.md#offline-verification) for Node/Python tests and offline Pi loading/typecheck |
+| Jev reranking extension | Repository root | Node/Python; `typesafe-sdk==0.6.0`; locked Pi/TypeScript dependencies from `live/extensions/pi-subagent` | See the [Jev guide](live/extensions/pi-jev-tools/README.md#offline-verification) for Node/Python tests and offline Pi loading/typecheck; CI requires all Python tests to run without skips |
+
+The Jev CI job installs the pinned SDK and reuses the subagent development lockfile for Pi/TypeScript. Its HTTP-contract tests use mock transports and synthetic credentials, not a real API key or provider calls. Local Python success with skipped SDK tests is not equivalent to the CI check.
 
 The frontmatter check verifies opening/closing delimiters and non-empty required fields inside them, plus relative Markdown links in `SKILL.md`; it is not a complete YAML schema validator. README and reference-document links still need review.
 

@@ -3,6 +3,7 @@ name: live-validation
 on:
   push:
     paths:
+      - "live/extensions/pi-jev-tools/**"
       - "live/extensions/pi-compaction-model/**"
       - "live/extensions/pi-subagent/**"
       - "live/skills/**"
@@ -12,6 +13,7 @@ on:
       - ".github/scripts/**"
   pull_request:
     paths:
+      - "live/extensions/pi-jev-tools/**"
       - "live/extensions/pi-compaction-model/**"
       - "live/extensions/pi-subagent/**"
       - "live/skills/**"
@@ -47,6 +49,45 @@ jobs:
         run: |
           python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
           python3 -B .github/scripts/validate_skills.py
+
+  pi-jev-tools:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PI_OFFLINE: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22.22.0"
+          cache: npm
+          cache-dependency-path: live/extensions/pi-subagent/package-lock.json
+      - name: Install SDK for offline mock HTTP tests
+        run: python3 -m pip install "typesafe-sdk==0.6.0"
+      - name: Validate Jev Node tests
+        run: node --test live/extensions/pi-jev-tools/tests/core.test.mjs
+      - name: Validate Jev Python tests without skips
+        run: |
+          python3 -B - <<'PY'
+          import importlib.metadata
+          import unittest
+          import typesafe_sdk
+          import httpx2
+          assert importlib.metadata.version("typesafe-sdk") == "0.6.0"
+          suite = unittest.defaultTestLoader.discover("live/extensions/pi-jev-tools/tests")
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          raise SystemExit(0 if result.wasSuccessful() and not result.skipped else 1)
+          PY
+      - name: Install locked Pi and TypeScript test dependencies
+        run: npm --prefix live/extensions/pi-subagent ci --include=dev --ignore-scripts
+      - name: Validate Jev types and offline Pi loading
+        run: |
+          node live/extensions/pi-jev-tools/tests/pi-check.mjs \
+            live/extensions/pi-subagent/node_modules/@earendil-works/pi-coding-agent \
+            live/extensions/pi-subagent/node_modules/typescript
 
   pi-compaction-model:
     runs-on: ubuntu-24.04
