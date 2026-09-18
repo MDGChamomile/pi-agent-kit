@@ -21,6 +21,7 @@ The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): r
 | --- | --- | --- |
 | Use a dedicated model for native compaction | [`pi-compaction-model`](live/extensions/pi-compaction-model/README.md) | Copying the standalone extension from source |
 | Isolate noisy investigation from the main context | [`pi-subagent`](live/extensions/pi-subagent/README.md) | Installing the paired skill and extension from npm |
+| Experiment with consent-gated public-passage reranking | [`pi-jev-tools`](live/extensions/pi-jev-tools/README.md) | Loading the source extension with an existing TypeSafe Python SDK environment |
 | Turn a vague repository change into an executable plan | [`deep-plan`](live/skills/deep-plan/SKILL.md) | Copying the skill from source and providing a compatible `ask_user` tool |
 | Review source defensively with explicit scope and evidence | [`security-audit`](live/skills/security-audit/README.md) | Copying the standalone skill from source and invoking it manually |
 | Analyze patterns across local Pi sessions | [`session-search`](live/skills/session-search/README.md) | Copying the standalone skill from source |

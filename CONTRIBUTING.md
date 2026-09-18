@@ -26,6 +26,7 @@ The commands below match the relevant `live-validation` entry points. Python che
 | Deep-plan publication helper | Repository root | None | `node --test live/skills/deep-plan/scripts/publish-plan.test.mjs` |
 | Pi Subagent | `live/extensions/pi-subagent` | `npm ci --include=dev --ignore-scripts`; Python 3 and `rg` must be available | `npm run typecheck`, `npm test`, `npm run package:check` |
 | Compaction model extension | `live/extensions/pi-compaction-model` | Bun 1.3.14; `bun install --frozen-lockfile` | `bun run check` |
+| Jev reranking extension | Repository root | Existing Node/Python; existing SDK for mock HTTP tests | See the [Jev guide](live/extensions/pi-jev-tools/README.md#offline-verification) for Node/Python tests and offline Pi loading/typecheck |
 
 The frontmatter check verifies opening/closing delimiters and non-empty required fields inside them, plus relative Markdown links in `SKILL.md`; it is not a complete YAML schema validator. README and reference-document links still need review.
 
