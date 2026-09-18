@@ -106,6 +106,8 @@ A recall window contains a matching message and at most one neighboring text mes
 
 `find` never requires evidence consent because it returns only path-free candidate metadata. `recall` requires `--include-evidence`; in an agent workflow this flag may be used only after the user explicitly approves sending the masked snippets and timestamps to the active model provider.
 
+## Aggregate output and evidence
+
 For the aggregate CLI, with `--include-evidence`, each snippet stays within 300 characters, including omission markers. The full evidence text is masked before whitespace is collapsed and a window is selected. Common quoted credentials (including spaces and escaped quotes) and complete Cookie/Set-Cookie header values are masked; this remains best-effort, not a guarantee that all sensitive data is removed. For long text, the window centers on the earliest remaining query occurrence (case-insensitive, with query whitespace collapsed too), regardless of query order. Distant AND terms need not all appear in that single window; matching still uses the full original searchable event. If no query remains visible—for example, it was masked or matched only tool metadata—or no query was supplied, the snippet uses the masked text's beginning. Hidden values are never restored. Results remain newest first.
 
 Assistant failures are counted by `--error` even when their content is empty. Their `errorMessage` text is searchable alongside any partial response and is subject to the same opt-in evidence and masking rules.
