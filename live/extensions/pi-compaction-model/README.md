@@ -12,7 +12,7 @@ It does not introduce a new summarization pipeline. It calls Pi's exported `comp
 - output-token budgeting
 - `/compact` focus instructions
 
-If the configured model is unavailable or fails, the extension returns control to Pi, which compacts with the active conversation model.
+If the extension cannot produce a dedicated-model result, it returns control to Pi's native handling path. It does not start or guarantee a second compaction request itself.
 
 ## Origin and maintenance
 
@@ -24,7 +24,7 @@ Kit-specific changes: source-install documentation and private package metadata;
 
 ## Install from source
 
-Requires Pi with the APIs used by this extension (upstream declares `>=0.80.7`). See [Development](#development) for verification; the declared minimum is not a tested compatibility matrix. Runtime dependencies are supplied by Pi; Bun is needed only for development. The commands below assume a POSIX shell.
+Requires Pi with the APIs used by this extension (upstream declares `>=0.80.7`). See [Development](#development) for the verification summary and detailed record; the declared minimum is not a tested compatibility matrix. Runtime dependencies are supplied by Pi; Bun is needed only for development. The commands below assume a POSIX shell.
 
 Review this directory, then copy it from a checkout:
 
@@ -126,7 +126,7 @@ The resulting routing is:
 | `/compact` | Pi native compaction with the active model |
 | Automatic threshold | Pi native compaction algorithm with the configured model |
 | Overflow recovery | Pi native compaction algorithm with the configured model |
-| Configured-model failure | Pi native fallback with the active model |
+| Configured-model failure | Control returns to Pi's native handling path |
 
 ## OpenRouter attribution
 
@@ -134,14 +134,25 @@ For OpenRouter models, the extension adds the same app-attribution headers as Pi
 
 ## Failure behavior
 
-The extension logs a warning and falls back to Pi's active model when:
+### Configuration errors
 
-- the configuration is invalid
-- the model cannot be found
-- authentication cannot be resolved
-- the compaction request fails or is cancelled
+Configuration fields recover independently:
 
-Pi currently resolves authentication for the active conversation model before firing the compaction extension hook. Consequently, the active model must also have valid authentication even when a dedicated compaction model is configured.
+| Condition | Behavior |
+| --- | --- |
+| Configured section has a missing or empty `model`, or `model` is not in `provider/model` form | Warns, does not use a dedicated model, and returns control to Pi's native handling path |
+| Model not found | Warns and returns control to Pi's native handling path |
+| Authentication unavailable | Warns and returns control to Pi's native handling path |
+| Invalid `thinkingLevel` | Keeps the dedicated model, warns, and omits the thinking setting so the provider default applies |
+| Invalid `reasons` | Keeps the dedicated model, warns, and handles `manual`, `threshold`, and `overflow` |
+
+An empty valid `reasons` array is not an error; it disables dedicated-model routing. Pi currently resolves authentication for the active conversation model before firing the compaction extension hook. Consequently, the active model must also have valid authentication even when a dedicated compaction model is configured.
+
+### Request failures and cancellation
+
+If a dedicated-model request fails while its cancellation signal is not aborted, the extension warns and returns no result, allowing Pi's native handling path to continue. If the error is caught after the signal is aborted, the extension suppresses the warning and likewise returns no result.
+
+Returning no result does not mean that the extension starts a request with the active model. In particular, after cancellation it does not guarantee that Pi will perform another compaction request.
 
 ## Development
 
@@ -152,19 +163,9 @@ bun install --frozen-lockfile
 bun run check
 ```
 
-The `live-validation` CI workflow runs these commands with Bun 1.3.14. A fresh frozen-lockfile installation (Pi 0.80.7) passed typechecking and all 13 tests.
+The `live-validation` workflow runs the same commands. A fresh frozen-lockfile installation against the inherited Pi 0.80.7 dependency passed typechecking and all 13 tests; separate Pi 0.85.1 checks also passed typechecking, tests, loader registration, and bounded dedicated-model/fallback smoke scenarios.
 
-The inherited lockfile pins the original development environment. To check a newer Pi version, typecheck and run the tests against that version in an isolated development copy; do not treat the inherited dependency range as verification of every later release.
-
-Kit verification: Pi 0.85.1 typecheck passed with TypeScript 7.0.2; all 13 tests passed with Bun 1.3.14 against an existing Pi 0.85.1 installation; Pi's extension loader registered exactly one compaction handler without errors. These checks used temporary copies and existing dependencies, not a fresh lockfile installation.
-
-A separate Pi 0.85.1 SDK smoke test with synthetic messages and `openai-codex/gpt-5.6-luna` (`medium`) passed two dedicated-model compactions followed by native fallback after a deliberately failed model lookup. All three retained cumulative read/modified file lists in both summary text and details, and the active model stayed unchanged. The temporary test harness forced SSE, disabled retries, and imposed a 60-second cancellation signal per request; it made exactly three model requests. This does not test every provider or failure mode. This Pi version's Codex transport does not forward `maxTokens` as a server-side output cap, so it cannot guarantee that cap.
-
-An additional source smoke on 2026-09-15 used Pi 0.85.1 and Node.js 22.22.3 with **`openai-codex/gpt-6-astra` / `medium` as the active model**, retaining Luna/medium for dedicated compaction. Two Luna compactions and a deliberately failed model lookup followed by native Astra compaction all passed. Each preserved cumulative file lists in both summary sections and details; the active model and thinking stayed Astra/medium. Wire model/thinking and response identity were verified for all three requests. The temporary SDK harness used synthetic in-memory messages and isolated settings, forced SSE, disabled retries, imposed a 60-second signal per request, and enforced a three-request transport limit. The original smoke above remains a separate record. Source-only results and source/harness hashes are in `verification/2026-09-15-astra-medium.json`. This manual, non-split-turn smoke does not establish summary quality, performance, automatic threshold/overflow behavior, or recovery from actual provider errors or cancellation.
-
-`test/config.test.ts` tests configuration parsing and merging. `test/index.test.ts` mocks the compaction API and checks file-list restoration in dedicated-model and fallback paths. The test script runs the files in separate processes so module mocks cannot leak between them. These tests make no model requests and do not use real credentials.
-
-Offline tests and typechecking do not establish real-provider compatibility. Before switching an active installation, verify loading in Pi and test compaction separately with an authorized model call. Compaction sends session content to the configured provider and can incur usage charges; fallback may make another request with the active model. The extension does not change the active conversation model or write its own settings.
+These results do not establish compatibility with every provider or failure mode. Offline checks make no model requests, while live compaction sends session content to the configured provider and can incur usage charges. See [the development and verification record](DEVELOPMENT.md) for environments, harness details, request counts, limitations, and source-only evidence.
 
 ## License
 
