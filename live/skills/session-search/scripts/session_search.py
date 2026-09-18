@@ -172,7 +172,7 @@ def event_matches(event: dict[str, Any], filters: EventFilters) -> bool:
 def events_for_entry(
     entry: dict[str, Any],
     session: dict[str, str],
-    on_leaf: bool,
+    on_leaf: bool | None,
     skill_reads_by_call_id: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
@@ -488,11 +488,12 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                         warnings.add(path, "invalid_entry")
                         continue
                     scanned_entries += 1
-                    if result_limit and version >= 2:
-                        entry_id = entry.get("id")
-                        if isinstance(entry_id, str):
-                            parent_by_id[entry_id] = entry.get("parentId")
-                            leaf_id = entry_id
+                    entry_id = entry.get("id")
+                    if version >= 2 and not isinstance(entry_id, str):
+                        warnings.add(path, "invalid_entry_id")
+                    if result_limit and version >= 2 and isinstance(entry_id, str):
+                        parent_by_id[entry_id] = entry.get("parentId")
+                        leaf_id = entry_id
                     record_skill_read_calls(entry, skill_reads_by_call_id)
 
                     timestamp = parse_timestamp(entry.get("timestamp"))
@@ -500,13 +501,16 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                         continue
                     eligible_entries += 1
                     entry_matched = False
-                    for event in events_for_entry(entry, session, False, skill_reads_by_call_id):
+                    # Branch membership stays unknown until the file is fully read.
+                    for event in events_for_entry(entry, session, None, skill_reads_by_call_id):
                         if not event_matches(event, filters):
                             continue
                         matched_events += 1
                         if not entry_matched:
                             entry_matched = True
-                            session_matched = True
+                            if not session_matched:
+                                session_matched = True
+                                matched_sessions += 1
                             matched_entries += 1
                             roles[event["role"].casefold()] += 1
                         tool_name = event.get("tool_name")
@@ -544,11 +548,17 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                     leaf_path = latest_leaf_path(parent_by_id, leaf_id) if version >= 2 else set()
                     for _timestamp, _sequence, event in result_heap:
                         if event["file"] == str(path):
-                            event["on_latest_leaf"] = version == 1 or event.get("entry_id") in leaf_path
-                if session_matched:
-                    matched_sessions += 1
+                            event_id = event.get("entry_id")
+                            event["on_latest_leaf"] = (
+                                True if version == 1 else
+                                event_id in leaf_path if isinstance(event_id, str) else None
+                            )
         except (OSError, UnicodeError):
             warnings.add(path, "unreadable_file")
+            # Keep already counted evidence, but never claim a complete branch scan.
+            for _timestamp, _sequence, event in result_heap:
+                if event["file"] == str(path):
+                    event["on_latest_leaf"] = None
 
     if attempted_files and not readable_headers:
         raise RuntimeError("all candidate session files were unreadable or invalid")

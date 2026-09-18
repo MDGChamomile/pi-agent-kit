@@ -665,6 +665,90 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(result["summary"]["results_returned"], 3)
         self.assertEqual([item["entry_id"] for item in result["results"]], ["e9", "e8", "e7"])
 
+    def test_late_utf8_failure_preserves_consistent_partial_counts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            damaged = root / "a-damaged.jsonl"
+            write_session(damaged, header("damaged", root), [
+                message("a", None, "2026-08-10T00:00:00Z", "toolResult", "needle",
+                        toolName="read", isError=True),
+                message("b", "a", "2026-08-10T00:00:01Z", "toolResult", "needle",
+                        toolName="read", isError=True),
+                # Force the decode error beyond TextIOWrapper's initial read-ahead.
+                *[{"type": "custom", "id": f"p{i}", "parentId": "b", "padding": "x" * 300}
+                  for i in range(100)],
+            ])
+            with damaged.open("ab") as handle:
+                handle.write(b"\xff\n")
+            write_session(root / "b-good.jsonl", header("good", root), [
+                message("c", None, "2026-08-10T00:00:02Z", "user", "needle"),
+            ])
+            for flags in [(), ("--include-evidence",), ("--include-evidence", "--limit", "0")]:
+                with self.subTest(flags=flags):
+                    result = session_search.aggregate(self.args(root, root, "--query", "needle", *flags), now=self.NOW)
+                    summary = result["summary"]
+                    self.assertEqual(summary["matched_sessions"], 2)
+                    self.assertEqual(summary["matched_entries"], 3)
+                    self.assertEqual(summary["matched_events"], 3)
+                    self.assertEqual(summary["tool_errors"], {"read": 2})
+                    self.assertEqual(summary["tool_error_sessions"], {"read": 1})
+                    self.assertEqual(result["warnings"]["by_kind"], {"unreadable_file": 1})
+                    if flags == ("--include-evidence",):
+                        events = {event["entry_id"]: event for event in result["results"]}
+                        self.assertIsNone(events["a"]["on_latest_leaf"])
+                        self.assertIsNone(events["b"]["on_latest_leaf"])
+                        self.assertTrue(events["c"]["on_latest_leaf"])
+                    else:
+                        self.assertEqual(result["results"], [])
+                    if not flags:
+                        self.assertNotIn(str(root), json.dumps(result))
+
+    def test_late_oserror_keeps_matches_but_not_branch_claims(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "session.jsonl"
+            write_session(path, header("session", root), [
+                message("a", None, "2026-08-10T00:00:00Z", "user", "needle"),
+            ])
+            content = path.read_text(encoding="utf-8")
+
+            class FailingReader(io.StringIO):
+                def __next__(self):
+                    line = self.readline()
+                    if not line:
+                        raise OSError("synthetic read failure")
+                    return line
+
+            with patch.object(Path, "open", return_value=FailingReader(content)):
+                result = session_search.aggregate(self.args(root, root, "--include-evidence"), now=self.NOW)
+            self.assertEqual(result["summary"]["matched_sessions"], 1)
+            self.assertEqual(result["summary"]["matched_events"], 1)
+            self.assertIsNone(result["results"][0]["on_latest_leaf"])
+            self.assertEqual(result["warnings"]["by_kind"], {"unreadable_file": 1})
+
+    def test_invalid_entry_ids_do_not_abort_aggregate(self):
+        for version in (1, 2, 3):
+            for bad_id in ([], {}, None, 42, True):
+                with self.subTest(version=version, bad_id=bad_id), tempfile.TemporaryDirectory() as temp:
+                    root = Path(temp)
+                    head = {**header("session", root), "version": version}
+                    malformed = message("bad", None, "2026-08-10T00:00:00Z", "user", "needle")
+                    malformed["id"] = bad_id
+                    write_session(root / "session.jsonl", head, [
+                        malformed,
+                        message("good", None, "2026-08-10T00:00:01Z", "user", "needle"),
+                    ])
+                    for flags in [(), ("--include-evidence",)]:
+                        result = session_search.aggregate(self.args(root, root, *flags), now=self.NOW)
+                        self.assertEqual(result["summary"]["matched_sessions"], 1)
+                        self.assertEqual(result["summary"]["matched_events"], 2)
+                        self.assertEqual(result["warnings"]["by_kind"],
+                                         {"invalid_entry_id": 1} if version >= 2 else {})
+                        if flags:
+                            self.assertTrue(result["results"][0]["on_latest_leaf"])
+                            self.assertEqual(result["results"][1]["entry_id"], bad_id)
+                            self.assertIs(result["results"][1]["on_latest_leaf"], True if version == 1 else None)
+
     def test_unselected_session_body_is_not_scanned(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)

@@ -90,7 +90,7 @@ Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--ski
 
 ## Prior-session recall
 
-Recall uses a separate CLI so the existing aggregate command and JSON contract remain unchanged. Start with a path-free candidate search:
+Recall uses a separate CLI with its own candidate and evidence contract. Start with a path-free candidate search:
 
 ```bash
 python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py find \
@@ -130,6 +130,8 @@ The command emits one JSON object:
 | `warnings` | Deduplicated counts by kind | Up to 100 file-path details |
 
 In `summary`, `tool_errors` counts matching error events per tool; `tool_error_sessions` counts session files with at least one such event per tool, using the same filters and case-insensitive tool names. Repeated failures of one tool in one file count once in `tool_error_sessions`. Files with identical session IDs still count separately; branches, copies, and retries are not deduplicated into inferred bugs or tasks. `matched_sessions` remains the overall matching-file count, not a per-tool distribution.
+
+If an individual file fails during reading, aggregate search keeps the events already read, counts that matching file once, and reports `unreadable_file`. These are partial counts, not a complete-file result. Evidence from that file has `on_latest_leaf: null` (unknown), rather than a claim about the latest branch. Files that finish reading retain boolean branch membership for valid IDs. In v2/v3, non-string or missing entry IDs produce `invalid_entry_id`; their events remain searchable, but their branch membership is also `null`. Legacy v1 remains linear and does not require entry IDs.
 
 In `summary`, `evidence_omitted` distinguishes the safe default from `evidence_truncated`; `truncated` remains a compatibility alias for evidence truncation.
 
