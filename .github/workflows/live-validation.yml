@@ -59,35 +59,15 @@ jobs:
       PI_OFFLINE: "1"
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.10"
       - uses: actions/setup-node@v6
         with:
           node-version: "22.22.0"
           cache: npm
           cache-dependency-path: live/extensions/pi-subagent/package-lock.json
-      - name: Install SDK for offline mock HTTP tests
-        run: python3 -m pip install "typesafe-sdk==0.6.0"
-      - name: Validate Jev Node tests
+      - name: Validate Jev mocked-HTTP tests
         run: |
           node --test live/extensions/pi-jev-tools/tests/core.test.mjs
           node --test live/extensions/pi-jev-router/tests/core.test.mjs
-      - name: Validate Jev Python tests without skips
-        run: |
-          for tests in live/extensions/pi-jev-tools/tests live/extensions/pi-jev-router/tests; do
-            JEV_TEST_DIR="$tests" python3 -B - <<'PY'
-          import importlib.metadata
-          import os
-          import unittest
-          import typesafe_sdk
-          import httpx2
-          assert importlib.metadata.version("typesafe-sdk") == "0.6.0"
-          suite = unittest.defaultTestLoader.discover(os.environ["JEV_TEST_DIR"])
-          result = unittest.TextTestRunner(verbosity=2).run(suite)
-          raise SystemExit(0 if result.wasSuccessful() and not result.skipped else 1)
-          PY
-          done
       - name: Install locked Pi and TypeScript test dependencies
         run: npm --prefix live/extensions/pi-subagent ci --include=dev --ignore-scripts
       - name: Validate Jev types and offline Pi loading
