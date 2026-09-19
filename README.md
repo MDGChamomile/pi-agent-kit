@@ -25,7 +25,6 @@ The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): r
 | Turn a vague repository change into an executable plan | [`deep-plan`](live/skills/deep-plan/README.md) | Copying the skill from source and providing a compatible `ask_user` tool |
 | Review source defensively with explicit scope and evidence | [`security-audit`](live/skills/security-audit/README.md) | Copying the standalone skill from source and invoking it manually |
 | Analyze patterns across local Pi sessions | [`session-search`](live/skills/session-search/README.md) | Copying the standalone skill from source |
-| Analyze Korean stocks with separate Trading and Investing ratings | [`simplykst`](live/skills/simplykst/README.md) | Copying the skill from source and providing web research tools |
 
 ### Install Pi Subagent
 
@@ -70,6 +69,7 @@ Resources kept for reference but no longer actively used or maintained:
 | [`git-history`](retired/extensions/git-history/index.ts) | Add `/snapshot` to review and commit changes in the Pi agent directory |
 | [`meta-prompt`](retired/skills/meta-prompt/SKILL.md) | Write or improve a compact, ready-to-use prompt |
 | [`nomore-harness`](retired/skills/nomore-harness/SKILL.md) | Review proposed additions to a Pi environment before adoption |
+| [`simplykst`](retired/skills/simplykst/README.md) | Analyze Korean stocks with separate Trading and Investing ratings |
 
 ## Contributing
 

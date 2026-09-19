@@ -1,5 +1,8 @@
 # simplykst
 
+> [!WARNING]
+> **Retired:** This skill is preserved as a reference and is no longer actively used, maintained, or supported. Its data sources, analysis methodology, and Pi compatibility may be stale; do not treat its ratings or historical validation as current assurance.
+
 `simplykst` is a Korean-language Pi skill for analyzing Korean listed companies, starting with DART disclosures. It reports separate **Trading (1–12 weeks)** and **Investing (1–3 years)** ratings out of **5.00**, using six factors per perspective and nine sector weighting profiles.
 
 Read [`SKILL.md`](SKILL.md) for the workflow, [`references/methodology.md`](references/methodology.md) for scoring, and [`references/data-sources.md`](references/data-sources.md) for collection and credential safeguards.
@@ -14,7 +17,7 @@ From the repository root, copy only this skill directory into a Pi skill locatio
 
 ```bash
 mkdir -p ~/.pi/agent/skills
-cp -R live/skills/simplykst ~/.pi/agent/skills/
+cp -R retired/skills/simplykst ~/.pi/agent/skills/
 ```
 
 Restart Pi or use `/reload`. With skill commands enabled:

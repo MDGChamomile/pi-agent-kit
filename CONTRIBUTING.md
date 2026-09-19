@@ -22,7 +22,6 @@ The commands below match the relevant `live-validation` entry points. Python che
 | Skill frontmatter or relative links | Repository root | None | `python3 -B .github/scripts/validate_skills.py` |
 | Skill validator or its CI step | Repository root | None | `python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v`, then the metadata check above |
 | Session search / recall | `live/skills/session-search` | None | `python3 -B -m unittest discover -s tests -v` |
-| simplykst calculator | `live/skills/simplykst` | None | `python3 -B -m unittest discover -s tests -v` |
 | Deep-plan publication helper | Repository root | None | `node --test live/skills/deep-plan/scripts/publish-plan.test.mjs` |
 | Pi Subagent | `live/extensions/pi-subagent` | `npm ci --include=dev --ignore-scripts`; Python 3 and `rg` must be available | `npm run typecheck`, `npm test`, `npm run package:check` |
 | Compaction model extension | `live/extensions/pi-compaction-model` | Bun 1.3.14; `bun install --frozen-lockfile` | `bun run check` |
