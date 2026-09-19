@@ -27,7 +27,8 @@ The commands below match the relevant `live-validation` entry points. Python che
 | Pi Subagent | `live/extensions/pi-subagent` | `npm ci --include=dev --ignore-scripts`; Python 3 and `rg` must be available | `npm run typecheck`, `npm test`, `npm run package:check` |
 | Compaction model extension | `live/extensions/pi-compaction-model` | Bun 1.3.14; `bun install --frozen-lockfile` | `bun run check` |
 | Jev reranking extension | Repository root | Node/Python; `typesafe-sdk==0.6.0`; locked Pi/TypeScript dependencies from `live/extensions/pi-subagent` | See the [Jev guide](live/extensions/pi-jev-tools/README.md#offline-verification) for Node/Python tests and offline Pi loading/typecheck; CI requires all Python tests to run without skips |
-| Jev routing extension and skill | Repository root | Node/Python; `typesafe-sdk==0.6.0`; locked Pi/TypeScript dependencies from `live/extensions/pi-subagent` | See the [router guide](live/extensions/pi-jev-router/README.md#offline-verification) for Node/Python tests, skill metadata validation, and offline Pi loading/typecheck |
+| Jev routing extension | Repository root | Node/Python; `typesafe-sdk==0.6.0`; locked Pi/TypeScript dependencies from `live/extensions/pi-subagent` | See the [router guide](live/extensions/pi-jev-router/README.md#offline-verification) for Node/Python tests and offline Pi loading/typecheck |
+| Shared Jev skill | Repository root | None | `python3 -B .github/scripts/validate_skills.py`; review both extension-guide links and selection guidance |
 
 The Jev CI job installs the pinned SDK and reuses the subagent development lockfile for Pi/TypeScript. Its HTTP-contract tests use mock transports and synthetic credentials, not a real API key or provider calls. Local Python success with skipped SDK tests is not equivalent to the CI check.
 
