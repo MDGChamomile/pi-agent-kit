@@ -13,22 +13,22 @@ Pi Agent Kit is the public, source-first collection of resources I currently use
 - **Live** resources are currently used and maintained.
 - **Retired** resources remain available as references.
 
-The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): read the source, take what is useful, and adapt it to your own workflow. It is not maintained as an install-everything Pi package. The `pi-subagent` skill and extension are also distributed together as the focused [`@mdgchamomile/pi-subagent`](https://www.npmjs.com/package/@mdgchamomile/pi-subagent) package.
+The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): read the source, take what is useful, and adapt it to your own workflow. It is not maintained as an install-everything Pi package. Pi Subagent and Pi Jev are now maintained in [independent repositories](#independent-projects); their installation options remain available below.
 
 ## Start here
 
 | If you want to… | Start with | Adopt it by… |
 | --- | --- | --- |
 | Use a dedicated model for native compaction | [`pi-compaction-model`](live/extensions/pi-compaction-model/README.md) | Copying the standalone extension from source |
-| Isolate noisy investigation from the main context | [`pi-subagent`](live/extensions/pi-subagent/README.md) | Installing the paired skill and extension from npm |
-| Let the agent select among consent-gated Jev routing and public-passage reranking tools | [`pi-jev`](live/skills/pi-jev/README.md) | Copying the shared skill and whichever source extensions you want with a configured Pi OpenRouter provider |
+| Isolate noisy investigation from the main context | [`pi-subagent`](https://github.com/MDGChamomile/pi-subagent) | Installing the paired skill and extension from npm |
+| Let the agent select among consent-gated Jev routing and public-passage reranking tools | [`pi-jev`](https://github.com/MDGChamomile/pi-jev) | Copying the shared skill and whichever source extensions you want with a configured Pi OpenRouter provider |
 | Turn a vague repository change into an executable plan | [`deep-plan`](live/skills/deep-plan/README.md) | Copying the skill from source and providing a compatible `ask_user` tool |
 | Review source defensively with explicit scope and evidence | [`security-audit`](live/skills/security-audit/README.md) | Copying the standalone skill from source and invoking it manually |
 | Analyze patterns across local Pi sessions | [`session-search`](live/skills/session-search/README.md) | Copying the standalone skill from source |
 
 ### Install Pi Subagent
 
-Pi Subagent requires Linux, including Ubuntu on WSL; native Windows is not officially supported or tested. See the [extension guide](live/extensions/pi-subagent/README.md#requirements-and-installation) for its complete requirements and security model.
+Pi Subagent requires Linux, including Ubuntu on WSL; native Windows is not officially supported or tested. See the [extension guide](https://github.com/MDGChamomile/pi-subagent/blob/main/extensions/pi-subagent/README.md#requirements-and-installation) for its complete requirements and security model.
 
 ```bash
 pi install npm:@mdgchamomile/pi-subagent
@@ -58,6 +58,17 @@ This skill sets `disable-model-invocation: true`, so Pi does not advertise it to
 
 > [!CAUTION]
 > Skills can instruct the model to take actions, and extensions run with the user's system permissions. Review each resource before adopting it.
+
+## Independent projects
+
+As of Pi Agent Kit `v0.4.0`, these projects have their own source, history, documentation, tests, and releases:
+
+| Project | Maintained source | Distribution |
+| --- | --- | --- |
+| Pi Subagent | [MDGChamomile/pi-subagent](https://github.com/MDGChamomile/pi-subagent) | The paired extension and skill remain `npm:@mdgchamomile/pi-subagent` |
+| Pi Jev | [MDGChamomile/pi-jev](https://github.com/MDGChamomile/pi-jev) | Copy either or both extensions and the shared skill from the new repository |
+
+The former kit copies and their packaging/CI jobs have been removed, not retired. Existing Git history, tags, and releases remain available. See [MIGRATION.md](MIGRATION.md) before updating a source-copy or symlink installation; updating this checkout does not migrate an installed resource or repair old source paths.
 
 ## Retired
 

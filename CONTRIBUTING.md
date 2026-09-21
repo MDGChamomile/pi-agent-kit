@@ -13,7 +13,7 @@ For a proposed change:
 
 ## Verification entry points
 
-Use the smallest relevant set of checks. For prose-only changes, review examples, relative links, and consistency with the source; do not make model calls just to validate wording. Run the skill metadata check for `SKILL.md` changes. For behavior changes, add a regression test and run the affected resource's offline suite. Changes to the paired pi-subagent runtime or package require all three checks in its maintenance guide.
+Use the smallest relevant set of checks. For prose-only changes, review examples, relative links, and consistency with the source; do not make model calls just to validate wording. Run the skill metadata check for `SKILL.md` changes. For behavior changes, add a regression test and run the affected resource's offline suite. Pi Subagent and Pi Jev changes belong in their independent repositories; use the verification instructions there.
 
 The commands below match the relevant `live-validation` entry points. Python checks need Python 3.10+. JavaScript checks use Node.js 22.22+ unless noted. Install development dependencies only when needed; those installation commands may access package registries.
 
@@ -23,17 +23,13 @@ The commands below match the relevant `live-validation` entry points. Python che
 | Skill validator or its CI step | Repository root | None | `python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v`, then the metadata check above |
 | Session search / recall | `live/skills/session-search` | None | `python3 -B -m unittest discover -s tests -v` |
 | Deep-plan publication helper | Repository root | None | `node --test live/skills/deep-plan/scripts/publish-plan.test.mjs` |
-| Pi Subagent | `live/extensions/pi-subagent` | `npm ci --include=dev --ignore-scripts`; Python 3 and `rg` must be available | `npm run typecheck`, `npm test`, `npm run package:check` |
 | Compaction model extension | `live/extensions/pi-compaction-model` | Bun 1.3.14; `bun install --frozen-lockfile` | `bun run check` |
-| Jev reranking extension | Repository root | Node 22.22+; locked Pi/TypeScript dependencies from `live/extensions/pi-subagent` for the load check | See the [Jev guide](live/extensions/pi-jev-tools/README.md#offline-verification) for mocked-HTTP tests and offline Pi loading/typecheck |
-| Jev routing extension | Repository root | Node 22.22+; locked Pi/TypeScript dependencies from `live/extensions/pi-subagent` for the load check | See the [router guide](live/extensions/pi-jev-router/README.md#offline-verification) for mocked-HTTP tests and offline Pi loading/typecheck |
-| Shared Jev skill | Repository root | None | `python3 -B .github/scripts/validate_skills.py`; review both extension-guide links and selection guidance |
 
-The Jev CI job reuses the subagent development lockfile for Pi/TypeScript. Its transport tests use mocked HTTP responses and synthetic keys, not a real credential or provider call.
+For moved resources, contribute and verify in [Pi Subagent](https://github.com/MDGChamomile/pi-subagent/blob/main/CONTRIBUTING.md) or [Pi Jev](https://github.com/MDGChamomile/pi-jev/blob/main/CONTRIBUTING.md). Their runtime sources, companion skills, test dependencies, and release workflows are no longer maintained in this kit.
 
 The frontmatter check verifies opening/closing delimiters and non-empty required fields inside them, plus relative Markdown links in `SKILL.md`; it is not a complete YAML schema validator. README and reference-document links still need review.
 
-See the [Pi Subagent maintenance guide](packaging/pi-subagent/DEVELOPMENT.md) for package assembly and offline discovery checks, and the [compaction guide](live/extensions/pi-compaction-model/README.md#development) for its pinned test environment. For deep-plan workflow changes, select relevant scenarios from its [behavior evaluations](live/skills/deep-plan/references/behavior-evals.md). Report any checks you could not run.
+See the [compaction guide](live/extensions/pi-compaction-model/README.md#development) for its pinned test environment. For deep-plan workflow changes, select relevant scenarios from its [behavior evaluations](live/skills/deep-plan/references/behavior-evals.md). Report any checks you could not run.
 
 Live model/web smoke tests and evaluations are opt-in, can disclose supplied content, and consume provider usage. Obtain applicable authorization before running them; neither a documentation change nor an offline test pass establishes real-provider compatibility. Do not install repository changes into an active Pi environment merely to validate a contribution.
 
