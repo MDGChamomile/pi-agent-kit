@@ -19,7 +19,7 @@ The commands below match the relevant `live-validation` entry points. Python che
 
 | Changed area | Working directory | Setup | Offline verification |
 | --- | --- | --- | --- |
-| Skill frontmatter or relative links | Repository root | None | `python3 -B .github/scripts/validate_skills.py` |
+| Skill frontmatter or maintained Markdown relative links | Repository root | None | `python3 -B .github/scripts/validate_skills.py` |
 | Skill validator or its CI step | Repository root | None | `python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v`, then the metadata check above |
 | Session search / recall | `live/skills/session-search` | None | `python3 -B -m unittest discover -s tests -v` |
 | Deep-plan publication helper | Repository root | None | `node --test live/skills/deep-plan/scripts/publish-plan.test.mjs` |
@@ -27,7 +27,7 @@ The commands below match the relevant `live-validation` entry points. Python che
 
 For moved resources, contribute and verify in [Pi Subagent](https://github.com/MDGChamomile/pi-subagent/blob/main/CONTRIBUTING.md) or [Pi Jev](https://github.com/MDGChamomile/pi-jev/blob/main/CONTRIBUTING.md). Their runtime sources, companion skills, test dependencies, and release workflows are no longer maintained in this kit.
 
-The frontmatter check verifies opening/closing delimiters and non-empty required fields inside them, plus relative Markdown links in `SKILL.md`; it is not a complete YAML schema validator. README and reference-document links still need review.
+The frontmatter check verifies opening/closing delimiters and non-empty required fields inside them. The same command checks relative Markdown links in every `SKILL.md` and in the maintained root documents (`README.md`, `MIGRATION.md`, `CONTRIBUTING.md`, and `PRINCIPLE.md`); it is not a complete YAML schema validator or a general Markdown linter.
 
 See the [compaction guide](live/extensions/pi-compaction-model/README.md#development) for its pinned test environment. For deep-plan workflow changes, select relevant scenarios from its [behavior evaluations](live/skills/deep-plan/references/behavior-evals.md). Report any checks you could not run.
 

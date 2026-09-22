@@ -3,12 +3,20 @@ name: live-validation
 on:
   push:
     paths:
+      - "README.md"
+      - "MIGRATION.md"
+      - "CONTRIBUTING.md"
+      - "PRINCIPLE.md"
       - "live/extensions/pi-compaction-model/**"
       - "live/skills/**"
       - ".github/workflows/live-validation.yml"
       - ".github/scripts/**"
   pull_request:
     paths:
+      - "README.md"
+      - "MIGRATION.md"
+      - "CONTRIBUTING.md"
+      - "PRINCIPLE.md"
       - "live/extensions/pi-compaction-model/**"
       - "live/skills/**"
       - ".github/workflows/live-validation.yml"
@@ -34,7 +42,7 @@ jobs:
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
       - name: Validate deep-plan publication
         run: node --test live/skills/deep-plan/scripts/publish-plan.test.mjs
-      - name: Validate skill frontmatter and relative Markdown links
+      - name: Validate skill frontmatter and maintained Markdown links
         run: |
           python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v
           python3 -B .github/scripts/validate_skills.py
