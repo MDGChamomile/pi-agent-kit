@@ -1,5 +1,4 @@
 import {
-  compact,
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -8,6 +7,7 @@ import {
   loadConfig,
   parseModelReference,
 } from "./config.js";
+import { compactWithOneRetry } from "./retry.js";
 
 function warn(message: string, error?: unknown): void {
   if (error === undefined) {
@@ -115,7 +115,7 @@ export default function compactionModel(pi: ExtensionAPI): void {
         authHeaders,
       );
 
-      const result = await compact(
+      const result = await compactWithOneRetry(
         event.preparation,
         requestModel,
         auth.apiKey,
@@ -129,9 +129,10 @@ export default function compactionModel(pi: ExtensionAPI): void {
 
       return { compaction: result };
     } catch (error) {
-      if (!event.signal.aborted) {
-        warn(`Compaction with ${config.model} failed; using Pi's active model.`, error);
+      if (event.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+        return { cancel: true };
       }
+      warn(`Compaction with ${config.model} failed; using Pi's active model.`, error);
       return;
     }
   });

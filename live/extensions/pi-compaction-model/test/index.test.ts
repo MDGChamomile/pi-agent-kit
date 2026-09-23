@@ -3,7 +3,12 @@ import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
 let config: { model: string; reasons: string[]; thinkingLevel?: string } | null;
 let compactImplementation: (...args: any[]) => Promise<any>;
 let telemetryEnabled: boolean;
+let sleepImplementation: (...args: any[]) => Promise<any>;
 const settings = {};
+
+mock.module("node:timers/promises", () => ({
+  setTimeout: (...args: any[]) => sleepImplementation(...args),
+}));
 
 mock.module("@earendil-works/pi-coding-agent", () => ({
   compact: (...args: any[]) => compactImplementation(...args),
@@ -33,6 +38,7 @@ beforeEach(() => {
   config = { model: "provider/model", reasons: ["manual", "threshold", "overflow"] };
   compactImplementation = async () => ({ summary: "compacted" });
   telemetryEnabled = true;
+  sleepImplementation = async () => {};
 });
 
 function harness(options: {
@@ -276,6 +282,113 @@ describe("session_before_compact", () => {
     });
     await telemetryOff.handler(telemetryOff.event, telemetryOff.ctx);
     expect(receivedHeaders).toEqual({ "x-test": "retained" });
+  });
+
+  for (const reason of ["manual", "threshold", "overflow"]) {
+    test(`retries a transient ${reason} failure once with the same arguments`, async () => {
+      const state = harness({ reason });
+      const calls: any[][] = [];
+      const waits: any[][] = [];
+      sleepImplementation = async (...args) => { waits.push(args); };
+      compactImplementation = async (...args) => {
+        calls.push(args);
+        if (calls.length === 1) throw new Error("Summarization failed: 503 Service unavailable");
+        return { summary: "recovered" };
+      };
+      expect(await state.handler(state.event, state.ctx)).toEqual({ compaction: { summary: "recovered" } });
+      expect(calls).toHaveLength(2);
+      expect(calls[1]).toEqual(calls[0]);
+      expect(calls[0]).toHaveLength(9); // Do not enable a nested native retry loop.
+      expect(waits).toEqual([[1000, undefined, { signal: state.event.signal }]]);
+      expectRestored(state.preparation);
+    });
+  }
+
+  test("falls back after the second transient failure without another wait", async () => {
+    const state = harness();
+    let calls = 0;
+    let waits = 0;
+    sleepImplementation = async () => { waits++; };
+    compactImplementation = async () => { calls++; throw new Error("terminated"); };
+    expect(await state.handler(state.event, state.ctx)).toBeUndefined();
+    expect(calls).toBe(2);
+    expect(waits).toBe(1);
+    expectRestored(state.preparation);
+  });
+
+  test("does not retry success or deterministic and unknown failures", async () => {
+    for (const message of [undefined, "401 Unauthorized", "invalid request: 503 tokens",
+      "429 insufficient_quota", "429 billing limit", "context window exceeded",
+      "Server requested 120s retry delay (max: 60s)", "unknown failure"]) {
+      const state = harness();
+      let calls = 0;
+      let waits = 0;
+      sleepImplementation = async () => { waits++; };
+      compactImplementation = async () => {
+        calls++;
+        if (message) throw new Error(message);
+        return { summary: "ok" };
+      };
+      const result = await state.handler(state.event, state.ctx);
+      expect(result).toEqual(message ? undefined : { compaction: { summary: "ok" } });
+      expect(calls).toBe(1);
+      expect(waits).toBe(0);
+    }
+  });
+
+  test("does not retry authentication or lookup failures", async () => {
+    let calls = 0;
+    compactImplementation = async () => { calls++; };
+    for (const options of [{ findModel: false }, { auth: { ok: false, error: "503 authentication unavailable" } }]) {
+      const state = harness(options);
+      expect(await state.handler(state.event, state.ctx)).toBeUndefined();
+    }
+    expect(calls).toBe(0);
+  });
+
+  test("cancels before a call, during failure, backoff, or the retry", async () => {
+    for (const phase of ["before", "failure", "backoff", "retry", "success"]) {
+      const state = harness();
+      const controller = new AbortController();
+      state.event.signal = controller.signal;
+      let calls = 0;
+      let waits = 0;
+      if (phase === "before") controller.abort();
+      sleepImplementation = async () => {
+        waits++;
+        if (phase === "backoff") controller.abort();
+      };
+      compactImplementation = async () => {
+        calls++;
+        if (phase === "failure" || phase === "success" || (phase === "retry" && calls === 2)) controller.abort();
+        if (phase === "success") return { summary: "late result" };
+        throw new Error("503 Service unavailable");
+      };
+      expect(await state.handler(state.event, state.ctx)).toEqual({ cancel: true });
+      expect(calls).toBe(phase === "before" ? 0 : phase === "retry" ? 2 : 1);
+      expect(waits).toBe(phase === "backoff" || phase === "retry" ? 1 : 0);
+    }
+  });
+
+  test("treats AbortError as cancellation even without an aborted signal", async () => {
+    const state = harness();
+    let calls = 0;
+    compactImplementation = async () => { calls++; throw new DOMException("Aborted", "AbortError"); };
+    expect(await state.handler(state.event, state.ctx)).toEqual({ cancel: true });
+    expect(calls).toBe(1);
+  });
+
+  test("classifies known transient failures conservatively", async () => {
+    const { isTransientCompactionError } = await import("../src/retry.js");
+    for (const message of ["429 Too many requests", "502 Bad Gateway", "fetch failed",
+      "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "socket hang up", "terminated",
+      "stream ended before a terminal response event", "request timed out"]) {
+      expect(isTransientCompactionError(new Error(message))).toBe(true);
+    }
+    for (const error of ["503", null, new Error("model not found"), new Error("invalid api key: rate limit"),
+      new Error("429 FreeUsageLimitError"), new Error("billing service unavailable")]) {
+      expect(isTransientCompactionError(error)).toBe(false);
+    }
   });
 
   test("keeps restored file operations when dedicated compaction throws", async () => {
