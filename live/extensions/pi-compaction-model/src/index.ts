@@ -97,6 +97,12 @@ export default function compactionModel(pi: ExtensionAPI): void {
         return;
       }
 
+      // Older Pi declarations do not expose credential-specific endpoints.
+      const authBaseUrl = "baseUrl" in auth && typeof auth.baseUrl === "string"
+        ? auth.baseUrl
+        : undefined;
+      const requestModel = authBaseUrl ? { ...model, baseUrl: authBaseUrl } : model;
+
       // Match Pi's native compaction bridge: null marks a deleted header.
       const authHeaders = auth.headers
         ? Object.fromEntries(
@@ -104,14 +110,14 @@ export default function compactionModel(pi: ExtensionAPI): void {
           )
         : undefined;
       const headers = withOpenRouterAttribution(
-        model,
+        requestModel,
         isInstallTelemetryEnabled(settings),
         authHeaders,
       );
 
       const result = await compact(
         event.preparation,
-        model,
+        requestModel,
         auth.apiKey,
         headers,
         event.customInstructions,
