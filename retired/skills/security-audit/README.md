@@ -1,6 +1,6 @@
 # Security Audit
 
-A manually invoked, defensive source-review skill. It is not an autonomous penetration-testing system and does not generate exploits or probe deployed services.
+A retired, manually invoked, defensive source-review skill retained for reference. It is no longer actively used or maintained in this kit. It is not an autonomous penetration-testing system and does not generate exploits or probe deployed services.
 
 ## Installation and invocation
 
@@ -8,7 +8,7 @@ Review and copy this directory into your chosen Pi skills location, then reload 
 
 ```bash
 mkdir -p ~/.pi/agent/skills
-cp -R live/skills/security-audit ~/.pi/agent/skills/
+cp -R retired/skills/security-audit ~/.pi/agent/skills/
 ```
 
 Retain `LICENSE` and `NOTICE.md`. Restart Pi or use `/reload`, then invoke one of these modes with skill commands enabled:
