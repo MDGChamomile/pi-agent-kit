@@ -66,14 +66,21 @@ def normalized_path(value: str | Path) -> str:
 def mask_and_shorten(
     value: str, limit: int = MAX_EVIDENCE_CHARS, queries: Iterable[str] = (),
 ) -> str:
+    return mask_and_shorten_with_metadata(value, limit, queries)[0]
+
+
+def mask_and_shorten_with_metadata(
+    value: str, limit: int = MAX_EVIDENCE_CHARS, queries: Iterable[str] = (),
+) -> tuple[str, bool]:
+    """Return masked evidence and whether normalized masked text was shortened."""
     masked = value
     for pattern, replacement in MASK_PATTERNS:
         masked = pattern.sub(replacement, masked)
     masked = re.sub(r"\s+", " ", masked).strip()
     if limit <= 0:
-        return ""
+        return "", bool(masked)
     if len(masked) <= limit:
-        return masked
+        return masked, False
 
     folded = masked.casefold()
     positions = []
@@ -95,8 +102,8 @@ def mask_and_shorten(
         budget = limit - 2  # Reserve both possible omission markers.
         start = min(max(0, index - budget // 2), len(masked) - budget)
         end = start + budget
-        return ("…" if start else "") + masked[start:end] + ("…" if end < len(masked) else "")
-    return masked[: limit - 1] + "…"
+        return ("…" if start else "") + masked[start:end] + ("…" if end < len(masked) else ""), True
+    return masked[: limit - 1] + "…", True
 
 
 def text_content(content: Any) -> str:
