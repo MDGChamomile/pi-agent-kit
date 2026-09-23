@@ -126,7 +126,7 @@ The resulting routing is:
 | `/compact` | Pi native compaction with the active model |
 | Automatic threshold | Pi native compaction algorithm with the configured model |
 | Overflow recovery | Pi native compaction algorithm with the configured model |
-| Configured-model failure | Control returns to Pi's native handling path |
+| Configured-model failure | Retries once for a recognized transient failure, then returns control to Pi's native handling path |
 
 ## OpenRouter attribution
 
@@ -150,9 +150,13 @@ An empty valid `reasons` array is not an error; it disables dedicated-model rout
 
 ### Request failures and cancellation
 
-If a dedicated-model request fails while its cancellation signal is not aborted, the extension warns and returns no result, allowing Pi's native handling path to continue. If the error is caught after the signal is aborted, the extension suppresses the warning and likewise returns no result.
+For recognized transient provider or transport failures (such as a 503 response, temporary rate limiting, or a dropped stream), the extension waits one second and retries the dedicated compaction once. There are at most two `compact()` invocations per hook. A second failure, an unknown error, or a deterministic error such as authentication, invalid requests, context overflow, or quota/billing exhaustion returns control to Pi's native handling path with a warning. Model lookup and authentication-resolution failures are not retried.
 
-Returning no result does not mean that the extension starts a request with the active model. In particular, after cancellation it does not guarantee that Pi will perform another compaction request.
+This is a fixed extension policy, independent of Pi's `retry` settings (including `retry.enabled`). It retains Pi 0.80.7 compatibility, whose `compact()` has no native retry argument. The extension does not enable a nested native summarization retry loop. Error classification is conservative and message-based because native compaction flattens provider errors; unrecognized transient errors can still fall back without a retry. Provider retry-delay cap failures are not retried by this wrapper.
+
+A retry repeats the whole compaction, including any completed part of a split-turn summary. Split-turn compaction, provider/transport retries, and subsequent native fallback can therefore make the total number of HTTP requests greater than two. Retrying can add latency and provider usage.
+
+Cancellation before an attempt, during the wait, or during a request stops further extension attempts and returns `{ cancel: true }`, without a fallback warning. An `AbortError` is also treated as cancellation. Returning no result on other failures hands control back to Pi; the extension does not itself start an active-model request.
 
 ## Development
 
