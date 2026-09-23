@@ -203,6 +203,37 @@ class SessionSearchTests(unittest.TestCase):
             self.assertEqual(result["summary"]["files_discovered"], 2)
             self.assertEqual(result["summary"]["matched_sessions"], 2)
 
+    def test_file_symlink_outside_all_roots_is_skipped_before_opening(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            root = base / "sessions"
+            root.mkdir()
+            other = base / "sessions-other"  # A string-prefix match must not grant access.
+            source = other / "source.jsonl"
+            write_session(source, header("outside", base), [
+                message("one", None, "2026-08-14T00:00:00Z", "user", "match"),
+            ])
+            (root / "alias.jsonl").symlink_to(source)
+            original_open = Path.open
+
+            def guarded_open(path, *args, **kwargs):
+                if path == root / "alias.jsonl":
+                    self.fail("out-of-root symlink was opened")
+                return original_open(path, *args, **kwargs)
+
+            with patch.object(Path, "open", guarded_open):
+                excluded = session_search.aggregate(self.args(root, base))
+            self.assertEqual(excluded["summary"]["files_discovered"], 0)
+            self.assertEqual(excluded["summary"]["matched_sessions"], 0)
+
+            # Once the target's directory is explicitly allowed, its alias and
+            # the real file are counted only once.
+            included = session_search.aggregate(self.args(
+                root, base, "--additional-sessions-root", str(other),
+            ))
+            self.assertEqual(included["summary"]["files_discovered"], 1)
+            self.assertEqual(included["summary"]["matched_sessions"], 1)
+
     def test_additional_root_relative_home_and_empty_directories(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)

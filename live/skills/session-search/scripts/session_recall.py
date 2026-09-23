@@ -201,16 +201,10 @@ def read_active_messages(
 def permitted_files(
     roots: list[Path], warnings: session_search.WarningCollector
 ) -> list[Path]:
-    discovered = session_search.discover_session_files(roots)
-    allowed_roots = [Path(session_search.normalized_path(root)) for root in roots]
-    result: list[Path] = []
-    for path in discovered:
-        resolved = Path(session_search.normalized_path(path))
-        if not any(resolved == root or resolved.is_relative_to(root) for root in allowed_roots):
-            warnings.add(path, "file_outside_session_root")
-            continue
-        result.append(resolved)
-    return result
+    discovered = session_search.discover_session_files(
+        roots, on_outside=lambda path: warnings.add(path, "file_outside_session_root"),
+    )
+    return [Path(session_search.normalized_path(path)) for path in discovered]
 
 
 def candidate_sort_key(candidate: Candidate) -> tuple[int, int, datetime, str]:
