@@ -361,7 +361,7 @@ def recall_windows(
         items: list[dict[str, Any]] = []
         for index in range(start, end):
             message = messages[index]
-            evidence = session_search.mask_and_shorten(
+            evidence, text_truncated = session_search.mask_and_shorten_with_metadata(
                 message.text, limit=MAX_MESSAGE_CHARS, queries=terms
             )
             if evidence_chars + len(evidence) > MAX_TOTAL_EVIDENCE_CHARS:
@@ -372,6 +372,7 @@ def recall_windows(
                 "role": message.role,
                 "timestamp": message.timestamp,
                 "evidence": evidence,
+                "text_truncated": text_truncated,
                 "matches_term": index in hits,
             })
         if not items:
