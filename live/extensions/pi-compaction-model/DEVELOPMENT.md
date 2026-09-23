@@ -17,6 +17,10 @@ The inherited lockfile pins the original development environment. To check a new
 
 `test/config.test.ts` tests configuration parsing and merging. `test/index.test.ts` mocks the compaction API and checks file-list restoration in dedicated-model and fallback paths. The test script runs the files in separate processes so module mocks cannot leak between them. These tests make no model requests and do not use real credentials.
 
+## Credential endpoint regression verification
+
+The credential-endpoint change passed `bun run check` with Bun 1.3.14 and TypeScript 7.0.2 against both the frozen Pi 0.80.7 dependency and Pi 0.85.1 in an isolated copy (27 tests each). Regression coverage includes all three compaction reasons, registry-model immutability, absent/empty/non-string endpoints, endpoint-based attribution in both directions, and existing authentication/header/environment/signal forwarding. These are offline mocked-request checks, not live provider verification.
+
 ## Kit verification
 
 Pi 0.85.1 typechecking passed with TypeScript 7.0.2. All 13 tests passed with Bun 1.3.14 against an existing Pi 0.85.1 installation, and Pi's extension loader registered exactly one compaction handler without errors. These checks used temporary copies and existing dependencies, not a fresh lockfile installation.

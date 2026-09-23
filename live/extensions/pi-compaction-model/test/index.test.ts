@@ -45,7 +45,7 @@ function harness(options: {
   reason?: string;
   findModel?: boolean;
   model?: { provider: string; id: string; baseUrl: string };
-  auth?: { ok: boolean; error?: string; apiKey?: string; headers?: Record<string, string | null>; env?: Record<string, string> };
+  auth?: { ok: boolean; error?: string; apiKey?: string; baseUrl?: unknown; headers?: Record<string, string | null>; env?: Record<string, string> };
 } = {}) {
   let handler: any;
   const model = options.model ?? {
@@ -155,6 +155,57 @@ describe("session_before_compact", () => {
       headers: { "x-test": "retained", "x-deleted": null },
       env: { TEST_ENV: "test-value" },
     });
+  });
+
+  for (const reason of ["manual", "threshold", "overflow"]) {
+    test(`uses the credential endpoint for ${reason} without mutating the registry`, async () => {
+      const state = harness({ reason, auth: {
+        ok: true, apiKey: "test-key", baseUrl: "https://credential.example.com",
+        headers: { retained: "yes", deleted: null }, env: { TEST_ENV: "value" },
+      } });
+      const original = { ...state.model };
+      Object.freeze(state.model);
+      compactImplementation = async (...args) => {
+        expect(args[1]).toEqual({ ...original, baseUrl: "https://credential.example.com" });
+        expect(args[1]).not.toBe(state.model);
+        expect(args[2]).toBe("test-key");
+        expect(args[3]).toEqual({ retained: "yes" });
+        expect(args[5]).toBe(state.event.signal);
+        expect(args[8]).toEqual({ TEST_ENV: "value" });
+        return { summary: "dedicated" };
+      };
+      expect(await state.handler(state.event, state.ctx)).toEqual({ compaction: { summary: "dedicated" } });
+      expect(state.model).toEqual(original);
+    });
+  }
+
+  for (const baseUrl of [undefined, "", null, 42]) {
+    test(`keeps the registry model for absent or invalid endpoint ${baseUrl}`, async () => {
+      const state = harness({ auth: { ok: true, apiKey: "key", baseUrl } });
+      compactImplementation = async (_preparation, model) => {
+        expect(model).toBe(state.model);
+        return { summary: "dedicated" };
+      };
+      expect(await state.handler(state.event, state.ctx)).toEqual({ compaction: { summary: "dedicated" } });
+    });
+  }
+
+  test("uses the credential endpoint for attribution in both directions", async () => {
+    for (const toOpenRouter of [true, false]) {
+      const state = harness({
+        model: { provider: "custom", id: "model", baseUrl: toOpenRouter
+          ? "https://api.example.com" : "https://openrouter.ai/api/v1" },
+        auth: { ok: true, apiKey: "key", baseUrl: toOpenRouter
+          ? "https://openrouter.ai/api/v1" : "https://api.example.com" },
+      });
+      let headers: any;
+      compactImplementation = async (_preparation, _model, _key, received) => {
+        headers = received;
+        return { summary: "dedicated" };
+      };
+      await state.handler(state.event, state.ctx);
+      expect(headers?.["HTTP-Referer"]).toBe(toOpenRouter ? "https://pi.dev" : undefined);
+    }
   });
 
   test("adds Pi attribution for an OpenRouter compaction request", async () => {

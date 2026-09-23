@@ -130,6 +130,8 @@ The resulting routing is:
 
 ## OpenRouter attribution
 
+Credential-specific base URLs returned by Pi's authentication resolver override the registry model's endpoint for the compaction request and attribution check. The shared registry model is not modified; when authentication supplies no non-empty string URL, the registry endpoint is retained.
+
 For OpenRouter models, the extension adds the same app-attribution headers as Pi's normal request path before calling the exported `compact()` function. This also applies to custom providers whose base URL is on `openrouter.ai`. Attribution is sent only when Pi's install telemetry is enabled through `enableInstallTelemetry` or `PI_TELEMETRY`; explicitly configured request headers take precedence.
 
 ## Failure behavior
