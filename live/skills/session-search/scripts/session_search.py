@@ -14,7 +14,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 DEFAULT_LIMIT = 20
 DEFAULT_SESSIONS_ROOT = Path.home() / ".pi" / "agent" / "sessions"
@@ -377,29 +377,35 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def discover_session_files(roots: Iterable[Path]) -> list[Path]:
-    """Fail visibly on traversal errors and deduplicate resolved file paths."""
+def discover_session_files(
+    roots: Iterable[Path], on_outside: Callable[[Path], None] | None = None,
+) -> list[Path]:
+    """Fail visibly on traversal errors; keep only files under an allowed root."""
     paths: dict[str, Path] = {}
-    seen_roots: set[str] = set()
+    allowed_roots: dict[str, Path] = {}
+    for value in roots:
+        root = value.expanduser()
+        key = normalized_path(root)
+        if not root.is_dir():
+            raise RuntimeError("session root is unavailable")
+        allowed_roots.setdefault(key, root)
 
     def traversal_error(error: OSError) -> None:
         raise error
 
-    for value in roots:
-        root = value.expanduser()
-        key = normalized_path(root)
-        if key in seen_roots:
-            continue
-        seen_roots.add(key)
-        if not root.is_dir():
-            raise RuntimeError("session root is unavailable")
+    for root in allowed_roots.values():
         # Unlike Path.rglob, walk's onerror makes inaccessible subtrees visible.
         # Do not follow nested directory symlinks, matching the previous scan.
         for directory, _dirs, files in os.walk(root, onerror=traversal_error):
             for name in files:
                 if name.endswith(".jsonl"):
                     path = Path(directory) / name
-                    paths.setdefault(normalized_path(path), path)
+                    resolved = Path(normalized_path(path))
+                    if not any(resolved.is_relative_to(allowed) for allowed in allowed_roots):
+                        if on_outside is not None:
+                            on_outside(path)
+                        continue
+                    paths.setdefault(str(resolved), path)
     return sorted(paths.values())
 
 
