@@ -31,7 +31,7 @@ Before opening the interview, check workflow fit. If the request has expanded in
 
 ## 2. Resolve the Fog
 
-Use no question quota in either direction. Continue only while a known unresolved branch can materially change execution; if inspection finds none, skip directly to Same Page. After every answer or new piece of evidence, recompute which unresolved branches can now be resolved, and re-check whether the work still fits this workflow.
+Use no question quota in either direction. Continue only while a known unresolved branch can materially change execution; if inspection finds none, skip directly to Same Page. After every answer or new piece of evidence, recompute which unresolved branches can now be resolved, and re-check whether the work still fits this workflow. A side question about terminology does not pause planning: answer it and then use `ask_user` for the next material decision in the same turn, or reach Same Page if none remain. Respect an explicit pause or a request not to continue beyond the explanation.
 
 ### Critical gates
 
