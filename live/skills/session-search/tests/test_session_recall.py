@@ -72,6 +72,45 @@ class SessionRecallTests(unittest.TestCase):
             mode, "--sessions-root", str(root), "--cwd", str(cwd), *required, *extra
         ])
 
+    def test_text_truncation_is_distinct_from_missing_matching_messages(self):
+        for text, truncated in [("needle … original ellipsis", False),
+                                ("needle " + "x" * 1000, True),
+                                ("needle " + " " * 1000 + "end", False),
+                                ('needle api_key="' + 'x' * 1000 + '"', False)]:
+            with self.subTest(truncated=truncated, length=len(text)):
+                windows, summary = session_recall.recall_windows([
+                    session_recall.RecallMessage("1", None, "user", text),
+                ], ("needle",))
+                item = windows[0]["messages"][0]
+                self.assertEqual(item["text_truncated"], truncated)
+                self.assertTrue(item["matches_term"])
+                self.assertLessEqual(len(item["evidence"]), 300)
+                self.assertFalse(summary["evidence_truncated"])
+                self.assertEqual(summary["matching_messages_represented"], 1)
+
+    def test_long_neighbor_reports_text_truncation_independently(self):
+        windows, summary = session_recall.recall_windows([
+            session_recall.RecallMessage("1", None, "user", "x" * 1000),
+            session_recall.RecallMessage("2", None, "assistant", "needle"),
+        ], ("needle",))
+        neighbor, match = windows[0]["messages"]
+        self.assertTrue(neighbor["text_truncated"])
+        self.assertFalse(neighbor["matches_term"])
+        self.assertFalse(match["text_truncated"])
+        self.assertFalse(summary["evidence_truncated"])
+        self.assertLessEqual(summary["evidence_chars"], 6000)
+
+    def test_metadata_helper_preserves_string_api_and_limits(self):
+        helper = session_recall.session_search
+        for limit in [-1, 0, 1, 2, 3, 10, 300]:
+            for text in ["", "…", "needle " + "x" * 1000]:
+                with self.subTest(limit=limit, text_length=len(text)):
+                    evidence, truncated = helper.mask_and_shorten_with_metadata(
+                        text, limit, ("needle",))
+                    self.assertEqual(evidence, helper.mask_and_shorten(text, limit, ("needle",)))
+                    self.assertLessEqual(len(evidence), max(0, limit))
+                    self.assertEqual(truncated, len(text) > max(0, limit))
+
     def test_find_is_path_free_and_project_scoped(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)

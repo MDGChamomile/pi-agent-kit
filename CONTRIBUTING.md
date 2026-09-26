@@ -11,6 +11,18 @@ For a proposed change:
 5. Run the checks appropriate to the changed resource below; distinguish offline results from live Pi/provider verification.
 6. Prefer adapting a resource in your own fork when the desired behavior is personal or highly specific.
 
+## Pull requests
+
+Create your contribution branch from the latest `updates` branch, and select
+`updates` as the base branch when opening a pull request. GitHub may suggest
+`main` because it is the repository's default branch; please change the base
+to `updates` before submitting.
+
+Contributions are reviewed and merged into `updates`. Maintainers open pull
+requests from `updates` to `main` only when preparing a release. If you
+accidentally target `main`, the base can be changed to `updates`; the resulting
+diff and checks should then be reviewed again.
+
 ## Verification entry points
 
 Use the smallest relevant set of checks. For prose-only changes, review examples, relative links, and consistency with the source; do not make model calls just to validate wording. Run the skill metadata check for `SKILL.md` changes. For behavior changes, add a regression test and run the affected resource's offline suite. Pi Subagent and Pi Jev changes belong in their independent repositories; use the verification instructions there.

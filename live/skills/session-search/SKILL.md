@@ -19,7 +19,7 @@ Resolve paths relative to this `SKILL.md`. Run the selected script with `--help`
 ## Aggregate workflow
 
 1. Translate only the user's stated scope and filters into options shown by `session_search.py --help`. With no explicit scope, retain the current-working-directory default and path-free summary output. Add directories only when the user or local instructions specify them.
-2. Run the script locally. It reads session JSONL files without modifying them or creating an index.
+2. Run the script locally. For several independent summary counts over the same scope, prefer up to eight `--batch-filter` JSON objects in one invocation rather than rescanning for each condition. Use only the keys and limits documented in the help and [batch guide](README.md#batch-summaries); batch mode is summary-only and cannot include evidence or individual filter flags. The script reads session JSONL files without modifying them or creating an index.
 3. Interpret the JSON as evidence, not as an automatic judgment. Keep direct skill invocations separate from reads of a skill's `SKILL.md`, mentions, and quoted XML.
 4. Use `--include-evidence` only after the evidence consent described below.
 

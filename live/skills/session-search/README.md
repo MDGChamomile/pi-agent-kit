@@ -82,11 +82,51 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
 
 `--additional-sessions-root PATH` is repeatable and additive, not a replacement for the default directory. `~` is expanded; relative paths are resolved from the invocation's working directory. The same cwd, time, event, current-session exclusion, and evidence-consent rules apply across all directories. `--all-projects` selects all projects within those directories, not other storage locations.
 
-Repeated or overlapping directories and file symlink aliases are deduplicated by resolved file path before counting. Separate copies (including files with the same session ID) and hard links remain separate files. Nested directory symlinks are not followed; a directory symlink explicitly supplied as a root is supported. Missing or non-directory roots and directory traversal failures return a path-free `SESSION_STORAGE_UNAVAILABLE` error (exit code 2), rather than a partial summary. Empty directories are valid. Individual unreadable session files retain the existing warning behavior.
+Repeated or overlapping directories and file symlink aliases are deduplicated by resolved file path before counting. File symlinks are considered only when their targets resolve inside one of the selected session roots; targets in an explicitly added root remain eligible. Separate copies (including files with the same session ID) and hard links remain separate files. Nested directory symlinks are not followed; a directory symlink explicitly supplied as a root is supported. Missing or non-directory roots and directory traversal failures return a path-free `SESSION_STORAGE_UNAVAILABLE` error (exit code 2), rather than a partial summary. Empty directories are valid. Individual unreadable session files retain the existing warning behavior.
 
 For recurring agent use, specify your additional directories in your own local instructions. Keep personal paths out of the shared skill; this feature neither moves sessions nor changes Pi's `/resume` storage.
 
 Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each aggregate filter.
+
+## Batch summaries
+
+For several independent counts over the same scope, use repeated `--batch-filter`
+JSON objects rather than launching a full scan for every condition:
+
+```bash
+python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
+  --all-projects \
+  --batch-filter '{"skill":["deep-plan"]}' \
+  --batch-filter '{"tool":["bash"],"error":true}' \
+  --batch-filter '{"query":["timeout"],"role":["assistant","toolresult"]}'
+```
+
+A batch accepts 1–8 filter objects. Allowed keys are `query`, `role`, `tool`,
+`skill` (arrays of strings), and `error` (boolean). Omitted keys are unfiltered;
+`{}` counts all eligible events. Query values use AND logic; values in each
+role/tool/skill array are alternatives, exactly as in a single search. Filters
+are independent, so the same event may contribute to several summaries. Empty
+arrays do not restrict matching; empty strings retain the single-search meaning.
+Each object is limited to 4,096 characters, each array to 32 values, and each
+value to 256 characters. Unknown or duplicate keys and invalid types fail before
+session storage is accessed.
+
+Scope options (`--cwd` or `--all-projects`, `--days`, additional roots, and current
+session inclusion) apply to the whole batch. Every selected body is read and
+parsed once; filters are then evaluated separately. Batch output has `mode:
+"batch"`, shared scan counts in `summary`, and a `batches` array in input order.
+Each item has a one-based `filter_index` and a `summary` with the same counters
+as the corresponding single search. Shared scope and warnings appear once at the
+top level; supplied filter text and paths are not echoed. There is no persistent
+index or cache, and filter comparison work still grows with the number of filters.
+
+Batches are summary-only: `results` stays empty and `evidence_included` is false.
+Do not combine batch filters with `--include-evidence` or the individual
+`--query`, `--role`, `--tool`, `--skill`, or `--error` flags. `--summary-only` is
+accepted, while `--limit` has no effect on summary output. For evidence, obtain
+the normal disclosure approval and run a bounded single-filter search. Batch
+summaries do not expand the evidence-consent boundary or the existing aggregate
+branch semantics.
 
 ## Prior-session recall
 
@@ -110,7 +150,7 @@ Recall re-runs the deterministic candidate ranking rather than accepting a user-
 
 For v2 and v3 sessions, recall follows the parent chain from the last recorded entry and searches user and assistant text on that active branch. For v1 it uses the linear entry sequence. Compaction entries and `retainedTail` are not emitted as messages, so they do not duplicate original branch messages. Invalid or cyclic branch structures are skipped with path-free warning counts. Non-string message roles are ignored for matching and evidence without discarding their branch links. UTF-8 body failures produce a path-free warning once the header confirms the selected project; files with an unknown or different project remain undisclosed in the default scope.
 
-A recall window contains a matching message and at most one neighboring text message on each side. Overlapping windows are merged up to five messages. Output is capped at three windows, 300 characters per message, and 6,000 evidence characters overall. Omitted-message counts make gaps visible. Thinking blocks, tool calls, tool results, compaction summaries, and unrelated first or last messages are excluded. First or last messages can still appear when they are naturally adjacent to a match.
+A recall window contains a matching message and at most one neighboring text message on each side. Overlapping windows are merged up to five messages. Output is capped at three windows, 300 characters per message, and 6,000 evidence characters overall. Omitted-message counts make gaps visible. Each returned message has a `text_truncated` boolean indicating whether its masked, whitespace-normalized text was shortened for the excerpt; masking alone does not set this flag. The summary's `evidence_truncated` still reports omitted windows or unrepresented matching messages, not shortening within a returned message. Thinking blocks, tool calls, tool results, compaction summaries, and unrelated first or last messages are excluded. First or last messages can still appear when they are naturally adjacent to a match.
 
 `find` never requires evidence consent because it returns only path-free candidate metadata. `recall` requires `--include-evidence`; in an agent workflow this flag may be used only after the user explicitly approves sending the masked snippets and timestamps to the active model provider.
 
@@ -142,7 +182,7 @@ In `summary`, `evidence_omitted` distinguishes the safe default from `evidence_t
 - Searches are case-insensitive literal matches, not regular expressions or semantic search.
 - Counts and candidate ranks describe recorded messages and entries, not inferred tasks or outcomes.
 - Aggregate search still scans recorded branches and only marks evidence from the inferred latest branch. Recall restricts matching and evidence to the active branch.
-- Aggregate opens each selected session body once. Recall find must read a selected body to determine its active branch; recall then reads the chosen candidate again to build evidence. There is no persistent index.
+- Aggregate opens each selected session body once, including for a batch of independent summary filters. Separate CLI invocations still repeat the scan. Recall find must read a selected body to determine its active branch; recall then reads the chosen candidate again to build evidence. There is no persistent index.
 - Recall candidate ranks can change if session files change between find and recall invocations.
 - Secret masking is deliberately best-effort and is not a data-loss-prevention guarantee.
 

@@ -46,7 +46,6 @@ The maintained resources remain:
 
 - [`pi-compaction-model`](live/extensions/pi-compaction-model/README.md)
 - [`deep-plan`](live/skills/deep-plan/README.md)
-- [`security-audit`](live/skills/security-audit/README.md)
 - [`session-search`](live/skills/session-search/README.md)
 
-The `live-validation` workflow continues to check these resources using the [documented offline checks](CONTRIBUTING.md#verification-entry-points). Existing retired resources, their licenses, and the repository's historical releases remain intact.
+The `live-validation` workflow continues to check these resources using the [documented offline checks](CONTRIBUTING.md#verification-entry-points). `security-audit` has since moved to [`retired/skills/security-audit/`](retired/skills/security-audit/README.md); moving the source does not uninstall existing copies. Existing retired resources, their licenses, and the repository's historical releases remain intact.

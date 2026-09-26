@@ -1,5 +1,4 @@
 import {
-  compact,
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -8,6 +7,7 @@ import {
   loadConfig,
   parseModelReference,
 } from "./config.js";
+import { compactWithOneRetry } from "./retry.js";
 
 function warn(message: string, error?: unknown): void {
   if (error === undefined) {
@@ -97,6 +97,12 @@ export default function compactionModel(pi: ExtensionAPI): void {
         return;
       }
 
+      // Older Pi declarations do not expose credential-specific endpoints.
+      const authBaseUrl = "baseUrl" in auth && typeof auth.baseUrl === "string"
+        ? auth.baseUrl
+        : undefined;
+      const requestModel = authBaseUrl ? { ...model, baseUrl: authBaseUrl } : model;
+
       // Match Pi's native compaction bridge: null marks a deleted header.
       const authHeaders = auth.headers
         ? Object.fromEntries(
@@ -104,14 +110,14 @@ export default function compactionModel(pi: ExtensionAPI): void {
           )
         : undefined;
       const headers = withOpenRouterAttribution(
-        model,
+        requestModel,
         isInstallTelemetryEnabled(settings),
         authHeaders,
       );
 
-      const result = await compact(
+      const result = await compactWithOneRetry(
         event.preparation,
-        model,
+        requestModel,
         auth.apiKey,
         headers,
         event.customInstructions,
@@ -123,9 +129,10 @@ export default function compactionModel(pi: ExtensionAPI): void {
 
       return { compaction: result };
     } catch (error) {
-      if (!event.signal.aborted) {
-        warn(`Compaction with ${config.model} failed; using Pi's active model.`, error);
+      if (event.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+        return { cancel: true };
       }
+      warn(`Compaction with ${config.model} failed; using Pi's active model.`, error);
       return;
     }
   });

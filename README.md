@@ -23,7 +23,6 @@ The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): r
 | Isolate noisy investigation from the main context | [`pi-subagent`](https://github.com/MDGChamomile/pi-subagent) | Installing the paired skill and extension from npm |
 | Let the agent select among consent-gated Jev routing and public-passage reranking tools | [`pi-jev`](https://github.com/MDGChamomile/pi-jev) | Copying the shared skill and whichever source extensions you want with a configured Pi OpenRouter provider |
 | Turn a vague repository change into an executable plan | [`deep-plan`](live/skills/deep-plan/README.md) | Copying the skill from source and providing a compatible `ask_user` tool |
-| Review source defensively with explicit scope and evidence | [`security-audit`](live/skills/security-audit/README.md) | Copying the standalone skill from source and invoking it manually |
 | Analyze patterns across local Pi sessions | [`session-search`](live/skills/session-search/README.md) | Copying the standalone skill from source |
 
 ### Install Pi Subagent
@@ -80,6 +79,7 @@ Resources kept for reference but no longer actively used or maintained:
 | [`git-history`](retired/extensions/git-history/index.ts) | Add `/snapshot` to review and commit changes in the Pi agent directory |
 | [`meta-prompt`](retired/skills/meta-prompt/SKILL.md) | Write or improve a compact, ready-to-use prompt |
 | [`nomore-harness`](retired/skills/nomore-harness/SKILL.md) | Review proposed additions to a Pi environment before adoption |
+| [`security-audit`](retired/skills/security-audit/README.md) | Review source defensively with explicit scope and evidence |
 | [`simplykst`](retired/skills/simplykst/README.md) | Analyze Korean stocks with separate Trading and Investing ratings |
 
 ## Contributing

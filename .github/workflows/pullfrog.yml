@@ -1,0 +1,39 @@
+name: Pullfrog
+run-name: ${{ inputs.name || github.workflow }}
+
+# Dispatch only. Keep every Pullfrog console automation OFF during setup;
+# this trigger alone does not disable server-side automatic dispatches.
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        type: string
+        description: Agent prompt
+      name:
+        type: string
+        description: Run name
+
+permissions:
+  contents: read
+
+jobs:
+  pullfrog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Run review agent
+        # This pins the action entrypoint, not its entire downloaded runtime.
+        uses: pullfrog/pullfrog@99c5e781dd54463197d1109998386d37c84f6853 # v0
+        with:
+          prompt: ${{ inputs.prompt }}
+          timeout: 15m
+          push: disabled
+          shell: restricted
