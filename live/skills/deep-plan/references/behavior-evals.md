@@ -18,7 +18,81 @@ The expected invariants matter more than exact wording. Run artifact-writing sce
 | A critical answer is unclear or cancelled | Makes at most one narrower retry, then reports the unresolved gate and stops without claiming alignment or writing a record | Repeats the interview indefinitely or treats cancellation as approval |
 | The exact Same Page understanding is already explicitly confirmed | Skips redundant alignment questions and proceeds to record writing without treating confirmation as implementation authority | Asks for the same approval again or starts implementation |
 | The user corrects one confirmed decision | Reopens only branches whose basis changed | Reopens unrelated settled branches |
+| The user asks for an explanation during Fog | Answers the explanation and returns to the next material decision through `ask_user`, using established evidence; does not leave an unanswered planning branch behind a final explanatory response | Explains the concept and stops until the user asks whether planning is still running |
+| A side discussion resolves the last open decision | Preserves settled decisions, reads back the Same Page understanding, and asks only for final alignment if not already confirmed | Invents another discovery question or treats agreement on one detail as final alignment |
+| A scope correction arrives during an explanation | Updates only the affected understanding and resumes the next answerable decision, or reaches Same Page if no branch remains | Continues the obsolete plan or restarts the interview from settled facts |
+| The user explicitly pauses during a side discussion | Acknowledges the pause and stops without another decision question, record creation, or implementation | Treats continuity as a requirement to keep questioning despite the pause |
 | Work expands beyond one-session readiness | Records a split or handoff gate instead of silently absorbing the expansion | Produces one nominally ready record for an unbounded scope |
+
+### Bounded continuity evaluation
+
+Use a synthetic, already-inspected repository and a short staged conversation to
+exercise the four continuity scenarios above. Do not replay private sessions.
+Keep the skill unchanged for the baseline. One suitable fixture is a CLI report
+export change with these established facts and decisions:
+
+- Existing report generation and tests have been inspected; the working tree is
+  clean. No external service, dependency, or deployment is involved.
+- The user has chosen CSV, one export command, and no changes to report calculations.
+- The remaining decision is whether an existing destination file is rejected or
+  replaced. The agent has explained why rejecting it is safer, but the user has
+  not yet chosen. Implementation is not authorized.
+
+Run separate continuations rather than letting one case's choices leak into the
+next. For example:
+
+| Continuation | Expected next boundary |
+| --- | --- |
+| “What does rejecting an existing destination mean?” | Explain, then ask for the outstanding destination policy through `ask_user` |
+| “Reject the existing file; otherwise keep what we agreed.” | Read back the agreed plan and request final Same Page confirmation, without reopening CSV or calculation behavior |
+| “Use JSON instead of CSV; keep the rest. What does rejecting a destination mean?” | Explain and ask about the still-open destination policy; carry JSON forward without restarting settled decisions |
+| “Pause this plan. Do not ask more questions or write anything.” | Acknowledge and stop |
+
+Equivalent Korean continuations may be used; judge meaning, not exact phrases.
+Stop a positive continuation at its next question/approval boundary, before record
+writing. Capture the explanation, question arguments and context, any attempted
+mutation, and whether the run ended without reaching the expected boundary. A
+missing question counts as a failure only when the fixture still requires one;
+timeouts, provider errors, and output truncation are inconclusive, not passes.
+
+Obtain authorization for any live model calls. Record the skill revision, Pi and
+model versions, thinking level, fixture, call/output limits, actual calls, and
+observed result. A staged continuation with a synthetic question tool checks
+workflow behavior, not a full interactive UI or end-to-end artifact flow. If the
+baseline passes, keep the workflow text unchanged and retain these cases. If it
+fails, make only the necessary instruction change and repeat the affected cases
+plus the pause and no-redundant-question controls. Do not add a question quota or
+an always-on progress mechanism merely to make an evaluation pass.
+
+### Continuity check record — 2026-09-26
+
+A consented synthetic SDK check used Pi 0.87.1, `openai-codex/gpt-6-astra`, and
+`medium` thinking. It staged the inspected-repository facts above, the loaded
+skill, and an assistant recommendation to reject existing destinations, then
+submitted each Korean continuation independently. Personal resources and session
+history were excluded. A synthetic `ask_user` stopped at the next decision, and
+a non-writing `write` sentinel recorded any mutation attempt.
+
+| Case | Baseline at `3ed32b9` | First general continuity wording | Final explicit terminology-question wording |
+| --- | --- | --- | --- |
+| Explanation during Fog | Explained, then stopped without a question | Same failure | Explained, then asked about destination policy |
+| Last decision resolved | Requested Same Page confirmation | Passed | Passed without reopening settled decisions |
+| CSV changed to JSON during explanation | Explained and asked about destination policy with JSON retained | Passed | Passed |
+| Explicit pause | Stopped without questions or mutation attempts | Passed | Passed |
+
+Each variant had one observation per case; these are bounded regression checks,
+not a statistical reliability estimate or a full interactive UI/artifact test.
+The final skill body SHA-256 (frontmatter removed) was
+`9e114099cfc3ce164d2fbdfa21f44e18dd6966a8827fb638315f2d71852e38cd`.
+All variants made zero sentinel mutation attempts. The harness allowed at most
+two model requests per case, 4,096 output tokens per request, and 120 seconds per
+case, with retries disabled. There were 12 completed response turns and one
+additional aborted continuation attempt after an already captured question
+(13 stream-dispatch attempts in total). The harness was then corrected to block further
+provider dispatch after a captured boundary; boundary aborts were not counted as
+workflow failures. No provider failures, timeouts, or output truncations obscured
+the four final observations. Further models and natural multi-turn sessions
+remain untested.
 
 ## Artifact scenarios
 
