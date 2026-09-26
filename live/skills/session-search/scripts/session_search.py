@@ -20,6 +20,8 @@ DEFAULT_LIMIT = 20
 DEFAULT_SESSIONS_ROOT = Path.home() / ".pi" / "agent" / "sessions"
 MAX_EVIDENCE_CHARS = 300
 MAX_WARNING_ITEMS = 100
+MAX_BATCH_FILTERS = 8
+MAX_BATCH_FILTER_CHARS = 4096
 SKILL_ENVELOPE_RE = re.compile(
     r'\A<skill name="([^"\r\n]+)" location="[^"\r\n]+">\r?\n'
     r'References are relative to [^\r\n]+\.\r?\n\r?\n'
@@ -355,6 +357,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--tool", action="append", default=[], help="tool-name filter; repeat for alternatives")
     parser.add_argument("--error", action="store_true", help="include only error events")
     parser.add_argument("--skill", action="append", default=[], help="direct-invocation or skill-file-read name; repeat for alternatives")
+    parser.add_argument("--batch-filter", action="append", default=[], metavar="JSON",
+                        help="independent summary-only filter object; repeat up to 8 times; "
+                             "keys: query, role, tool, skill (string arrays), error (boolean)")
     parser.add_argument("--include-current", action="store_true", help="include PI_SESSION_FILE (excluded by default)")
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help=f"maximum evidence results with --include-evidence (default: {DEFAULT_LIMIT})")
     evidence = parser.add_mutually_exclusive_group()
@@ -425,34 +430,165 @@ def cutoff_for_days(
         raise ValueError("--days exceeds the supported date range") from error
 
 
+def aggregate_filters(args: argparse.Namespace) -> list[EventFilters]:
+    """Validate a bounded batch before touching session storage; never echo input."""
+    raw_filters = args.batch_filter
+    if not raw_filters:
+        return [EventFilters.from_args(args)]
+    if len(raw_filters) > MAX_BATCH_FILTERS:
+        raise ValueError("too many batch filters")
+    if args.include_evidence or args.query or args.role or args.tool or args.skill or args.error:
+        raise ValueError("batch filters cannot mix with evidence or individual filters")
+
+    def unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate filter key")
+            result[key] = value
+        return result
+
+    filters: list[EventFilters] = []
+    for raw in raw_filters:
+        if len(raw) > MAX_BATCH_FILTER_CHARS:
+            raise ValueError("batch filter is too long")
+        try:
+            value = json.loads(raw, object_pairs_hook=unique_object)
+        except RecursionError as error:
+            raise ValueError("filter nesting is too deep") from error
+        if not isinstance(value, dict) or value.keys() - {"query", "role", "tool", "skill", "error"}:
+            raise ValueError("invalid filter object")
+        if not isinstance(value.get("error", False), bool):
+            raise ValueError("invalid error filter")
+        for key in ("query", "role", "tool", "skill"):
+            items = value.get(key, [])
+            if not isinstance(items, list) or len(items) > 32 or any(
+                not isinstance(item, str) or len(item) > 256 for item in items
+            ):
+                raise ValueError("invalid filter values")
+        filters.append(EventFilters.from_args(argparse.Namespace(
+            **{key: value.get(key, []) for key in ("query", "role", "tool", "skill")},
+            error=value.get("error", False),
+        )))
+    return filters
+
+
+class EventAggregation:
+    """Per-filter counters and optional evidence; parsing is shared by all filters."""
+
+    def __init__(self, filters: EventFilters, result_limit: int, include_evidence: bool) -> None:
+        self.filters = filters
+        self.result_limit = result_limit
+        self.include_evidence = include_evidence
+        self.result_heap: list[tuple[datetime, int, dict[str, Any]]] = []
+        self.result_sequence = 0
+        self.matched_sessions = 0
+        self.matched_entries = 0
+        self.matched_events = 0
+        self.counters: dict[str, Counter[str]] = {
+            key: Counter() for key in (
+                "roles", "tool_calls", "tool_errors", "tool_error_sessions", "direct_skill_calls",
+                "skill_file_read_attempts", "skill_file_read_successes", "skill_file_read_errors",
+            )
+        }
+        self.start_session()
+
+    def start_session(self) -> None:
+        self.session_matched = False
+        self.session_error_tools: set[str] = set()
+
+    def consume(self, events: list[dict[str, Any]], timestamp: datetime | None) -> None:
+        entry_matched = False
+        for event in events:
+            if not event_matches(event, self.filters):
+                continue
+            self.matched_events += 1
+            if not entry_matched:
+                entry_matched = True
+                self.matched_entries += 1
+                if not self.session_matched:
+                    self.session_matched = True
+                    self.matched_sessions += 1
+                self.counters["roles"][event["role"].casefold()] += 1
+            tool_name = event.get("tool_name")
+            if event["event"] in {"tool_call", "skill_file_read"} and tool_name:
+                self.counters["tool_calls"][tool_name.casefold()] += 1
+            if event.get("is_error") and tool_name:
+                tool_key = tool_name.casefold()
+                self.counters["tool_errors"][tool_key] += 1
+                if tool_key not in self.session_error_tools:
+                    self.session_error_tools.add(tool_key)
+                    self.counters["tool_error_sessions"][tool_key] += 1
+            self.counters["direct_skill_calls"].update(
+                name.casefold() for name in event.get("direct_skills", [])
+            )
+            read_skill = event.get("skill_file_read")
+            if read_skill:
+                counter = {
+                    "skill_file_read": "skill_file_read_attempts",
+                    "tool_error": "skill_file_read_errors",
+                    "tool_result": "skill_file_read_successes",
+                }.get(event["event"])
+                if counter:
+                    self.counters[counter][read_skill.casefold()] += 1
+            if self.result_limit:
+                self.result_sequence += 1
+                result_key = timestamp or datetime.min.replace(tzinfo=timezone.utc)
+                item = (result_key, self.result_sequence, event)
+                if len(self.result_heap) < self.result_limit:
+                    heapq.heappush(self.result_heap, item)
+                elif item[:2] > self.result_heap[0][:2]:
+                    heapq.heapreplace(self.result_heap, item)
+
+    def mark_branch(self, path: Path, version: int, leaf_path: set[str] | None) -> None:
+        for _timestamp, _sequence, event in self.result_heap:
+            if event["file"] == str(path):
+                event_id = event.get("entry_id")
+                event["on_latest_leaf"] = (
+                    None if leaf_path is None else
+                    True if version == 1 else
+                    event_id in leaf_path if isinstance(event_id, str) else None
+                )
+
+    def results(self) -> list[dict[str, Any]]:
+        return [
+            result_view(item[2], self.filters.queries)
+            for item in sorted(self.result_heap, key=lambda item: item[:2], reverse=True)
+        ]
+
+    def summary(self, scan: dict[str, int]) -> dict[str, Any]:
+        evidence_truncated = self.include_evidence and self.matched_events > len(self.result_heap)
+        return {
+            **scan,
+            "matched_sessions": self.matched_sessions,
+            "matched_entries": self.matched_entries,
+            "matched_events": self.matched_events,
+            "results_returned": len(self.result_heap),
+            "result_limit": self.result_limit,
+            "evidence_omitted": not self.include_evidence and self.matched_events > 0,
+            "evidence_truncated": evidence_truncated,
+            "truncated": evidence_truncated,
+            **{key: dict(sorted(value.items())) for key, value in self.counters.items()},
+            "skill_file_reads": dict(sorted(self.counters["skill_file_read_attempts"].items())),
+        }
+
+
 def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str, Any]:
     cutoff = cutoff_for_days(args.days, now)
     if args.limit < 0:
         raise ValueError("--limit must be non-negative")
+    filters = aggregate_filters(args)
     paths = discover_session_files([args.sessions_root, *args.additional_sessions_root])
     target_cwd = normalized_path(args.cwd)
     current = normalized_path(os.environ["PI_SESSION_FILE"]) if os.environ.get("PI_SESSION_FILE") else None
 
-    filters = EventFilters.from_args(args)
     warnings = WarningCollector()
     result_limit = args.limit if args.include_evidence else 0
-    result_heap: list[tuple[datetime, int, dict[str, Any]]] = []
-    result_sequence = 0
-    roles: Counter[str] = Counter()
-    tool_calls: Counter[str] = Counter()
-    tool_errors: Counter[str] = Counter()
-    tool_error_sessions: Counter[str] = Counter()
-    direct_calls: Counter[str] = Counter()
-    skill_read_attempts: Counter[str] = Counter()
-    skill_read_successes: Counter[str] = Counter()
-    skill_read_errors: Counter[str] = Counter()
+    aggregations = [EventAggregation(item, result_limit, args.include_evidence) for item in filters]
     files_discovered = 0
     selected_files = 0
     scanned_entries = 0
     eligible_entries = 0
-    matched_sessions = 0
-    matched_entries = 0
-    matched_events = 0
     excluded_current = 0
     attempted_files = 0
     readable_headers = 0
@@ -485,8 +621,8 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
 
                 selected_files += 1
                 session = {"session_id": str(header.get("id", "")), "file": str(path)}
-                session_matched = False
-                session_error_tools: set[str] = set()
+                for aggregation in aggregations:
+                    aggregation.start_session()
                 parent_by_id: dict[str, Any] = {}
                 leaf_id: str | None = None
                 skill_reads_by_call_id: dict[str, str] = {}
@@ -513,98 +649,30 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                     if cutoff is not None and (timestamp is None or timestamp < cutoff):
                         continue
                     eligible_entries += 1
-                    entry_matched = False
-                    # Branch membership stays unknown until the file is fully read.
-                    for event in events_for_entry(entry, session, None, skill_reads_by_call_id):
-                        if not event_matches(event, filters):
-                            continue
-                        matched_events += 1
-                        if not entry_matched:
-                            entry_matched = True
-                            if not session_matched:
-                                session_matched = True
-                                matched_sessions += 1
-                            matched_entries += 1
-                            roles[event["role"].casefold()] += 1
-                        tool_name = event.get("tool_name")
-                        if event["event"] in {"tool_call", "skill_file_read"} and tool_name:
-                            tool_calls[tool_name.casefold()] += 1
-                        if event.get("is_error") and tool_name:
-                            tool_key = tool_name.casefold()
-                            tool_errors[tool_key] += 1
-                            if tool_key not in session_error_tools:
-                                session_error_tools.add(tool_key)
-                                tool_error_sessions[tool_key] += 1
-                        direct_calls.update(name.casefold() for name in event.get("direct_skills", []))
-                        read_skill = event.get("skill_file_read")
-                        if read_skill:
-                            skill_key = read_skill.casefold()
-                            if event["event"] == "skill_file_read":
-                                skill_read_attempts[skill_key] += 1
-                            elif event["event"] == "tool_error":
-                                skill_read_errors[skill_key] += 1
-                            elif event["event"] == "tool_result":
-                                skill_read_successes[skill_key] += 1
-
-                        if result_limit:
-                            result_sequence += 1
-                            result_key = timestamp or datetime.min.replace(tzinfo=timezone.utc)
-                            heap_key = (result_key, result_sequence)
-                            if len(result_heap) < result_limit or heap_key > result_heap[0][:2]:
-                                item = (result_key, result_sequence, event)
-                                if len(result_heap) < result_limit:
-                                    heapq.heappush(result_heap, item)
-                                else:
-                                    heapq.heapreplace(result_heap, item)
+                    # Parse each entry into events once, then evaluate independent filters.
+                    events = events_for_entry(entry, session, None, skill_reads_by_call_id)
+                    for aggregation in aggregations:
+                        aggregation.consume(events, timestamp)
 
                 if result_limit:
                     leaf_path = latest_leaf_path(parent_by_id, leaf_id) if version >= 2 else set()
-                    for _timestamp, _sequence, event in result_heap:
-                        if event["file"] == str(path):
-                            event_id = event.get("entry_id")
-                            event["on_latest_leaf"] = (
-                                True if version == 1 else
-                                event_id in leaf_path if isinstance(event_id, str) else None
-                            )
+                    for aggregation in aggregations:
+                        aggregation.mark_branch(path, version, leaf_path)
         except (OSError, UnicodeError):
             warnings.add(path, "unreadable_file")
             # Keep already counted evidence, but never claim a complete branch scan.
-            for _timestamp, _sequence, event in result_heap:
-                if event["file"] == str(path):
-                    event["on_latest_leaf"] = None
+            for aggregation in aggregations:
+                aggregation.mark_branch(path, 1, None)
 
     if attempted_files and not readable_headers:
         raise RuntimeError("all candidate session files were unreadable or invalid")
 
-    result_events = [
-        result_view(item[2], filters.queries)
-        for item in sorted(result_heap, key=lambda item: (item[0], item[1]), reverse=True)
-    ]
-    evidence_omitted = not args.include_evidence and matched_events > 0
-    evidence_truncated = args.include_evidence and matched_events > len(result_events)
-    summary = {
+    scan = {
         "files_discovered": files_discovered,
         "files_selected": selected_files,
         "current_session_files_excluded": excluded_current,
         "entries_scanned": scanned_entries,
         "entries_eligible": eligible_entries,
-        "matched_sessions": matched_sessions,
-        "matched_entries": matched_entries,
-        "matched_events": matched_events,
-        "results_returned": len(result_events),
-        "result_limit": result_limit,
-        "evidence_omitted": evidence_omitted,
-        "evidence_truncated": evidence_truncated,
-        "truncated": evidence_truncated,
-        "roles": dict(sorted(roles.items())),
-        "tool_calls": dict(sorted(tool_calls.items())),
-        "tool_errors": dict(sorted(tool_errors.items())),
-        "tool_error_sessions": dict(sorted(tool_error_sessions.items())),
-        "direct_skill_calls": dict(sorted(direct_calls.items())),
-        "skill_file_reads": dict(sorted(skill_read_attempts.items())),
-        "skill_file_read_attempts": dict(sorted(skill_read_attempts.items())),
-        "skill_file_read_successes": dict(sorted(skill_read_successes.items())),
-        "skill_file_read_errors": dict(sorted(skill_read_errors.items())),
     }
     return {
         "status": "ok",
@@ -615,8 +683,15 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             "days": args.days,
             "include_current": args.include_current,
         },
-        "summary": summary,
-        "results": result_events,
+        **({
+            "mode": "batch",
+            "summary": {**scan, "filters_returned": len(aggregations)},
+            "batches": [
+                {"filter_index": index, "summary": aggregation.summary(scan)}
+                for index, aggregation in enumerate(aggregations, 1)
+            ],
+        } if args.batch_filter else {"summary": aggregations[0].summary(scan)}),
+        "results": aggregations[0].results(),
         "warnings": warnings.output(args.include_evidence),
     }
 

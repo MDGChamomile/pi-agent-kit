@@ -88,6 +88,46 @@ For recurring agent use, specify your additional directories in your own local i
 
 Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each aggregate filter.
 
+## Batch summaries
+
+For several independent counts over the same scope, use repeated `--batch-filter`
+JSON objects rather than launching a full scan for every condition:
+
+```bash
+python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
+  --all-projects \
+  --batch-filter '{"skill":["deep-plan"]}' \
+  --batch-filter '{"tool":["bash"],"error":true}' \
+  --batch-filter '{"query":["timeout"],"role":["assistant","toolresult"]}'
+```
+
+A batch accepts 1–8 filter objects. Allowed keys are `query`, `role`, `tool`,
+`skill` (arrays of strings), and `error` (boolean). Omitted keys are unfiltered;
+`{}` counts all eligible events. Query values use AND logic; values in each
+role/tool/skill array are alternatives, exactly as in a single search. Filters
+are independent, so the same event may contribute to several summaries. Empty
+arrays do not restrict matching; empty strings retain the single-search meaning.
+Each object is limited to 4,096 characters, each array to 32 values, and each
+value to 256 characters. Unknown or duplicate keys and invalid types fail before
+session storage is accessed.
+
+Scope options (`--cwd` or `--all-projects`, `--days`, additional roots, and current
+session inclusion) apply to the whole batch. Every selected body is read and
+parsed once; filters are then evaluated separately. Batch output has `mode:
+"batch"`, shared scan counts in `summary`, and a `batches` array in input order.
+Each item has a one-based `filter_index` and a `summary` with the same counters
+as the corresponding single search. Shared scope and warnings appear once at the
+top level; supplied filter text and paths are not echoed. There is no persistent
+index or cache, and filter comparison work still grows with the number of filters.
+
+Batches are summary-only: `results` stays empty and `evidence_included` is false.
+Do not combine batch filters with `--include-evidence` or the individual
+`--query`, `--role`, `--tool`, `--skill`, or `--error` flags. `--summary-only` is
+accepted, while `--limit` has no effect on summary output. For evidence, obtain
+the normal disclosure approval and run a bounded single-filter search. Batch
+summaries do not expand the evidence-consent boundary or the existing aggregate
+branch semantics.
+
 ## Prior-session recall
 
 Recall uses a separate CLI with its own candidate and evidence contract. Start with a path-free candidate search:
@@ -142,7 +182,7 @@ In `summary`, `evidence_omitted` distinguishes the safe default from `evidence_t
 - Searches are case-insensitive literal matches, not regular expressions or semantic search.
 - Counts and candidate ranks describe recorded messages and entries, not inferred tasks or outcomes.
 - Aggregate search still scans recorded branches and only marks evidence from the inferred latest branch. Recall restricts matching and evidence to the active branch.
-- Aggregate opens each selected session body once. Recall find must read a selected body to determine its active branch; recall then reads the chosen candidate again to build evidence. There is no persistent index.
+- Aggregate opens each selected session body once, including for a batch of independent summary filters. Separate CLI invocations still repeat the scan. Recall find must read a selected body to determine its active branch; recall then reads the chosen candidate again to build evidence. There is no persistent index.
 - Recall candidate ranks can change if session files change between find and recall invocations.
 - Secret masking is deliberately best-effort and is not a data-loss-prevention guarantee.
 
