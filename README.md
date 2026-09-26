@@ -1,6 +1,6 @@
 # Pi Agent Kit
 
-[![validation](https://github.com/MDGChamomile/pi-agent-kit/actions/workflows/live-validation.yml/badge.svg?branch=main&label=validation)](https://github.com/MDGChamomile/pi-agent-kit/actions/workflows/live-validation.yml)
+[![validation](https://github.com/MDGChamomile/pi-agent-kit/actions/workflows/live-validation.yml/badge.svg?branch=main)](https://github.com/MDGChamomile/pi-agent-kit/actions/workflows/live-validation.yml)
 [![Latest release](https://img.shields.io/github/v/release/MDGChamomile/pi-agent-kit)](https://github.com/MDGChamomile/pi-agent-kit/releases/latest)
 [![License](https://img.shields.io/github/license/MDGChamomile/pi-agent-kit)](LICENSE)
 

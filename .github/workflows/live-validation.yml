@@ -1,4 +1,4 @@
-name: live-validation
+name: validation
 
 on:
   push:
