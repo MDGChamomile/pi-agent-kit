@@ -8,6 +8,7 @@ import heapq
 import json
 import math
 import os
+import posixpath
 import re
 import sys
 from collections import Counter
@@ -22,12 +23,12 @@ MAX_WARNING_ITEMS = 100
 MAX_BATCH_FILTERS = 8
 MAX_BATCH_FILTER_CHARS = 4096
 SKILL_ENVELOPE_RE = re.compile(
-    r'\A<skill name="([^"\r\n]+)" location="[^"\r\n]+">\r?\n'
+    r'\A<skill name="([^"\r\n]+)" location="([^"\r\n]+)">\r?\n'
     r'References are relative to [^\r\n]+\.\r?\n\r?\n'
     r'.*\r?\n</skill>(?:\r?\n\r?\n.*)?\Z',
     re.DOTALL,
 )
-SKILL_FILE_RE = re.compile(r"(?:^|[/\\])skills[/\\]([^/\\]+)[/\\]SKILL\.md$", re.IGNORECASE)
+SKILL_FILE_RE = re.compile(r"(?:^|[/\\])([^/\\]+)[/\\]SKILL\.md$", re.IGNORECASE)
 
 # Mask before truncation so a secret crossing the truncation boundary cannot leak.
 MASK_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -142,14 +143,36 @@ def direct_skills(text: str) -> list[str]:
     return [match.group(1)] if match else []
 
 
-def skill_read_name(tool_name: str, arguments: Any) -> str | None:
+def recorded_skill_path(path: str, cwd: str = "") -> str:
+    """Normalize recorded spellings without accessing today's filesystem."""
+    path = path.replace("\\", "/")
+    if not posixpath.isabs(path) and not re.match(r"^[A-Za-z]:/", path):
+        path = posixpath.join(cwd.replace("\\", "/"), path)
+    return posixpath.normpath(path)
+
+
+def skill_read_name(
+    tool_name: str, arguments: Any, names_by_path: dict[str, str] | None = None, cwd: str = "",
+) -> str | None:
     if tool_name.lower() != "read" or not isinstance(arguments, dict):
         return None
     path = arguments.get("path")
     if not isinstance(path, str):
         return None
+    path = recorded_skill_path(path, cwd)
+    if names_by_path and path in names_by_path:
+        return names_by_path[path]
     match = SKILL_FILE_RE.search(path)
     return match.group(1) if match else None
+
+
+def record_skill_identity(entry: dict[str, Any], names_by_path: dict[str, str], cwd: str) -> None:
+    message = entry.get("message")
+    if entry.get("type") != "message" or not isinstance(message, dict) or message.get("role") != "user":
+        return
+    match = SKILL_ENVELOPE_RE.fullmatch(text_content(message.get("content")))
+    if match:
+        names_by_path[recorded_skill_path(match.group(2), cwd)] = match.group(1)
 
 
 def latest_leaf_path(parent_by_id: dict[str, Any], leaf_id: str | None) -> set[str]:
@@ -200,6 +223,8 @@ def events_for_entry(
     session: dict[str, str],
     on_leaf: bool | None,
     skill_reads_by_call_id: dict[str, str] | None = None,
+    names_by_path: dict[str, str] | None = None,
+    cwd: str = "",
 ) -> list[dict[str, Any]]:
     if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
         return []
@@ -240,7 +265,7 @@ def events_for_entry(
             tool_name = str(block.get("name", "unknown"))
             arguments = block.get("arguments", {})
             arguments_text = json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str)
-            read_skill = skill_read_name(tool_name, arguments)
+            read_skill = skill_read_name(tool_name, arguments, names_by_path, cwd)
             events.append({
                 **base,
                 "event": "skill_file_read" if read_skill else "tool_call",
@@ -319,7 +344,10 @@ def session_version(header: dict[str, Any], path: Path, warnings: WarningCollect
     return value
 
 
-def record_skill_read_calls(entry: dict[str, Any], skill_reads_by_call_id: dict[str, str]) -> None:
+def record_skill_read_calls(
+    entry: dict[str, Any], skill_reads_by_call_id: dict[str, str],
+    names_by_path: dict[str, str] | None = None, cwd: str = "",
+) -> None:
     if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
         return
     message = entry["message"]
@@ -329,7 +357,7 @@ def record_skill_read_calls(entry: dict[str, Any], skill_reads_by_call_id: dict[
         if not isinstance(block, dict) or block.get("type") != "toolCall":
             continue
         call_id = block.get("id")
-        read_skill = skill_read_name(str(block.get("name", "unknown")), block.get("arguments", {}))
+        read_skill = skill_read_name(str(block.get("name", "unknown")), block.get("arguments", {}), names_by_path, cwd)
         if isinstance(call_id, str) and read_skill:
             skill_reads_by_call_id[call_id] = read_skill
 
@@ -647,6 +675,8 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                 parent_by_id: dict[str, Any] = {}
                 leaf_id: str | None = None
                 skill_reads_by_call_id: dict[str, str] = {}
+                names_by_path: dict[str, str] = {}
+                recorded_cwd = header_cwd if isinstance(header_cwd, str) else ""
 
                 for line in handle:
                     try:
@@ -664,14 +694,15 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                     if result_limit and version >= 2 and isinstance(entry_id, str):
                         parent_by_id[entry_id] = entry.get("parentId")
                         leaf_id = entry_id
-                    record_skill_read_calls(entry, skill_reads_by_call_id)
+                    record_skill_identity(entry, names_by_path, recorded_cwd)
+                    record_skill_read_calls(entry, skill_reads_by_call_id, names_by_path, recorded_cwd)
 
                     timestamp = parse_timestamp(entry.get("timestamp"))
                     if cutoff is not None and (timestamp is None or timestamp < cutoff):
                         continue
                     eligible_entries += 1
                     # Parse each entry into events once, then evaluate independent filters.
-                    events = events_for_entry(entry, session, None, skill_reads_by_call_id)
+                    events = events_for_entry(entry, session, None, skill_reads_by_call_id, names_by_path, recorded_cwd)
                     for aggregation in aggregations:
                         aggregation.consume(events, timestamp)
 
