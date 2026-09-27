@@ -67,9 +67,45 @@ class SkillLocationTests(unittest.TestCase):
         ]:
             identities = {}
             entry = message("m1", None, "2026-08-01T00:00:00Z", role, text)
-            session_search.record_skill_identity(entry, identities, "/project")
+            identities = session_search.record_skill_identity(entry, identities, "/project")
             self.assertEqual(identities, {})
             self.assertEqual(session_search.skill_read_name("read", {"path": "/custom/folder/SKILL.md"}, identities), "folder")
+
+    def test_identity_follows_ancestry_not_sibling_file_order(self):
+        for version in (1, 2, 3):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                location = "/custom/folder/SKILL.md"
+                timestamp = "2026-08-14T00:00:00Z"
+                entries = [
+                    message("root", None, timestamp, "user", "start"),
+                    message("alias", "root", timestamp, "user",
+                            f'<skill name="declared" location="{location}">\n'
+                            'References are relative to /custom/folder.\n\nbody\n</skill>'),
+                    message("sibling", "root", timestamp, "assistant", [
+                        {"type": "toolCall", "id": "sibling-call", "name": "read", "arguments": {"path": location}},
+                    ]),
+                    message("result", "sibling", timestamp, "toolResult", "body",
+                            toolName="read", toolCallId="sibling-call", isError=False),
+                    message("child", "alias", timestamp, "assistant", [
+                        {"type": "toolCall", "id": "child-call", "name": "read", "arguments": {"path": location}},
+                    ]),
+                    message("missing-parent", "absent", timestamp, "assistant", [
+                        {"type": "toolCall", "id": "orphan-call", "name": "read", "arguments": {"path": location}},
+                    ]),
+                ]
+                head = {**header("synthetic", root), "version": version}
+                write_session(root / "record.jsonl", head, entries)
+                for skill in ("declared", "folder"):
+                    args = session_search.build_parser().parse_args([
+                        "--sessions-root", str(root), "--cwd", str(root), "--skill", skill,
+                    ])
+                    summary = session_search.aggregate(args)["summary"]
+                    expected = ({"declared": 3} if version == 1 else {"declared": 1}) if skill == "declared" else (
+                        {} if version == 1 else {"folder": 2})
+                    self.assertEqual(summary["skill_file_read_attempts"], expected)
+                    success = {skill: 1} if (version == 1 and skill == "declared") or (version >= 2 and skill == "folder") else {}
+                    self.assertEqual(summary["skill_file_read_successes"], success)
 
     def test_recorded_alias_is_lexical_and_does_not_access_disk(self):
         identities = {"C:/custom/alias/SKILL.md": "declared"}

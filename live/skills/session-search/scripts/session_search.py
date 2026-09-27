@@ -166,13 +166,17 @@ def skill_read_name(
     return match.group(1) if match else None
 
 
-def record_skill_identity(entry: dict[str, Any], names_by_path: dict[str, str], cwd: str) -> None:
+def record_skill_identity(
+    entry: dict[str, Any], names_by_path: dict[str, str], cwd: str,
+) -> dict[str, str]:
+    """Copy only on an identity change so sibling branches keep their own state."""
     message = entry.get("message")
     if entry.get("type") != "message" or not isinstance(message, dict) or message.get("role") != "user":
-        return
+        return names_by_path
     match = SKILL_ENVELOPE_RE.fullmatch(text_content(message.get("content")))
     if match:
-        names_by_path[recorded_skill_path(match.group(2), cwd)] = match.group(1)
+        return {**names_by_path, recorded_skill_path(match.group(2), cwd): match.group(1)}
+    return names_by_path
 
 
 def latest_leaf_path(parent_by_id: dict[str, Any], leaf_id: str | None) -> set[str]:
@@ -676,6 +680,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                 leaf_id: str | None = None
                 skill_reads_by_call_id: dict[str, str] = {}
                 names_by_path: dict[str, str] = {}
+                identities_by_entry: dict[str, dict[str, str]] = {}
                 recorded_cwd = header_cwd if isinstance(header_cwd, str) else ""
 
                 for line in handle:
@@ -694,7 +699,12 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                     if result_limit and version >= 2 and isinstance(entry_id, str):
                         parent_by_id[entry_id] = entry.get("parentId")
                         leaf_id = entry_id
-                    record_skill_identity(entry, names_by_path, recorded_cwd)
+                    if version >= 2:
+                        parent_id = entry.get("parentId")
+                        names_by_path = identities_by_entry.get(parent_id, {}) if isinstance(parent_id, str) else {}
+                    names_by_path = record_skill_identity(entry, names_by_path, recorded_cwd)
+                    if version >= 2 and isinstance(entry_id, str):
+                        identities_by_entry[entry_id] = names_by_path
                     record_skill_read_calls(entry, skill_reads_by_call_id, names_by_path, recorded_cwd)
 
                     timestamp = parse_timestamp(entry.get("timestamp"))
