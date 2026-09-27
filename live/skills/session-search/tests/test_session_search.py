@@ -978,7 +978,7 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(completed.stderr, "")
         self.assertIn("usage:", completed.stdout)
         self.assertIn("--additional-sessions-root PATH", completed.stdout)
-        self.assertNotIn("--sessions-root ", completed.stdout)
+        self.assertIn("--sessions-root PATH", completed.stdout)
 
     def test_total_parse_failure_is_fatal(self):
         with tempfile.TemporaryDirectory() as temp:

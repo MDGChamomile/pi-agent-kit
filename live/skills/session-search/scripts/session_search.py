@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 DEFAULT_LIMIT = 20
-DEFAULT_SESSIONS_ROOT = Path.home() / ".pi" / "agent" / "sessions"
 MAX_EVIDENCE_CHARS = 300
 MAX_WARNING_ITEMS = 100
 MAX_BATCH_FILTERS = 8
@@ -47,6 +46,24 @@ MASK_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?i)([?&](?:api[_-]?key|access[_-]?token|auth|password|secret|token)=)[^&#\s]+"), r"\1[REDACTED]"),
     (re.compile(r"\b(?:sk|pk)-[A-Za-z0-9_-]{12,}\b"), "[REDACTED_KEY]"),
 )
+
+
+def pi_environment_path(value: str) -> Path:
+    """Expand only Pi's own-home tilde forms, never another user's home."""
+    if value == "~":
+        return Path.home()
+    if value.startswith("~/") or (os.name == "nt" and value.startswith("~\\")):
+        return Path.home() / value[2:]
+    # Prevent later generic expanduser calls from expanding a literal ~user.
+    return Path(value).absolute()
+
+
+def default_sessions_root() -> Path:
+    """Resolve Pi's storage overrides when building a CLI, not at import time."""
+    if value := os.environ.get("PI_CODING_AGENT_SESSION_DIR"):
+        return pi_environment_path(value)
+    agent_dir = os.environ.get("PI_CODING_AGENT_DIR")
+    return (pi_environment_path(agent_dir) if agent_dir else Path.home() / ".pi" / "agent") / "sessions"
 
 
 def parse_timestamp(value: Any) -> datetime | None:
@@ -376,9 +393,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--additional-sessions-root", type=Path, action="append", default=[], metavar="PATH",
         help="also search this directory recursively; repeat for multiple directories; "
-             "default: only ~/.pi/agent/sessions; all directories must be readable",
+             "additive to the selected sessions root; all directories must be readable",
     )
-    parser.add_argument("--sessions-root", type=Path, default=DEFAULT_SESSIONS_ROOT, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--sessions-root", type=Path, default=default_sessions_root(), metavar="PATH",
+        help="replace the primary sessions directory; default precedence: PI_CODING_AGENT_SESSION_DIR, "
+             "PI_CODING_AGENT_DIR/sessions, ~/.pi/agent/sessions",
+    )
     return parser
 
 
