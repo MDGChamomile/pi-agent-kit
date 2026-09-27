@@ -79,7 +79,7 @@ The primary directory is selected in this order (empty environment values are ig
 3. `PI_CODING_AGENT_DIR` with `/sessions` appended;
 4. `~/.pi/agent/sessions`.
 
-These rules apply to aggregate, `find`, and `recall`. `--sessions-root` replaces the primary directory; it does not require the default directory to exist. If Pi was started with `--session-dir`, pass that location as `--sessions-root`: the helper cannot recover Pi's CLI arguments and does not infer search scope from `PI_SESSION_FILE`.
+These rules apply to aggregate, `find`, and `recall`. `--sessions-root` replaces the primary directory; it does not require the default directory to exist. If Pi uses `--session-dir` or the `sessionDir` setting in `settings.json`, pass that location as `--sessions-root`: the helper does not read Pi settings or recover Pi's CLI arguments, and does not infer search scope from `PI_SESSION_FILE`. Environment paths expand `~` and `~/` to your home (`~\` also works on Windows); `~other` remains a literal relative directory, as in Pi.
 
 ```bash
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \

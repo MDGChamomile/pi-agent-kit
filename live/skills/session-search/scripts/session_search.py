@@ -48,12 +48,22 @@ MASK_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+def pi_environment_path(value: str) -> Path:
+    """Expand only Pi's own-home tilde forms, never another user's home."""
+    if value == "~":
+        return Path.home()
+    if value.startswith("~/") or (os.name == "nt" and value.startswith("~\\")):
+        return Path.home() / value[2:]
+    # Prevent later generic expanduser calls from expanding a literal ~user.
+    return Path(value).absolute()
+
+
 def default_sessions_root() -> Path:
     """Resolve Pi's storage overrides when building a CLI, not at import time."""
     if value := os.environ.get("PI_CODING_AGENT_SESSION_DIR"):
-        return Path(value).expanduser()
+        return pi_environment_path(value)
     agent_dir = os.environ.get("PI_CODING_AGENT_DIR")
-    return (Path(agent_dir).expanduser() if agent_dir else Path.home() / ".pi" / "agent") / "sessions"
+    return (pi_environment_path(agent_dir) if agent_dir else Path.home() / ".pi" / "agent") / "sessions"
 
 
 def parse_timestamp(value: Any) -> datetime | None:

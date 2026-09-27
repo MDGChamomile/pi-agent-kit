@@ -36,6 +36,9 @@ class StoragePathTests(unittest.TestCase):
                 ({"PI_CODING_AGENT_DIR": "missing-agent", "PI_CODING_AGENT_SESSION_DIR": "missing-store"},
                  ["--sessions-root", str(explicit)], explicit),
                 ({"PI_CODING_AGENT_DIR": "", "PI_CODING_AGENT_SESSION_DIR": ""}, [], fallback),
+                ({"PI_CODING_AGENT_SESSION_DIR": "~/tilde-store"}, [], home / "tilde-store"),
+                ({"PI_CODING_AGENT_SESSION_DIR": "~root/store"}, [], base / "~root" / "store"),
+                ({"PI_CODING_AGENT_DIR": "~root/agent"}, [], base / "~root" / "agent" / "sessions"),
             ]
             commands = [("session_search.py", []), ("session_recall.py", ["find", "--term", "needle"]),
                         ("session_recall.py", ["recall", "--term", "needle", "--include-evidence"])]
@@ -52,7 +55,11 @@ class StoragePathTests(unittest.TestCase):
                         result = subprocess.run([sys.executable, "-B", str(SCRIPTS / script), *args, *flags],
                                                 cwd=base, env={**env, **overrides}, capture_output=True, text=True)
                         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                        self.assertNotIn("SESSION_STORAGE_UNAVAILABLE", result.stdout)
+                        payload = json.loads(result.stdout)
+                        self.assertEqual(payload["summary"]["matched_sessions"], 1)
+                        if args and args[0] == "find":
+                            self.assertEqual(len(payload["candidates"]), 1)
+                            self.assertEqual(payload["candidates"][0]["rank"], 1)
                 record.unlink()
                 selected.rmdir()
             extra.mkdir()
