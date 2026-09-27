@@ -27,7 +27,7 @@ Session data is inherently sensitive. In an agent workflow, local tool output be
 
 ## Requirements
 
-- Pi session files under `~/.pi/agent/sessions`
+- Pi session JSONL files in the default or a configured session directory
 - Python 3.10 or later
 
 The parser supports Pi session versions 1 through 3. It treats a missing version as legacy v1 with a warning and skips newer, unsupported versions visibly instead of guessing at their structure.
@@ -72,7 +72,21 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --all-projec
 
 ### Additional session directories
 
-By default, only `~/.pi/agent/sessions` is searched. Add other directories explicitly; no archive location is assumed:
+The primary directory is selected in this order (empty environment values are ignored):
+
+1. `--sessions-root PATH`;
+2. `PI_CODING_AGENT_SESSION_DIR`;
+3. `PI_CODING_AGENT_DIR` with `/sessions` appended;
+4. `~/.pi/agent/sessions`.
+
+These rules apply to aggregate, `find`, and `recall`. `--sessions-root` replaces the primary directory; it does not require the default directory to exist. If Pi was started with `--session-dir`, pass that location as `--sessions-root`: the helper cannot recover Pi's CLI arguments and does not infer search scope from `PI_SESSION_FILE`.
+
+```bash
+python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
+  --sessions-root /path/to/session-store
+```
+
+Add other directories explicitly; no archive location is assumed:
 
 ```bash
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
@@ -80,11 +94,11 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
   --additional-sessions-root /path/to/another-store
 ```
 
-`--additional-sessions-root PATH` is repeatable and additive, not a replacement for the default directory. `~` is expanded; relative paths are resolved from the invocation's working directory. The same cwd, time, event, current-session exclusion, and evidence-consent rules apply across all directories. `--all-projects` selects all projects within those directories, not other storage locations.
+`--additional-sessions-root PATH` is repeatable and additive, not a replacement for the selected primary directory. `~` is expanded; relative paths are resolved from the invocation's working directory. The same cwd, time, event, current-session exclusion, and evidence-consent rules apply across all directories. `--all-projects` selects all projects within those directories, not other storage locations.
 
 Repeated or overlapping directories and file symlink aliases are deduplicated by resolved file path before counting. File symlinks are considered only when their targets resolve inside one of the selected session roots; targets in an explicitly added root remain eligible. Separate copies (including files with the same session ID) and hard links remain separate files. Nested directory symlinks are not followed; a directory symlink explicitly supplied as a root is supported. Missing or non-directory roots and directory traversal failures return a path-free `SESSION_STORAGE_UNAVAILABLE` error (exit code 2), rather than a partial summary. Empty directories are valid. Individual unreadable session files retain the existing warning behavior.
 
-For recurring agent use, specify your additional directories in your own local instructions. Keep personal paths out of the shared skill; this feature neither moves sessions nor changes Pi's `/resume` storage.
+For recurring agent use, configure Pi's storage environment variables or specify your primary and additional directories in your own local instructions. Keep personal paths out of the shared skill; this feature neither moves sessions nor changes Pi's `/resume` storage.
 
 Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each aggregate filter.
 
