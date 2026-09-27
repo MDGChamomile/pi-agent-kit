@@ -12,8 +12,20 @@ YYYYMMDD-<subject>/
 
 Use a concise kebab-case `<subject>` derived from the work, or the user's supplied subject. Choose the parent records directory in this order:
 
-1. the directory explicitly named by the user for this run;
-2. otherwise `<skill-dir>/records/<project-key>/`, where `<skill-dir>` is the directory containing this skill's `SKILL.md`, not a path relative to the current working directory.
+1. the directory explicitly named by the user for this run, used directly;
+2. otherwise `$PI_DEEP_PLAN_RECORDS_DIR/<project-key>/` when the environment variable is non-empty;
+3. otherwise `$XDG_STATE_HOME/pi/deep-plan/records/<project-key>/` when `XDG_STATE_HOME` is an absolute path;
+4. otherwise `~/.local/state/pi/deep-plan/records/<project-key>/`.
+
+Use the bundled read-only resolver rather than recreating these rules. Resolve `<skill-dir>` as the directory containing this skill's `SKILL.md`. Supply the canonical repository root (or current working directory outside a repository) as `<project-path>`:
+
+```bash
+node <skill-dir>/scripts/records-root.mjs "<project-path>"
+# Only when the user explicitly selected a destination for this run:
+node <skill-dir>/scripts/records-root.mjs "<project-path>" "<explicit-records-root>"
+```
+
+The helper prints the absolute parent records directory and creates nothing. Append `YYYYMMDD-<subject>/` to that output. Explicit and persistent override paths expand `~` and `~/` (also `~\` on Windows); relative paths resolve from the invocation's working directory. Empty environment values are ignored, and relative `XDG_STATE_HOME` values fall back to the default state directory. Do not change environment variables or persistent settings as part of planning.
 
 Build `<project-key>` from the canonical repository root, or the canonical current working directory when no repository root is available:
 
@@ -23,7 +35,7 @@ Build `<project-key>` from the canonical repository root, or the canonical curre
 
 Keep ASCII letters, digits, dots, underscores, and hyphens in the basename; replace other runs with `-`, trim separators, and use `project` if nothing remains. The path hash prevents same-named repositories in different locations from sharing records.
 
-Create the parent records directory when needed. Do not infer another project-local plan directory or ask a destination question while this default is available. If the skill directory is not writable, report the blocker rather than silently choosing another destination. Existing records, including those under the former external state directory and flat `YYYYMMDD-<subject>.md` records, remain valid historical artifacts; do not migrate them automatically.
+Create the selected parent records directory when needed, only after Same Page confirmation. Do not infer another project-local plan directory or ask a destination question while this default is available. A read-only skill installation is supported: the installed skill is read, never used as the default output location. If the selected records directory cannot be created or written, report the blocker rather than silently choosing another destination. Existing records, including skill-local `records/`, earlier external-state records, and flat `YYYYMMDD-<subject>.md` records, remain valid historical artifacts; do not move, delete, or rewrite them automatically.
 
 Never overwrite, merge into, or repair an existing record directory or artifact. Before writing, determine and validate the complete path set in memory. If the target record path already exists, any required parent is a non-directory, or two planned artifacts collide, stop and report it.
 
