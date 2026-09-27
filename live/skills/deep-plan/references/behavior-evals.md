@@ -153,8 +153,10 @@ remained byte-for-byte unchanged.
 An earlier default-storage fixture exhausted its 12-request per-case limit while
 checking missing ancestors and left an incomplete pending record. It is
 inconclusive, not a pass. That fixture was left untouched; the five cases above
-used fresh fixtures with existing parents. Across both harness runs, there were
-40 model dispatches and 40 observed fetch calls, within the enforced batch cap.
+used fresh fixtures with existing parents. A full first-run default-storage
+continuation with missing ancestors therefore remains unverified; offline
+parent-creation/publication coverage does not establish that model workflow.
+Across both harness runs, there were 40 model dispatches and 40 observed fetch calls, within the enforced batch cap.
 Agent/provider retries and cache warming were disabled; each case had a
 180-second timeout and requested 4,096 output tokens per model call (not a
 verified server-side output cap).
