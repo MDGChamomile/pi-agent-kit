@@ -11,6 +11,8 @@ For a proposed change:
 5. Run the checks appropriate to the changed resource below; distinguish offline results from live Pi/provider verification.
 6. Prefer adapting a resource in your own fork when the desired behavior is personal or highly specific.
 
+The [harness-minimalism principles](https://github.com/MDGChamomile/MDGChamomile/blob/main/PRINCIPLE.md) are maintained in the MDGChamomile repository. This repository's [PRINCIPLE.md](PRINCIPLE.md) is a pointer, not a separate copy; propose changes to the principles at the canonical source.
+
 ## Pull requests
 
 Create your contribution branch from the latest `updates` branch, and select

@@ -13,7 +13,7 @@ Pi Agent Kit is the public, source-first collection of resources I currently use
 - **Live** resources are currently used and maintained.
 - **Retired** resources remain available as references.
 
-The collection follows a set of [harness-minimalism principles](PRINCIPLE.md): read the source, take what is useful, and adapt it to your own workflow. It is not maintained as an install-everything Pi package.
+The collection follows the [harness-minimalism principles](https://github.com/MDGChamomile/MDGChamomile/blob/main/PRINCIPLE.md) maintained in the MDGChamomile repository. The local [PRINCIPLE.md](PRINCIPLE.md) points to that single source of truth. Read the source, take what is useful, and adapt it to your own workflow; this is not an install-everything Pi package.
 
 ## Start here
 

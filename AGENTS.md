@@ -6,7 +6,7 @@ It is source-first, not an install-everything framework.
 ## Start here
 
 - Use [README.md](README.md) to locate resources in this kit.
-- Follow [PRINCIPLE.md](PRINCIPLE.md): keep procedures thin and boundaries firm.
+- Follow the [canonical harness-minimalism principles](https://github.com/MDGChamomile/MDGChamomile/blob/main/PRINCIPLE.md). [PRINCIPLE.md](PRINCIPLE.md) is only a pointer; propose changes to the principles in the MDGChamomile repository. If the source is unavailable, keep procedures lean and preserve the local safety, authorization, and data-protection boundaries.
 - Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branch and PR targets, contribution expectations, and verification commands.
 
 ## Scope boundaries
