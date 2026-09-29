@@ -1,0 +1,39 @@
+name: Pi latest compatibility
+
+on:
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+  # Validate changes to this workflow before it reaches the default branch.
+  push:
+    branches: [updates]
+    paths:
+      - ".github/workflows/pi-latest-compatibility.yml"
+  pull_request:
+    paths:
+      - ".github/workflows/pi-latest-compatibility.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  latest-pi:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: live/extensions/pi-compaction-model
+    steps:
+      - uses: actions/checkout@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - name: Install pinned development environment
+        run: bun install --frozen-lockfile
+      - name: Select latest stable Pi in the disposable checkout
+        run: bun add --dev --exact @earendil-works/pi-coding-agent@latest
+      - name: Record tested Pi version
+        run: |
+          bun -e 'const p = await Bun.file("node_modules/@earendil-works/pi-coding-agent/package.json").json(); console.log("Tested Pi version: " + p.version)' | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Typecheck and run offline tests
+        run: bun run check
