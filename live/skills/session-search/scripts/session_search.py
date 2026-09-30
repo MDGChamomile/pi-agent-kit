@@ -300,6 +300,44 @@ def events_for_entry(
             "searchable": "\n".join(filter(None, [tool_name, text, read_skill])),
             "evidence_raw": text,
         })
+        nested = message.get("nestedCalls")
+        calls = nested.get("calls") if isinstance(nested, dict) else None
+        seen: set[str] = set()
+        for call in calls if isinstance(calls, list) else []:
+            if not isinstance(call, dict):
+                continue
+            call_id, name, status = call.get("id"), call.get("name"), call.get("status")
+            if (not isinstance(call_id, str) or not isinstance(name, str) or not name
+                    or status not in ("ok", "error", "unfinished") or call_id in seen):
+                continue
+            seen.add(call_id)
+            arguments = call.get("arguments")
+            read_skill = skill_read_name(name, arguments, names_by_path, cwd)
+            arguments_text = json.dumps(arguments, ensure_ascii=False, sort_keys=True) if isinstance(arguments, dict) else ""
+            nested_base = {
+                **base,
+                "tool_name": name,
+                "skill_names": [read_skill] if read_skill else [],
+                "direct_skills": [],
+                "skill_file_read": read_skill,
+            }
+            events.append({
+                **nested_base,
+                "event": "skill_file_read" if read_skill else "tool_call",
+                "is_error": False,
+                "searchable": "\n".join(filter(None, [name, arguments_text, read_skill])),
+                "evidence_raw": arguments_text,
+            })
+            if status != "unfinished":
+                error = call.get("error")
+                error_text = error if isinstance(error, str) else ""
+                events.append({
+                    **nested_base,
+                    "event": "tool_error" if status == "error" else "tool_result",
+                    "is_error": status == "error",
+                    "searchable": "\n".join(filter(None, [name, error_text, read_skill])),
+                    "evidence_raw": error_text,
+                })
     return events
 
 
@@ -693,6 +731,10 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                         warnings.add(path, "invalid_entry")
                         continue
                     scanned_entries += 1
+                    message = entry.get("message")
+                    nested = message.get("nestedCalls") if isinstance(message, dict) else None
+                    if isinstance(nested, dict) and nested.get("complete") is not True:
+                        warnings.add(path, "incomplete_nested_calls")
                     entry_id = entry.get("id")
                     if version >= 2 and not isinstance(entry_id, str):
                         warnings.add(path, "invalid_entry_id")

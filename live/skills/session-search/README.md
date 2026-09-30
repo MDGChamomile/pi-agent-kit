@@ -193,6 +193,21 @@ In `summary`, `evidence_omitted` distinguishes the safe default from `evidence_t
 
 The helper never opens today's skill files to infer historical names. It does not resolve historical symlinks, renamed paths, `~` home aliases, or retroactively rename earlier reads. Without a prior recorded envelope, a declared frontmatter name that differs from the directory cannot be inferred; the fallback name is a path-based read classification, not proof that Pi loaded a valid skill. A bare `SKILL.md` without a recorded cwd or known envelope cannot be named. The legacy `skill_file_reads` counter remains an alias for attempts. Reading instructions, quoting partial XML, or mentioning a skill is not evidence that the skill was invoked.
 
+### Nested tool calls (Pi 0.99+)
+
+Aggregate search also reads `nestedCalls` on tool results, such as calls made by
+codemode. Each recorded inner call contributes one attempt; `ok` and `error`
+statuses contribute a success or error result, while `unfinished` contributes
+only an attempt. Skill reads use the same recorded-path and ancestry rules as
+direct calls. Duplicate inner IDs within one result are counted once. The
+calling tool remains a separate event, not another copy of the inner call.
+
+Pi bounds these records and does not store inner results. Missing arguments
+cannot identify a skill read, and omitted calls cannot be recovered. Records
+with `complete: false` produce an `incomplete_nested_calls` warning, so their
+counts must not be treated as complete. Inner error text follows the existing
+opt-in evidence and masking rules. Recall still excludes tool results.
+
 ## Known limitations
 
 - Searches are case-insensitive literal matches, not regular expressions or semantic search.
