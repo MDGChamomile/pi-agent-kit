@@ -30,8 +30,16 @@ export function withOpenRouterAttribution(
   headers: Record<string, string> | undefined,
 ): Record<string, string> | undefined {
   if (!telemetryEnabled) return headers;
-  const isOpenRouter =
-    model.provider === "openrouter" || model.baseUrl.includes("openrouter.ai");
+  let isOpenRouter = model.provider === "openrouter";
+  if (!isOpenRouter) {
+    try {
+      // A single terminal DNS root dot does not change the host's identity.
+      const hostname = new URL(model.baseUrl).hostname.replace(/\.$/, "");
+      isOpenRouter = hostname === "openrouter.ai" || hostname.endsWith(".openrouter.ai");
+    } catch {
+      return headers;
+    }
+  }
   if (!isOpenRouter) return headers;
   return { ...OPENROUTER_ATTRIBUTION_HEADERS, ...headers };
 }
