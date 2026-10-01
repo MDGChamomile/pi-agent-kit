@@ -153,9 +153,10 @@ remained byte-for-byte unchanged.
 An earlier default-storage fixture exhausted its 12-request per-case limit while
 checking missing ancestors and left an incomplete pending record. It is
 inconclusive, not a pass. That fixture was left untouched; the five cases above
-used fresh fixtures with existing parents. A full first-run default-storage
-continuation with missing ancestors therefore remains unverified; offline
-parent-creation/publication coverage does not establish that model workflow.
+used fresh fixtures with existing parents. That batch did not verify a first-run
+default-storage continuation with missing ancestors; offline parent-creation and
+publication coverage alone does not establish that model workflow. See the
+subsequent first-use check below.
 Across both harness runs, there were 40 model dispatches and 40 observed fetch calls, within the enforced batch cap.
 Agent/provider retries and cache warming were disabled; each case had a
 180-second timeout and requested 4,096 output tokens per model call (not a
@@ -172,3 +173,35 @@ Tested source SHA-256 values:
 - `SKILL.md`: `d272adcccc1759cb5a46c57e91f1f45bceb31be27f463b465c969d5fede6ea75`
 - `references/execution-record.md`: `79bc7eea13efb5cecdc00cd780c27c3097a7259bfb50151e0cb20b819a2d25a8`
 - `scripts/records-root.mjs`: `4a11a39e3f91b2dfc31e1cb297251a118b0be9f9ecf22ab2d1160c322f597d81`
+
+### First-use storage check record — 2026-10-01
+
+A separately authorized synthetic SDK continuation used Pi 0.99.2, Node.js
+22.22.3, `openai-codex/gpt-6-astra`, and `medium` thinking. Alignment was already
+explicitly confirmed, record writing was authorized, and implementation was not.
+A fresh fixture HOME had no `.local` directory or records ancestors; no explicit
+destination, persistent override, or XDG override was supplied. Personal
+instructions, resources, and session history were excluded. Bubblewrap kept the
+fixture project and skill installation read-only, restricted writes to the fresh
+fixture HOME, and disabled network access for shell tools.
+
+The continuation resolved the default external project-partitioned root, reserved
+a new record directory exclusively, wrote and read back `PLAN.pending.md`, and
+published one `PLAN.md` through the bundled no-clobber helper. The final plan
+contained the required sections, execution steps and proofs, `Alignment:
+Confirmed`, `Readiness: Ready`, and `Execution: Unauthorized`. Only the expected
+records ancestors and PLAN-only directory were created; no pending alias remained,
+and project and installation contents were unchanged.
+
+The run completed with four model dispatches and four observed fetch calls,
+without a provider error, timeout, output truncation, or budget exhaustion. The
+harness allowed at most 16 dispatches/fetches and 300 seconds, disabled retries
+and cache warming, and requested 4,096 output tokens per call without claiming a
+verified server-side cap. The three source digests listed above still matched;
+`publish-plan.mjs` was
+`f72a36f06cbc0371ff33498857af49fe1a3aa1692a711048aaeeda0ffa5e6526`.
+
+This is one observation of the post-alignment, single-artifact first-use path,
+not a reliability estimate, a full planning interview, a missing-`ask_user` gate
+test, a multi-artifact test, or cross-platform filesystem verification. No active
+Pi installation or existing user records were changed.
