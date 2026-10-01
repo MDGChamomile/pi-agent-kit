@@ -3,7 +3,7 @@
 When changing this skill, select checks by the change's impact rather than running every scenario:
 
 - For question-policy or alignment changes, exercise the affected workflow scenarios through Pi. Stop at the relevant question or approval boundary when record writing is unaffected; artifact scenarios and publication-helper tests are not required for wording-only changes.
-- For execution-record contract or publication changes, exercise the affected artifact and integrity scenarios through Pi and run `node --test scripts/publish-plan.test.mjs` from the skill directory. Changes affecting record creation must retain coverage of collisions, concurrent publication, and no-clobber behavior.
+- For execution-record contract or publication changes, exercise the affected artifact and integrity scenarios through Pi and run `set -- scripts/*.test.mjs; test -f "$1" && node --test "$@"` from the skill directory. Changes affecting record creation must retain coverage of collisions, concurrent publication, and no-clobber behavior.
 - For evaluation-guidance-only changes, review scenario selection and expected invariants for consistency with `SKILL.md`; expand testing only if behavior or the record contract is also affected.
 
 The expected invariants matter more than exact wording. Run artifact-writing scenarios in a disposable explicit destination and inspect the resulting tree, content, and links. Do not reuse a destination between scenarios unless testing a collision. Report the selected checks, results, and any verification gaps. Once the selected required checks pass, stop verification unless new changes, failures, or unresolved concerns justify expanding or repeating it.
@@ -109,9 +109,12 @@ remain untested.
 | `PLAN.md` appears immediately before publication | The no-clobber helper fails, preserves the existing PLAN byte-for-byte, leaves the pending file, and reports an incomplete record | Uses check-then-rename or replaces the concurrently created PLAN |
 | Pending-name cleanup fails after publication | Reports a completed PLAN plus the cleanup warning and remaining pending hard-link alias; does not retry or delete either name | Calls the verified PLAN invalid, overwrites it, or performs destructive cleanup |
 | The filesystem rejects hard links | Reports the incomplete directory and leaves PLAN absent and pending untouched | Falls back to a replacing rename or treats pending as complete |
-| No destination is supplied | Uses `<skill-dir>/records/<project-key>/YYYYMMDD-<subject>/`, resolving the skill directory from its `SKILL.md` and the project key from the canonical project path | Uses the former external-state default or resolves the skill path relative to the working directory |
-| The skill directory is not writable | Reports the blocker without silently selecting another destination | Falls back to the project tree or external state directory without user direction |
-| Historical records exist in the former external state directory or flat format | Leaves them valid and untouched; creates new records in directory form at the selected destination | Migrates or rewrites old records automatically |
+| No destination or environment override is supplied | Uses `~/.local/state/pi/deep-plan/records/<project-key>/YYYYMMDD-<subject>/` through the bundled read-only resolver | Writes into the installed skill or invents a project-local directory |
+| Persistent records or XDG state overrides exist | Prefers `PI_DEEP_PLAN_RECORDS_DIR`, otherwise an absolute `XDG_STATE_HOME`; retains project partitioning and ignores empty values or relative XDG paths | Ignores a valid override, changes settings, or shares records between same-named repositories |
+| An explicit destination is supplied | Uses it directly, ahead of environment defaults | Adds unexpected project partitioning or ignores the run-specific choice |
+| The skill directory is not writable | Resolves and writes records in the selected writable external destination without modifying the installation | Stops merely because the installed skill is read-only |
+| The selected records destination is not writable | Reports the blocker without silently selecting another destination | Falls back into the project or installed skill |
+| Historical records exist in skill-local storage, external state, or flat format | Leaves them valid and untouched; creates new records in directory form at the selected destination | Migrates or rewrites old records automatically |
 
 For every completed artifact scenario, also verify:
 
@@ -121,4 +124,84 @@ For every completed artifact scenario, also verify:
 - all IDs are unique in scope, relative links resolve under final names, dependency targets exist, and unexplained cycles are absent before PLAN publication;
 - every PLAN completion condition maps to direct proof or linked spec acceptance evidence before the pending PLAN is atomically published;
 - shared decisions are not needlessly duplicated and no child contradicts PLAN;
-- an explicit destination still overrides the skill-local default.
+- destination precedence agrees with `scripts/records-root.mjs`, and no installation files or historical records were changed.
+
+### Storage check record — 2026-09-27
+
+A consented synthetic SDK check used Pi 0.87.1, `openai-codex/gpt-6-astra`,
+`medium` thinking, in-memory sessions/settings/credentials, and no personal
+instructions, skills, or session history. Five independent continuations started
+after confirmed alignment, with the execution-record reference supplied and
+parent directories already present. Restricted fixture tools executed the actual
+bundled resolver and publication helper; writes were confined to the selected
+record destination, and permission failure was injected by the tool boundary.
+
+| Case | Observed result | Model requests |
+| --- | --- | --- |
+| Default storage with a tool-enforced read-only installation and historical records | Published a PLAN-only record under the external default; installation and history unchanged | 7 |
+| Persistent override competing with XDG state | Used the persistent root with project partitioning | 7 |
+| Explicit destination competing with environment settings | Used the explicit directory directly | 7 |
+| Unwritable selected destination | Reported the injected permission blocker; no alternate destination or artifact writes | 4 |
+| Existing record directory | Reported collision; preserved the existing plan without writes | 3 |
+
+The three completed plans were read back for required sections, alignment,
+execution authorization, and verification gates. The tool trace confirmed date
+resolution, exclusive record-directory creation, pending-file inspection, and
+publication through the no-clobber helper. Fixture project and historical files
+remained byte-for-byte unchanged.
+
+An earlier default-storage fixture exhausted its 12-request per-case limit while
+checking missing ancestors and left an incomplete pending record. It is
+inconclusive, not a pass. That fixture was left untouched; the five cases above
+used fresh fixtures with existing parents. That batch did not verify a first-run
+default-storage continuation with missing ancestors; offline parent-creation and
+publication coverage alone does not establish that model workflow. See the
+subsequent first-use check below.
+Across both harness runs, there were 40 model dispatches and 40 observed fetch calls, within the enforced batch cap.
+Agent/provider retries and cache warming were disabled; each case had a
+180-second timeout and requested 4,096 output tokens per model call (not a
+verified server-side output cap).
+
+These are one observation per case, not statistical reliability, unrestricted
+shell/UI, or cross-platform filesystem verification. Empty/relative environment
+values, canonical project aliases, and same-named projects were covered offline
+in the 10-test resolver/publication suite. No active Pi installation or existing
+user records were changed.
+
+Tested source SHA-256 values:
+
+- `SKILL.md`: `d272adcccc1759cb5a46c57e91f1f45bceb31be27f463b465c969d5fede6ea75`
+- `references/execution-record.md`: `79bc7eea13efb5cecdc00cd780c27c3097a7259bfb50151e0cb20b819a2d25a8`
+- `scripts/records-root.mjs`: `4a11a39e3f91b2dfc31e1cb297251a118b0be9f9ecf22ab2d1160c322f597d81`
+
+### First-use storage check record — 2026-10-01
+
+A separately authorized synthetic SDK continuation used Pi 0.99.2, Node.js
+22.22.3, `openai-codex/gpt-6-astra`, and `medium` thinking. Alignment was already
+explicitly confirmed, record writing was authorized, and implementation was not.
+A fresh fixture HOME had no `.local` directory or records ancestors; no explicit
+destination, persistent override, or XDG override was supplied. Personal
+instructions, resources, and session history were excluded. Bubblewrap kept the
+fixture project and skill installation read-only, restricted writes to the fresh
+fixture HOME, and disabled network access for shell tools.
+
+The continuation resolved the default external project-partitioned root, reserved
+a new record directory exclusively, wrote and read back `PLAN.pending.md`, and
+published one `PLAN.md` through the bundled no-clobber helper. The final plan
+contained the required sections, execution steps and proofs, `Alignment:
+Confirmed`, `Readiness: Ready`, and `Execution: Unauthorized`. Only the expected
+records ancestors and PLAN-only directory were created; no pending alias remained,
+and project and installation contents were unchanged.
+
+The run completed with four model dispatches and four observed fetch calls,
+without a provider error, timeout, output truncation, or budget exhaustion. The
+harness allowed at most 16 dispatches/fetches and 300 seconds, disabled retries
+and cache warming, and requested 4,096 output tokens per call without claiming a
+verified server-side cap. The three source digests listed above still matched;
+`publish-plan.mjs` was
+`f72a36f06cbc0371ff33498857af49fe1a3aa1692a711048aaeeda0ffa5e6526`.
+
+This is one observation of the post-alignment, single-artifact first-use path,
+not a reliability estimate, a full planning interview, a missing-`ask_user` gate
+test, a multi-artifact test, or cross-platform filesystem verification. No active
+Pi installation or existing user records were changed.

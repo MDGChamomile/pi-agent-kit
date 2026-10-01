@@ -169,7 +169,7 @@ bun install --frozen-lockfile
 bun run check
 ```
 
-The `live-validation` workflow runs the same commands. A fresh frozen-lockfile installation against the inherited Pi 0.80.7 dependency passed typechecking and all 13 tests; separate Pi 0.85.1 checks also passed typechecking, tests, loader registration, and bounded dedicated-model/fallback smoke scenarios.
+The `live-validation` workflow runs the same commands against pinned Pi 0.87.1; typechecking and all 50 offline tests passed. A separate `pi-latest-compatibility` workflow checks the latest stable Pi weekly after reaching `main`, without updating the repository's pinned version. Earlier Pi 0.85.1 checks also covered loader registration and bounded dedicated-model/fallback smoke scenarios; those live results do not establish live compatibility with Pi 0.87.1.
 
 These results do not establish compatibility with every provider or failure mode. Offline checks make no model requests, while live compaction sends session content to the configured provider and can incur usage charges. See [the development and verification record](DEVELOPMENT.md) for environments, harness details, request counts, limitations, and source-only evidence.
 

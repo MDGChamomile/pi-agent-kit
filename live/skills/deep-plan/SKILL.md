@@ -10,7 +10,7 @@ compatibility: Requires Pi with an ask_user tool compatible with pi-ask-user.
 
 Move from **Fog → Same Page → Execution Record**.
 
-Use this workflow for one cohesive repository change that can be brought to execution readiness in one session. Scale the interview to the live Fog, not to a minimum question count: an already concrete request may need no discovery questions before the Same Page readback. During Fog and Same Page, work read-only. During record writing, mutation is limited to creating needed parent directories under the selected records root, the final execution-record directory, and its Markdown files; do not modify or overwrite existing files or make any other repository changes. Unless the user explicitly selects another destination for that run, store records under this skill's `records/` directory as defined in `references/execution-record.md`. The record is an execution guide, not authorization; implementation requires a separate explicit user request.
+Use this workflow for one cohesive repository change that can be brought to execution readiness in one session. Scale the interview to the live Fog, not to a minimum question count: an already concrete request may need no discovery questions before the Same Page readback. During Fog and Same Page, work read-only. During record writing, mutation is limited to creating needed parent directories under the selected records root, the final execution-record directory, and its Markdown files; do not modify or overwrite existing files or make any other repository changes. Store records outside the installed skill by default, using the destination precedence in `references/execution-record.md`; an explicit destination for the run takes priority. The record is an execution guide, not authorization; implementation requires a separate explicit user request.
 
 ## Requirement
 
@@ -78,5 +78,3 @@ If this exact understanding has not already been confirmed, use `ask_user` for o
 After Same Page is confirmed, read `references/execution-record.md` and write one execution-record directory. Always create its authoritative `PLAN.md`; add specs and tickets only when the reference's qualitative decomposition rules call for them.
 
 Apply the reference's completion and integrity conditions, report the record-directory path, artifact shape, alignment state, readiness, and execution status, then stop without implementing.
-
-When maintaining this skill itself, select and exercise only the affected scenarios through Pi as described in `references/behavior-evals.md`. Once the selected required checks pass, stop verification unless new changes, failures, or unresolved concerns justify expanding or repeating it.

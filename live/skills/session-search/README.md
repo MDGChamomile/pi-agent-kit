@@ -27,7 +27,7 @@ Session data is inherently sensitive. In an agent workflow, local tool output be
 
 ## Requirements
 
-- Pi session files under `~/.pi/agent/sessions`
+- Pi session JSONL files in the default or a configured session directory
 - Python 3.10 or later
 
 The parser supports Pi session versions 1 through 3. It treats a missing version as legacy v1 with a warning and skips newer, unsupported versions visibly instead of guessing at their structure.
@@ -72,7 +72,21 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --all-projec
 
 ### Additional session directories
 
-By default, only `~/.pi/agent/sessions` is searched. Add other directories explicitly; no archive location is assumed:
+The primary directory is selected in this order (empty environment values are ignored):
+
+1. `--sessions-root PATH`;
+2. `PI_CODING_AGENT_SESSION_DIR`;
+3. `PI_CODING_AGENT_DIR` with `/sessions` appended;
+4. `~/.pi/agent/sessions`.
+
+These rules apply to aggregate, `find`, and `recall`. `--sessions-root` replaces the primary directory; it does not require the default directory to exist. If Pi uses `--session-dir` or the `sessionDir` setting in `settings.json`, pass that location as `--sessions-root`: the helper does not read Pi settings or recover Pi's CLI arguments, and does not infer search scope from `PI_SESSION_FILE`. Environment paths expand `~` and `~/` to your home (`~\` also works on Windows); `~other` remains a literal relative directory, as in Pi.
+
+```bash
+python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
+  --sessions-root /path/to/session-store
+```
+
+Add other directories explicitly; no archive location is assumed:
 
 ```bash
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
@@ -80,11 +94,11 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
   --additional-sessions-root /path/to/another-store
 ```
 
-`--additional-sessions-root PATH` is repeatable and additive, not a replacement for the default directory. `~` is expanded; relative paths are resolved from the invocation's working directory. The same cwd, time, event, current-session exclusion, and evidence-consent rules apply across all directories. `--all-projects` selects all projects within those directories, not other storage locations.
+`--additional-sessions-root PATH` is repeatable and additive, not a replacement for the selected primary directory. `~` is expanded; relative paths are resolved from the invocation's working directory. The same cwd, time, event, current-session exclusion, and evidence-consent rules apply across all directories. `--all-projects` selects all projects within those directories, not other storage locations.
 
 Repeated or overlapping directories and file symlink aliases are deduplicated by resolved file path before counting. File symlinks are considered only when their targets resolve inside one of the selected session roots; targets in an explicitly added root remain eligible. Separate copies (including files with the same session ID) and hard links remain separate files. Nested directory symlinks are not followed; a directory symlink explicitly supplied as a root is supported. Missing or non-directory roots and directory traversal failures return a path-free `SESSION_STORAGE_UNAVAILABLE` error (exit code 2), rather than a partial summary. Empty directories are valid. Individual unreadable session files retain the existing warning behavior.
 
-For recurring agent use, specify your additional directories in your own local instructions. Keep personal paths out of the shared skill; this feature neither moves sessions nor changes Pi's `/resume` storage.
+For recurring agent use, configure Pi's storage environment variables or specify your primary and additional directories in your own local instructions. Keep personal paths out of the shared skill; this feature neither moves sessions nor changes Pi's `/resume` storage.
 
 Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each aggregate filter.
 
@@ -175,7 +189,24 @@ If an individual file fails during reading, aggregate search keeps the events al
 
 In `summary`, `evidence_omitted` distinguishes the safe default from `evidence_truncated`; `truncated` remains a compatibility alias for evidence truncation.
 
-`--summary-only` remains as an explicit alias for the safe default. `--include-evidence` is mutually exclusive with it. A direct skill invocation is counted only for a user message matching Pi's complete skill envelope; this means the recorded message matches Pi's invocation envelope, not that provenance can be distinguished from identical XML pasted manually. Direct calls are reported separately from `SKILL.md` read attempts, successes, and errors. The legacy `skill_file_reads` counter remains an alias for attempts. Reading instructions, quoting partial XML, or mentioning a skill is not evidence that the skill was invoked.
+`--summary-only` remains as an explicit alias for the safe default. `--include-evidence` is mutually exclusive with it. A direct skill invocation is counted only for a user message matching Pi's complete skill envelope; this means the recorded message matches Pi's invocation envelope, not that provenance can be distinguished from identical XML pasted manually. Direct calls are reported separately from `SKILL.md` read attempts, successes, and errors. Reads of `SKILL.md` are recognized at any installation location, not only below a directory named `skills`. Relative read paths use the session's recorded cwd; both slash styles are recognized. The containing directory supplies the fallback name. When a prior complete user skill envelope records a name and location in the read's ancestry (v2/v3), that name is used for the read, even if it differs from the directory name. Sibling branches do not share identity observations. Legacy v1 uses prior envelopes in linear file order; missing parent history in v2/v3 supplies no identity. Identity observations before a time filter still apply to later matching reads; tool results retain the identity assigned to their original call.
+
+The helper never opens today's skill files to infer historical names. It does not resolve historical symlinks, renamed paths, `~` home aliases, or retroactively rename earlier reads. Without a prior recorded envelope, a declared frontmatter name that differs from the directory cannot be inferred; the fallback name is a path-based read classification, not proof that Pi loaded a valid skill. A bare `SKILL.md` without a recorded cwd or known envelope cannot be named. The legacy `skill_file_reads` counter remains an alias for attempts. Reading instructions, quoting partial XML, or mentioning a skill is not evidence that the skill was invoked.
+
+### Nested tool calls (Pi 0.99+)
+
+Aggregate search also reads `nestedCalls` on tool results, such as calls made by
+codemode. Each recorded inner call contributes one attempt; `ok` and `error`
+statuses contribute a success or error result, while `unfinished` contributes
+only an attempt. Skill reads use the same recorded-path and ancestry rules as
+direct calls. Duplicate inner IDs within one result are counted once. The
+calling tool remains a separate event, not another copy of the inner call.
+
+Pi bounds these records and does not store inner results. Missing arguments
+cannot identify a skill read, and omitted calls cannot be recovered. Records
+with `complete: false` produce an `incomplete_nested_calls` warning, so their
+counts must not be treated as complete. Inner error text follows the existing
+opt-in evidence and masking rules. Recall still excludes tool results.
 
 ## Known limitations
 

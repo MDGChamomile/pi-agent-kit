@@ -408,8 +408,9 @@ def add_scope_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--include-current", action="store_true", help="include PI_SESSION_FILE (excluded by default)")
     parser.add_argument("--additional-sessions-root", type=Path, action="append", default=[], metavar="PATH",
                         help="also search this directory recursively; repeat for multiple directories")
-    parser.add_argument("--sessions-root", type=Path, default=session_search.DEFAULT_SESSIONS_ROOT,
-                        help=argparse.SUPPRESS)
+    parser.add_argument("--sessions-root", type=Path, default=session_search.default_sessions_root(), metavar="PATH",
+                        help="replace the primary sessions directory; default precedence: PI_CODING_AGENT_SESSION_DIR, "
+                             "PI_CODING_AGENT_DIR/sessions, ~/.pi/agent/sessions")
 
 
 def build_parser() -> argparse.ArgumentParser:

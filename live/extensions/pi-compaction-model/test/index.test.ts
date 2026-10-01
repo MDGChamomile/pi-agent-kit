@@ -236,13 +236,61 @@ describe("session_before_compact", () => {
     });
   });
 
-  test("detects OpenRouter by base URL for a custom provider", async () => {
+  for (const baseUrl of [
+    "https://openrouter.ai/api/v1",
+    "https://OPENROUTER.AI:443/api/v1",
+    "https://api.openrouter.ai/api/v1",
+    "https://openrouter.ai./api/v1",
+    "https://api.openrouter.ai./api/v1",
+  ]) {
+    test(`detects the OpenRouter hostname for a custom provider: ${baseUrl}`, async () => {
+      const state = harness({
+        model: { provider: "custom", id: "model", baseUrl },
+      });
+      let receivedHeaders: unknown;
+      compactImplementation = async (_preparation, _model, _apiKey, headers) => {
+        receivedHeaders = headers;
+        return { summary: "dedicated" };
+      };
+
+      expect(await state.handler(state.event, state.ctx)).toEqual({ compaction: { summary: "dedicated" } });
+      expect(receivedHeaders).toEqual({
+        "HTTP-Referer": "https://pi.dev",
+        "X-OpenRouter-Title": "pi",
+        "X-OpenRouter-Categories": "cli-agent",
+      });
+    });
+  }
+
+  for (const baseUrl of [
+    "https://openrouter.ai.example.invalid/api/v1",
+    "https://openrouter.ai.example.invalid./api/v1",
+    "https://openrouter.ai../api/v1",
+    "https://notopenrouter.ai/api/v1",
+    "https://example.invalid/openrouter.ai/api/v1",
+    "https://example.invalid/api/v1?upstream=openrouter.ai",
+    "https://openrouter.ai@example.invalid/api/v1",
+    "not a URL: openrouter.ai",
+  ]) {
+    test(`does not attribute a non-OpenRouter or malformed endpoint: ${baseUrl}`, async () => {
+      const state = harness({
+        model: { provider: "custom", id: "model", baseUrl },
+        auth: { ok: true, apiKey: "test-key", headers: { "x-test": "retained" } },
+      });
+      let receivedHeaders: unknown;
+      compactImplementation = async (_preparation, _model, _apiKey, headers) => {
+        receivedHeaders = headers;
+        return { summary: "dedicated" };
+      };
+
+      expect(await state.handler(state.event, state.ctx)).toEqual({ compaction: { summary: "dedicated" } });
+      expect(receivedHeaders).toEqual({ "x-test": "retained" });
+    });
+  }
+
+  test("keeps provider-based attribution with a custom endpoint", async () => {
     const state = harness({
-      model: {
-        provider: "custom",
-        id: "model",
-        baseUrl: "https://openrouter.ai/api/v1",
-      },
+      model: { provider: "openrouter", id: "model", baseUrl: "https://proxy.example.invalid/api/v1" },
     });
     let receivedHeaders: unknown;
     compactImplementation = async (_preparation, _model, _apiKey, headers) => {

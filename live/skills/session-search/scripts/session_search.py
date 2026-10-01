@@ -8,6 +8,7 @@ import heapq
 import json
 import math
 import os
+import posixpath
 import re
 import sys
 from collections import Counter
@@ -17,18 +18,17 @@ from pathlib import Path
 from typing import Any, Callable, Iterable
 
 DEFAULT_LIMIT = 20
-DEFAULT_SESSIONS_ROOT = Path.home() / ".pi" / "agent" / "sessions"
 MAX_EVIDENCE_CHARS = 300
 MAX_WARNING_ITEMS = 100
 MAX_BATCH_FILTERS = 8
 MAX_BATCH_FILTER_CHARS = 4096
 SKILL_ENVELOPE_RE = re.compile(
-    r'\A<skill name="([^"\r\n]+)" location="[^"\r\n]+">\r?\n'
+    r'\A<skill name="([^"\r\n]+)" location="([^"\r\n]+)">\r?\n'
     r'References are relative to [^\r\n]+\.\r?\n\r?\n'
     r'.*\r?\n</skill>(?:\r?\n\r?\n.*)?\Z',
     re.DOTALL,
 )
-SKILL_FILE_RE = re.compile(r"(?:^|[/\\])skills[/\\]([^/\\]+)[/\\]SKILL\.md$", re.IGNORECASE)
+SKILL_FILE_RE = re.compile(r"(?:^|[/\\])([^/\\]+)[/\\]SKILL\.md$", re.IGNORECASE)
 
 # Mask before truncation so a secret crossing the truncation boundary cannot leak.
 MASK_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -47,6 +47,24 @@ MASK_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?i)([?&](?:api[_-]?key|access[_-]?token|auth|password|secret|token)=)[^&#\s]+"), r"\1[REDACTED]"),
     (re.compile(r"\b(?:sk|pk)-[A-Za-z0-9_-]{12,}\b"), "[REDACTED_KEY]"),
 )
+
+
+def pi_environment_path(value: str) -> Path:
+    """Expand only Pi's own-home tilde forms, never another user's home."""
+    if value == "~":
+        return Path.home()
+    if value.startswith("~/") or (os.name == "nt" and value.startswith("~\\")):
+        return Path.home() / value[2:]
+    # Prevent later generic expanduser calls from expanding a literal ~user.
+    return Path(value).absolute()
+
+
+def default_sessions_root() -> Path:
+    """Resolve Pi's storage overrides when building a CLI, not at import time."""
+    if value := os.environ.get("PI_CODING_AGENT_SESSION_DIR"):
+        return pi_environment_path(value)
+    agent_dir = os.environ.get("PI_CODING_AGENT_DIR")
+    return (pi_environment_path(agent_dir) if agent_dir else Path.home() / ".pi" / "agent") / "sessions"
 
 
 def parse_timestamp(value: Any) -> datetime | None:
@@ -125,14 +143,40 @@ def direct_skills(text: str) -> list[str]:
     return [match.group(1)] if match else []
 
 
-def skill_read_name(tool_name: str, arguments: Any) -> str | None:
+def recorded_skill_path(path: str, cwd: str = "") -> str:
+    """Normalize recorded spellings without accessing today's filesystem."""
+    path = path.replace("\\", "/")
+    if not posixpath.isabs(path) and not re.match(r"^[A-Za-z]:/", path):
+        path = posixpath.join(cwd.replace("\\", "/"), path)
+    return posixpath.normpath(path)
+
+
+def skill_read_name(
+    tool_name: str, arguments: Any, names_by_path: dict[str, str] | None = None, cwd: str = "",
+) -> str | None:
     if tool_name.lower() != "read" or not isinstance(arguments, dict):
         return None
     path = arguments.get("path")
     if not isinstance(path, str):
         return None
+    path = recorded_skill_path(path, cwd)
+    if names_by_path and path in names_by_path:
+        return names_by_path[path]
     match = SKILL_FILE_RE.search(path)
     return match.group(1) if match else None
+
+
+def record_skill_identity(
+    entry: dict[str, Any], names_by_path: dict[str, str], cwd: str,
+) -> dict[str, str]:
+    """Copy only on an identity change so sibling branches keep their own state."""
+    message = entry.get("message")
+    if entry.get("type") != "message" or not isinstance(message, dict) or message.get("role") != "user":
+        return names_by_path
+    match = SKILL_ENVELOPE_RE.fullmatch(text_content(message.get("content")))
+    if match:
+        return {**names_by_path, recorded_skill_path(match.group(2), cwd): match.group(1)}
+    return names_by_path
 
 
 def latest_leaf_path(parent_by_id: dict[str, Any], leaf_id: str | None) -> set[str]:
@@ -183,6 +227,8 @@ def events_for_entry(
     session: dict[str, str],
     on_leaf: bool | None,
     skill_reads_by_call_id: dict[str, str] | None = None,
+    names_by_path: dict[str, str] | None = None,
+    cwd: str = "",
 ) -> list[dict[str, Any]]:
     if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
         return []
@@ -223,7 +269,7 @@ def events_for_entry(
             tool_name = str(block.get("name", "unknown"))
             arguments = block.get("arguments", {})
             arguments_text = json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str)
-            read_skill = skill_read_name(tool_name, arguments)
+            read_skill = skill_read_name(tool_name, arguments, names_by_path, cwd)
             events.append({
                 **base,
                 "event": "skill_file_read" if read_skill else "tool_call",
@@ -254,6 +300,44 @@ def events_for_entry(
             "searchable": "\n".join(filter(None, [tool_name, text, read_skill])),
             "evidence_raw": text,
         })
+        nested = message.get("nestedCalls")
+        calls = nested.get("calls") if isinstance(nested, dict) else None
+        seen: set[str] = set()
+        for call in calls if isinstance(calls, list) else []:
+            if not isinstance(call, dict):
+                continue
+            call_id, name, status = call.get("id"), call.get("name"), call.get("status")
+            if (not isinstance(call_id, str) or not isinstance(name, str) or not name
+                    or status not in ("ok", "error", "unfinished") or call_id in seen):
+                continue
+            seen.add(call_id)
+            arguments = call.get("arguments")
+            read_skill = skill_read_name(name, arguments, names_by_path, cwd)
+            arguments_text = json.dumps(arguments, ensure_ascii=False, sort_keys=True) if isinstance(arguments, dict) else ""
+            nested_base = {
+                **base,
+                "tool_name": name,
+                "skill_names": [read_skill] if read_skill else [],
+                "direct_skills": [],
+                "skill_file_read": read_skill,
+            }
+            events.append({
+                **nested_base,
+                "event": "skill_file_read" if read_skill else "tool_call",
+                "is_error": False,
+                "searchable": "\n".join(filter(None, [name, arguments_text, read_skill])),
+                "evidence_raw": arguments_text,
+            })
+            if status != "unfinished":
+                error = call.get("error")
+                error_text = error if isinstance(error, str) else ""
+                events.append({
+                    **nested_base,
+                    "event": "tool_error" if status == "error" else "tool_result",
+                    "is_error": status == "error",
+                    "searchable": "\n".join(filter(None, [name, error_text, read_skill])),
+                    "evidence_raw": error_text,
+                })
     return events
 
 
@@ -302,7 +386,10 @@ def session_version(header: dict[str, Any], path: Path, warnings: WarningCollect
     return value
 
 
-def record_skill_read_calls(entry: dict[str, Any], skill_reads_by_call_id: dict[str, str]) -> None:
+def record_skill_read_calls(
+    entry: dict[str, Any], skill_reads_by_call_id: dict[str, str],
+    names_by_path: dict[str, str] | None = None, cwd: str = "",
+) -> None:
     if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
         return
     message = entry["message"]
@@ -312,7 +399,7 @@ def record_skill_read_calls(entry: dict[str, Any], skill_reads_by_call_id: dict[
         if not isinstance(block, dict) or block.get("type") != "toolCall":
             continue
         call_id = block.get("id")
-        read_skill = skill_read_name(str(block.get("name", "unknown")), block.get("arguments", {}))
+        read_skill = skill_read_name(str(block.get("name", "unknown")), block.get("arguments", {}), names_by_path, cwd)
         if isinstance(call_id, str) and read_skill:
             skill_reads_by_call_id[call_id] = read_skill
 
@@ -376,9 +463,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--additional-sessions-root", type=Path, action="append", default=[], metavar="PATH",
         help="also search this directory recursively; repeat for multiple directories; "
-             "default: only ~/.pi/agent/sessions; all directories must be readable",
+             "additive to the selected sessions root; all directories must be readable",
     )
-    parser.add_argument("--sessions-root", type=Path, default=DEFAULT_SESSIONS_ROOT, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--sessions-root", type=Path, default=default_sessions_root(), metavar="PATH",
+        help="replace the primary sessions directory; default precedence: PI_CODING_AGENT_SESSION_DIR, "
+             "PI_CODING_AGENT_DIR/sessions, ~/.pi/agent/sessions",
+    )
     return parser
 
 
@@ -626,6 +717,9 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                 parent_by_id: dict[str, Any] = {}
                 leaf_id: str | None = None
                 skill_reads_by_call_id: dict[str, str] = {}
+                names_by_path: dict[str, str] = {}
+                identities_by_entry: dict[str, dict[str, str]] = {}
+                recorded_cwd = header_cwd if isinstance(header_cwd, str) else ""
 
                 for line in handle:
                     try:
@@ -637,20 +731,30 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                         warnings.add(path, "invalid_entry")
                         continue
                     scanned_entries += 1
+                    message = entry.get("message")
+                    nested = message.get("nestedCalls") if isinstance(message, dict) else None
+                    if isinstance(nested, dict) and nested.get("complete") is not True:
+                        warnings.add(path, "incomplete_nested_calls")
                     entry_id = entry.get("id")
                     if version >= 2 and not isinstance(entry_id, str):
                         warnings.add(path, "invalid_entry_id")
                     if result_limit and version >= 2 and isinstance(entry_id, str):
                         parent_by_id[entry_id] = entry.get("parentId")
                         leaf_id = entry_id
-                    record_skill_read_calls(entry, skill_reads_by_call_id)
+                    if version >= 2:
+                        parent_id = entry.get("parentId")
+                        names_by_path = identities_by_entry.get(parent_id, {}) if isinstance(parent_id, str) else {}
+                    names_by_path = record_skill_identity(entry, names_by_path, recorded_cwd)
+                    if version >= 2 and isinstance(entry_id, str):
+                        identities_by_entry[entry_id] = names_by_path
+                    record_skill_read_calls(entry, skill_reads_by_call_id, names_by_path, recorded_cwd)
 
                     timestamp = parse_timestamp(entry.get("timestamp"))
                     if cutoff is not None and (timestamp is None or timestamp < cutoff):
                         continue
                     eligible_entries += 1
                     # Parse each entry into events once, then evaluate independent filters.
-                    events = events_for_entry(entry, session, None, skill_reads_by_call_id)
+                    events = events_for_entry(entry, session, None, skill_reads_by_call_id, names_by_path, recorded_cwd)
                     for aggregation in aggregations:
                         aggregation.consume(events, timestamp)
 

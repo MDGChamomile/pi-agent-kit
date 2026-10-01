@@ -11,11 +11,13 @@ bun install --frozen-lockfile
 bun run check
 ```
 
-The `live-validation` CI workflow runs these commands with Bun 1.3.14. A fresh frozen-lockfile installation against the inherited Pi 0.80.7 dependency passed typechecking and all 13 tests.
+The `live-validation` CI workflow runs these commands with Bun 1.3.14. The development dependency and lockfile now pin Pi 0.87.1; typechecking and all 50 offline tests passed against that version. The declared runtime minimum remains `>=0.80.7`; updating the test baseline does not change it or establish a tested compatibility matrix.
 
-The inherited lockfile pins the original development environment. To check a newer Pi version, typecheck and run the tests against that version in an isolated development copy; do not treat the inherited dependency range as verification of every later release.
+The separate `pi-latest-compatibility` workflow installs the pinned environment, then selects Pi's npm `latest` release in its disposable checkout and runs `bun run check`. It records the resolved Pi version in the job summary and does not commit dependency changes or make model requests. It runs weekly on Mondays at 03:23 UTC and can be started manually once registered on the default branch. GitHub runs scheduled workflows only from the default branch, so weekly checks begin after this workflow reaches `main`. Changes to the workflow itself also trigger checks on pushes to `updates` and on pull requests, allowing verification before release.
 
-`test/config.test.ts` tests configuration parsing and merging. `test/index.test.ts` mocks the compaction API and checks file-list restoration in dedicated-model and fallback paths. The test script runs the files in separate processes so module mocks cannot leak between them. These tests make no model requests and do not use real credentials.
+To check another Pi version locally, use an isolated development copy. Passing a pinned or latest-version check does not establish compatibility with every release or real provider.
+
+`test/config.test.ts` tests configuration parsing and merging. `test/index.test.ts` mocks the compaction API and checks file-list restoration in dedicated-model and fallback paths. The test script discovers `test/*.test.ts` in filename order (C locale) and runs each file in a separate Bun process so module mocks cannot leak between them. It stops on the first failure and fails if no test files are found; new files need no registration. These tests make no model requests and do not use real credentials.
 
 ## Credential endpoint regression verification
 
