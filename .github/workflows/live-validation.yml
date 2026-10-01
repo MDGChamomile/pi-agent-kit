@@ -41,7 +41,7 @@ jobs:
         working-directory: live/skills/session-search
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
       - name: Validate deep-plan publication
-        run: node --test live/skills/deep-plan/scripts/publish-plan.test.mjs
+        run: set -- live/skills/deep-plan/scripts/*.test.mjs; test -f "$1" && node --test "$@"
       - name: Validate skill frontmatter and maintained Markdown links
         run: |
           python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v

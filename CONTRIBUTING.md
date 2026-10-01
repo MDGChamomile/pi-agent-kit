@@ -36,7 +36,7 @@ The commands below match the relevant `live-validation` entry points. Python che
 | Skill frontmatter or maintained Markdown relative links | Repository root | None | `python3 -B .github/scripts/validate_skills.py` |
 | Skill validator or its CI step | Repository root | None | `python3 -B -m unittest discover -s .github/scripts -p 'test_*.py' -v`, then the metadata check above |
 | Session search / recall | `live/skills/session-search` | None | `python3 -B -m unittest discover -s tests -v` |
-| Deep-plan records-root and publication helpers | Repository root | None | `node --test live/skills/deep-plan/scripts/publish-plan.test.mjs` |
+| Deep-plan records-root and publication helpers | Repository root | None | `set -- live/skills/deep-plan/scripts/*.test.mjs; test -f "$1" && node --test "$@"` |
 | Compaction model extension | `live/extensions/pi-compaction-model` | Bun 1.3.14; `bun install --frozen-lockfile` | `bun run check` |
 
 For moved resources, contribute and verify in [Pi Subagent](https://github.com/MDGChamomile/pi-subagent/blob/main/CONTRIBUTING.md) or [Pi Jev](https://github.com/MDGChamomile/pi-jev/blob/main/CONTRIBUTING.md). Their runtime sources, companion skills, test dependencies, and release workflows are no longer maintained in this kit.

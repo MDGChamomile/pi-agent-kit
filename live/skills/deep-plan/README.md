@@ -40,7 +40,7 @@ The completed record separates confirmed alignment, readiness, and execution aut
 
 ## Maintenance
 
-For changes to this skill, use the impact-based [behavior scenarios](references/behavior-evals.md) and the repository contribution guide. Run the offline records-root and publication checks with `node --test scripts/publish-plan.test.mjs` from this directory. These checks do not establish live model workflow behavior.
+For changes to this skill, use the impact-based [behavior scenarios](references/behavior-evals.md) and the repository contribution guide. Run the offline records-root and publication checks with `set -- scripts/*.test.mjs; test -f "$1" && node --test "$@"` from this directory. These checks do not establish live model workflow behavior.
 
 ## License
 
