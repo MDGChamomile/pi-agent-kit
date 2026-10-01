@@ -240,6 +240,8 @@ describe("session_before_compact", () => {
     "https://openrouter.ai/api/v1",
     "https://OPENROUTER.AI:443/api/v1",
     "https://api.openrouter.ai/api/v1",
+    "https://openrouter.ai./api/v1",
+    "https://api.openrouter.ai./api/v1",
   ]) {
     test(`detects the OpenRouter hostname for a custom provider: ${baseUrl}`, async () => {
       const state = harness({
@@ -262,6 +264,8 @@ describe("session_before_compact", () => {
 
   for (const baseUrl of [
     "https://openrouter.ai.example.invalid/api/v1",
+    "https://openrouter.ai.example.invalid./api/v1",
+    "https://openrouter.ai../api/v1",
     "https://notopenrouter.ai/api/v1",
     "https://example.invalid/openrouter.ai/api/v1",
     "https://example.invalid/api/v1?upstream=openrouter.ai",

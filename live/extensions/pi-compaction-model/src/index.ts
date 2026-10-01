@@ -33,7 +33,8 @@ export function withOpenRouterAttribution(
   let isOpenRouter = model.provider === "openrouter";
   if (!isOpenRouter) {
     try {
-      const hostname = new URL(model.baseUrl).hostname;
+      // A single terminal DNS root dot does not change the host's identity.
+      const hostname = new URL(model.baseUrl).hostname.replace(/\.$/, "");
       isOpenRouter = hostname === "openrouter.ai" || hostname.endsWith(".openrouter.ai");
     } catch {
       return headers;
