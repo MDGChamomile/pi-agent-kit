@@ -29,7 +29,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "bun test ./test/config.test.ts && bun test ./test/index.test.ts && bun test ./test/retry.test.ts",
+    "test": "sh ./scripts/test.sh",
     "typecheck": "tsc --noEmit",
     "check": "bun run typecheck && bun run test"
   },

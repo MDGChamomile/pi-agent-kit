@@ -17,7 +17,7 @@ The separate `pi-latest-compatibility` workflow installs the pinned environment,
 
 To check another Pi version locally, use an isolated development copy. Passing a pinned or latest-version check does not establish compatibility with every release or real provider.
 
-`test/config.test.ts` tests configuration parsing and merging. `test/index.test.ts` mocks the compaction API and checks file-list restoration in dedicated-model and fallback paths. The test script runs the files in separate processes so module mocks cannot leak between them. These tests make no model requests and do not use real credentials.
+`test/config.test.ts` tests configuration parsing and merging. `test/index.test.ts` mocks the compaction API and checks file-list restoration in dedicated-model and fallback paths. The test script discovers `test/*.test.ts` in filename order (C locale) and runs each file in a separate Bun process so module mocks cannot leak between them. It stops on the first failure and fails if no test files are found; new files need no registration. These tests make no model requests and do not use real credentials.
 
 ## Credential endpoint regression verification
 

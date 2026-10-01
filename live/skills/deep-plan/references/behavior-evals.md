@@ -3,7 +3,7 @@
 When changing this skill, select checks by the change's impact rather than running every scenario:
 
 - For question-policy or alignment changes, exercise the affected workflow scenarios through Pi. Stop at the relevant question or approval boundary when record writing is unaffected; artifact scenarios and publication-helper tests are not required for wording-only changes.
-- For execution-record contract or publication changes, exercise the affected artifact and integrity scenarios through Pi and run `node --test scripts/publish-plan.test.mjs` from the skill directory. Changes affecting record creation must retain coverage of collisions, concurrent publication, and no-clobber behavior.
+- For execution-record contract or publication changes, exercise the affected artifact and integrity scenarios through Pi and run `set -- scripts/*.test.mjs; test -f "$1" && node --test "$@"` from the skill directory. Changes affecting record creation must retain coverage of collisions, concurrent publication, and no-clobber behavior.
 - For evaluation-guidance-only changes, review scenario selection and expected invariants for consistency with `SKILL.md`; expand testing only if behavior or the record contract is also affected.
 
 The expected invariants matter more than exact wording. Run artifact-writing scenarios in a disposable explicit destination and inspect the resulting tree, content, and links. Do not reuse a destination between scenarios unless testing a collision. Report the selected checks, results, and any verification gaps. Once the selected required checks pass, stop verification unless new changes, failures, or unresolved concerns justify expanding or repeating it.
