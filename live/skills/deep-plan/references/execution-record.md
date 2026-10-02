@@ -27,13 +27,7 @@ node <skill-dir>/scripts/records-root.mjs "<project-path>" "<explicit-records-ro
 
 The helper prints the absolute parent records directory and creates nothing. Append `YYYYMMDD-<subject>/` to that output. Explicit and persistent override paths expand `~` and `~/` (also `~\` on Windows); relative paths resolve from the invocation's working directory. Empty environment values are ignored, and relative `XDG_STATE_HOME` values fall back to the default state directory. Do not change environment variables or persistent settings as part of planning.
 
-Build `<project-key>` from the canonical repository root, or the canonical current working directory when no repository root is available:
-
-```text
-<sanitized-basename>-<first-6-lowercase-hex-of-SHA-256(canonical-path)>
-```
-
-Keep ASCII letters, digits, dots, underscores, and hyphens in the basename; replace other runs with `-`, trim separators, and use `project` if nothing remains. The path hash prevents same-named repositories in different locations from sharing records.
+Use the resolver's parent-directory output unchanged; do not reconstruct `<project-key>`. The bundled helper owns project-key calculation, keeping canonical path aliases together and same-named projects in different locations separate. An explicit destination is still used directly, without adding a project key.
 
 Create the selected parent records directory when needed, only after Same Page confirmation. Do not infer another project-local plan directory or ask a destination question while this default is available. A read-only skill installation is supported: the installed skill is read, never used as the default output location. If the selected records directory cannot be created or written, report the blocker rather than silently choosing another destination. Existing records, including skill-local `records/`, earlier external-state records, and flat `YYYYMMDD-<subject>.md` records, remain valid historical artifacts; do not move, delete, or rewrite them automatically.
 
