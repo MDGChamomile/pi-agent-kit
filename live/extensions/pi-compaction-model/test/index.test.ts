@@ -1,4 +1,4 @@
-import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 let config: { model: string; reasons: string[]; thinkingLevel?: string } | null;
 let compactImplementation: (...args: any[]) => Promise<any>;
@@ -42,6 +42,7 @@ beforeEach(() => {
 });
 
 function harness(options: {
+  hasUI?: boolean;
   reason?: string;
   findModel?: boolean;
   model?: { provider: string; id: string; baseUrl: string };
@@ -75,6 +76,8 @@ function harness(options: {
     signal: new AbortController().signal,
   };
   const ctx = {
+    hasUI: options.hasUI ?? true,
+    ui: { notify: mock((_message: string, _type?: "info" | "warning" | "error") => {}) },
     modelRegistry: {
       find: () => options.findModel === false ? undefined : model,
       getApiKeyAndHeaders: async () => options.auth ?? { ok: true, apiKey: "key" },
@@ -90,6 +93,60 @@ function expectRestored(preparation: { fileOps: { read: Set<string>; edited: Set
 }
 
 describe("session_before_compact", () => {
+  for (const hasUI of [true, false]) {
+    test(`routes hook failure warnings with hasUI=${hasUI}`, async () => {
+      const consoleWarn = spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        for (const failure of ["reference", "lookup", "authentication", "request"]) {
+          config = { model: failure === "reference" ? "invalid" : "provider/model", reasons: ["manual"] };
+          const state = harness({
+            hasUI, findModel: failure !== "lookup",
+            auth: failure === "authentication" ? { ok: false, error: "synthetic auth failure" } : undefined,
+          });
+          compactImplementation = async () => { throw new Error("synthetic request failure"); };
+          consoleWarn.mockClear();
+          expect(await state.handler(state.event, state.ctx)).toBeUndefined();
+          expectRestored(state.preparation);
+          if (hasUI) {
+            expect(state.ctx.ui.notify).toHaveBeenCalledTimes(1);
+            expect(state.ctx.ui.notify.mock.calls[0]).toEqual([
+              expect.stringContaining("[pi-compaction-model]"), "warning",
+            ]);
+            expect(consoleWarn).not.toHaveBeenCalled();
+          } else {
+            expect(consoleWarn).toHaveBeenCalledTimes(1);
+            expect(state.ctx.ui.notify).not.toHaveBeenCalled();
+          }
+        }
+      } finally {
+        consoleWarn.mockRestore();
+      }
+    });
+
+    test(`success and cancellation stay silent with hasUI=${hasUI}`, async () => {
+      const consoleWarn = spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        for (const outcome of ["success", "recovery", "abort"]) {
+          const state = harness({ hasUI });
+          let attempts = 0;
+          compactImplementation = async () => {
+            attempts++;
+            if (outcome === "abort") throw new DOMException("Aborted", "AbortError");
+            if (outcome === "recovery" && attempts === 1) throw new Error("503 Service unavailable");
+            return { summary: "ok" };
+          };
+          expect(await state.handler(state.event, state.ctx)).toEqual(
+            outcome === "abort" ? { cancel: true } : { compaction: { summary: "ok" } },
+          );
+          expect(state.ctx.ui.notify).not.toHaveBeenCalled();
+          expect(consoleWarn).not.toHaveBeenCalled();
+        }
+      } finally {
+        consoleWarn.mockRestore();
+      }
+    });
+  }
+
   test("restores previous file operations before excluded-reason fallback", async () => {
     config = { model: "provider/model", reasons: ["manual"] };
     const state = harness({ reason: "threshold" });
