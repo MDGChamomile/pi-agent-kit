@@ -6,7 +6,7 @@ An explicitly invoked [Pi](https://github.com/earendil-works/pi) skill for turni
 
 A real Pi run on **Parcel Dashboard**, a synthetic shipping dashboard: clarify CSV export scope, resolve the missing UI boundary, confirm the shared understanding, then create `PLAN.md` without implementing the feature.
 
-![Deep-plan asking about CSV export scope, confirming the plan-only boundary, and creating an execution record](assets/deep-plan-demo.gif)
+![Deep-plan asking about CSV export scope, confirming the plan-only boundary, and creating an execution record](https://raw.githubusercontent.com/MDGChamomile/pi-agent-kit/updates/docs/assets/deep-plan-demo.gif)
 
 The GIF replays actual terminal output with typing and waits accelerated; model responses and tool results are not scripted. The fixture is not a Git repository, so its Git-status check fails visibly; the agent records that limitation and completes the plan. This is a workflow demonstration, not a measure of planning quality or latency.
 
@@ -16,6 +16,8 @@ The GIF replays actual terminal output with typing and waits accelerated; model 
 - A compatible `ask_user` tool for decision gates. [pi-ask-user](https://github.com/edlsh/pi-ask-user) is the reference implementation; copying this skill does not install it.
 - Node.js for the bundled read-only records-root resolver and no-clobber publication helper.
 - A writable records destination on a filesystem that supports hard links; the skill installation itself may be read-only.
+
+The demo GIF is hosted in the repository's `docs/assets/`, outside this installable directory. The README uses an online image URL so it also works when copied on its own; viewing the demo requires network access.
 
 From the repository root, copy the directory into Pi's skill location:
 
