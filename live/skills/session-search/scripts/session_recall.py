@@ -302,6 +302,11 @@ def scan_candidates(
         if candidate is not None:
             candidates.append(candidate)
 
+    # Only disclosed, in-scope failures can invalidate an empty result. Unknown
+    # or foreign-project files retain their existing private warning policy.
+    if not candidates and warnings.output(False)["by_kind"].get("unreadable_file", 0):
+        raise RuntimeError("read failures prevent verifying an empty recall")
+
     candidates.sort(key=candidate_sort_key, reverse=True)
     summary = {
         "files_selected": files_selected,
@@ -611,7 +616,10 @@ def main(argv: Iterable[str] | None = None) -> int:
     except CandidateNotFoundError:
         return session_search.emit_error("CANDIDATE_NOT_FOUND", "The selected candidate is unavailable.")
     except (OSError, RuntimeError):
-        return session_search.emit_error("SESSION_STORAGE_UNAVAILABLE", "Session storage could not be read.")
+        return session_search.emit_error(
+            "SESSION_STORAGE_UNAVAILABLE",
+            "Session files could not be read, so the requested history could not be verified.",
+        )
     print(json.dumps(output, ensure_ascii=False, sort_keys=True))
     return 0
 
