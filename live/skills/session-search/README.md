@@ -166,7 +166,22 @@ For v2 and v3 sessions, recall follows the parent chain from the last recorded e
 
 A recall window contains a matching message and at most one neighboring text message on each side. Overlapping windows are merged up to five messages. Output is capped at three windows, 300 characters per message, and 6,000 evidence characters overall. Omitted-message counts make gaps visible. Each returned message has a `text_truncated` boolean indicating whether its masked, whitespace-normalized text was shortened for the excerpt; masking alone does not set this flag. The summary's `evidence_truncated` still reports omitted windows or unrepresented matching messages, not shortening within a returned message. Thinking blocks, tool calls, tool results, compaction summaries, and unrelated first or last messages are excluded. First or last messages can still appear when they are naturally adjacent to a match.
 
-`find` never requires evidence consent because it returns only path-free candidate metadata. `recall` requires `--include-evidence`; in an agent workflow this flag may be used only after the user explicitly approves sending the masked snippets and timestamps to the active model provider.
+### Read more matching windows
+
+Recall returns `next_continuation` when more matching windows remain, or `null` when there are no further windows. If the first page does not answer the question, pass that opaque token to another recall using the same terms and scope:
+
+```bash
+python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py recall \
+  --term authentication --term cache --continuation '<next_continuation>' --include-evidence
+```
+
+Do not combine `--continuation` with `--candidate-rank`. Initial recall still selects the current rank; continuation stays with the same active-branch conversation even if another session takes that rank. A changed, removed, or moved candidate returns `CANDIDATE_NOT_FOUND`, rather than silently switching sessions. Re-run `find` and start a new ranked recall if needed. Scope or term changes and malformed tokens return `INVALID_ARGUMENT`. With `--days`, the original time cutoff is retained across pages.
+
+Each page keeps the same three-window, five-message-per-window, 300-character-per-message, and total evidence limits and masking. The summary counts describe that page; `matching_messages` still counts all eligible matches. `evidence_truncated` can remain true on the final page because other matches were returned on earlier pages. Use `next_continuation`, not that flag, to determine whether another page exists. Continuation exposes later matching windows, not the full text of shortened messages or arbitrary non-matching conversation tails.
+
+Tokens do not contain plaintext paths, session IDs, search terms, or conversation text. They are stateless locators, not authorization or encryption: every invocation rediscovers files inside the supplied scope and rechecks the conversation fingerprint. No index, cache, or token file is written; continuation still rescans eligible sessions. Read another page only when needed to answer the question, and stop once the evidence is sufficient; do not automatically collect the entire conversation.
+
+`find` never requires evidence consent because it returns only path-free candidate metadata. Every `recall` page requires `--include-evidence`; in an agent workflow this flag may be used only within the user's explicit approval to send masked snippets and timestamps to the active model provider. A continuation token does not expand that approval.
 
 ## Aggregate output and evidence
 
@@ -214,7 +229,7 @@ opt-in evidence and masking rules. Recall still excludes tool results.
 - Counts and candidate ranks describe recorded messages and entries, not inferred tasks or outcomes.
 - Aggregate search still scans recorded branches and only marks evidence from the inferred latest branch. Recall restricts matching and evidence to the active branch.
 - Aggregate opens each selected session body once, including for a batch of independent summary filters. Separate CLI invocations still repeat the scan. Recall find must read a selected body to determine its active branch; recall then reads the chosen candidate again to build evidence. There is no persistent index.
-- Recall candidate ranks can change if session files change between find and recall invocations.
+- Recall candidate ranks can change if session files change between find and initial recall invocations. Continuation preserves only the already recalled candidate, not the find ranking.
 - Secret masking is deliberately best-effort and is not a data-loss-prevention guarantee.
 
 ## Tests

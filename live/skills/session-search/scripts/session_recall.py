@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import hashlib
 import json
 import os
@@ -318,7 +320,9 @@ def matching_indices(messages: list[RecallMessage], terms: tuple[str, ...]) -> l
     ]
 
 
-def window_ranges(message_count: int, hits: list[int]) -> tuple[list[tuple[int, int]], bool]:
+def window_ranges(
+    message_count: int, hits: list[int], window_start: int = 0,
+) -> tuple[list[tuple[int, int]], bool]:
     ranges: list[tuple[int, int]] = []
     for hit in hits:
         start = max(0, hit - 1)
@@ -336,15 +340,15 @@ def window_ranges(message_count: int, hits: list[int]) -> tuple[list[tuple[int, 
                     continue
                 start = previous_end
         ranges.append((start, end))
-    truncated = len(ranges) > MAX_WINDOWS
-    return ranges[:MAX_WINDOWS], truncated
+    next_start = window_start + MAX_WINDOWS
+    return ranges[window_start:next_start], len(ranges) > next_start
 
 
 def recall_windows(
-    messages: list[RecallMessage], terms: tuple[str, ...]
+    messages: list[RecallMessage], terms: tuple[str, ...], window_start: int = 0,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     hits = matching_indices(messages, terms)
-    ranges, windows_truncated = window_ranges(len(messages), hits)
+    ranges, windows_truncated = window_ranges(len(messages), hits, window_start)
     windows: list[dict[str, Any]] = []
     returned_bounds: list[tuple[int, int]] = []
     evidence_chars = 0
@@ -425,8 +429,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     recall = subparsers.add_parser("recall", help="return bounded windows from one ranked candidate")
     add_scope_arguments(recall)
-    recall.add_argument("--candidate-rank", type=int, default=1,
-                        help="ranked candidate to recall (default: 1)")
+    selection = recall.add_mutually_exclusive_group()
+    selection.add_argument("--candidate-rank", type=int, default=1,
+                           help="ranked candidate to recall (default: 1)")
+    selection.add_argument("--continuation", metavar="TOKEN",
+                           help="read the next matching windows from a previous recall; reuse its terms and scope")
     recall.add_argument("--include-evidence", action="store_true", required=True,
                         help="include masked conversation snippets; requires explicit user consent in agent workflows")
     return parser
@@ -471,15 +478,85 @@ def find_output(args: argparse.Namespace, now: datetime | None = None) -> dict[s
     }
 
 
+def continuation_digest(value: Any) -> str:
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def continuation_scope(
+    args: argparse.Namespace, terms: tuple[str, ...], reference_time: datetime,
+) -> str:
+    current = os.environ.get("PI_SESSION_FILE")
+    return continuation_digest({
+        "roots": sorted({session_search.normalized_path(root) for root in
+                         [args.sessions_root, *args.additional_sessions_root]}),
+        "cwd": None if args.all_projects else session_search.normalized_path(args.cwd),
+        "all_projects": args.all_projects,
+        "include_current": args.include_current,
+        "excluded_current": session_search.normalized_path(current)
+                            if current and not args.include_current else None,
+        "days": args.days,
+        "terms": sorted(terms),
+        "reference_time": reference_time.isoformat(),
+    })
+
+
+def continuation_candidate(candidate: Candidate, scope: str) -> str:
+    # A one-way digest, not an encoded path or a globally reusable message hash.
+    return continuation_digest([scope, str(candidate.path), candidate.message_fingerprint])
+
+
+def decode_continuation(token: str) -> tuple[datetime, str, str, int]:
+    try:
+        if len(token) > 512:
+            raise ValueError
+        raw = base64.b64decode(token.encode("ascii"), altchars=b"-_", validate=True)
+        value = json.loads(raw)
+        if not isinstance(value, list) or len(value) != 5 or type(value[0]) is not int or value[0] != 1:
+            raise ValueError
+        _, timestamp, scope, candidate, offset = value
+        reference_time = session_search.parse_timestamp(timestamp)
+        if reference_time is None or timestamp != reference_time.isoformat():
+            raise ValueError
+        if any(not isinstance(digest, str) or len(digest) != 64
+               or any(char not in "0123456789abcdef" for char in digest)
+               for digest in (scope, candidate)):
+            raise ValueError
+        if type(offset) is not int or offset <= 0 or offset > 2**31 or offset % MAX_WINDOWS:
+            raise ValueError
+        return reference_time, scope, candidate, offset
+    except (ValueError, TypeError, UnicodeError, binascii.Error, RecursionError) as error:
+        raise ValueError("continuation is invalid") from error
+
+
 def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict[str, Any]:
     terms = normalize_terms(args.term)
     if args.candidate_rank < 1 or args.candidate_rank > MAX_CANDIDATE_LIMIT:
         raise ValueError("candidate rank is invalid")
     reference_time = now or datetime.now(timezone.utc)
+    reference_time = (reference_time.replace(tzinfo=timezone.utc) if reference_time.tzinfo is None
+                      else reference_time.astimezone(timezone.utc))
+    window_start = 0
+    expected_candidate = None
+    if args.continuation is not None:
+        reference_time, expected_scope, expected_candidate, window_start = decode_continuation(args.continuation)
+        if continuation_scope(args, terms, reference_time) != expected_scope:
+            raise ValueError("continuation scope changed")
+    scope = continuation_scope(args, terms, reference_time)
     candidates, scan_summary, warnings = scan_candidates(args, terms, reference_time)
-    if args.candidate_rank > len(candidates):
-        raise CandidateNotFoundError
-    candidate = candidates[args.candidate_rank - 1]
+    if expected_candidate is not None:
+        selected = [
+            (rank, candidate) for rank, candidate in enumerate(candidates, 1)
+            if continuation_candidate(candidate, scope) == expected_candidate
+        ]
+        if len(selected) != 1:
+            raise CandidateNotFoundError
+        selected_rank, candidate = selected[0]
+    else:
+        if args.candidate_rank > len(candidates):
+            raise CandidateNotFoundError
+        selected_rank = args.candidate_rank
+        candidate = candidates[selected_rank - 1]
     loaded = read_active_messages(
         candidate.path,
         session_search.normalized_path(args.cwd),
@@ -495,16 +572,27 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
     if refreshed != candidate:
         raise CandidateNotFoundError
 
-    windows, evidence_summary = recall_windows(eligible, terms)
+    windows, evidence_summary = recall_windows(eligible, terms, window_start)
+    if not windows:
+        raise CandidateNotFoundError
+    _ranges, has_more = window_ranges(len(eligible), matching_indices(eligible, terms), window_start)
+    next_continuation = None
+    if has_more:
+        cursor = [1, reference_time.isoformat(), scope,
+                  continuation_candidate(candidate, scope), window_start + MAX_WINDOWS]
+        next_continuation = base64.urlsafe_b64encode(
+            json.dumps(cursor, separators=(",", ":")).encode("utf-8")
+        ).decode("ascii")
     summary = {
         **scan_summary,
-        "selected_candidate_rank": args.candidate_rank,
+        "selected_candidate_rank": selected_rank,
         **evidence_summary,
     }
     return {
         "status": "ok",
         "mode": "recall",
         "evidence_included": True,
+        "next_continuation": next_continuation,
         "scope": scope_view(args),
         "summary": summary,
         "results": windows,
