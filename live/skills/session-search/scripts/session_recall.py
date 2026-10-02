@@ -346,9 +346,10 @@ def window_ranges(
 
 def recall_windows(
     messages: list[RecallMessage], terms: tuple[str, ...], window_start: int = 0,
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[str, Any], bool]:
     hits = matching_indices(messages, terms)
-    ranges, windows_truncated = window_ranges(len(messages), hits, window_start)
+    ranges, has_more_windows = window_ranges(len(messages), hits, window_start)
+    windows_truncated = has_more_windows
     windows: list[dict[str, Any]] = []
     returned_bounds: list[tuple[int, int]] = []
     evidence_chars = 0
@@ -399,7 +400,7 @@ def recall_windows(
         "messages_returned": sum(len(window["messages"]) for window in windows),
         "evidence_chars": evidence_chars,
         "evidence_truncated": windows_truncated or represented_hits < len(hits),
-    }
+    }, has_more_windows
 
 
 def add_scope_arguments(parser: argparse.ArgumentParser) -> None:
@@ -538,11 +539,12 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
                       else reference_time.astimezone(timezone.utc))
     window_start = 0
     expected_candidate = None
+    expected_scope = None
     if args.continuation is not None:
         reference_time, expected_scope, expected_candidate, window_start = decode_continuation(args.continuation)
-        if continuation_scope(args, terms, reference_time) != expected_scope:
-            raise ValueError("continuation scope changed")
     scope = continuation_scope(args, terms, reference_time)
+    if expected_scope is not None and scope != expected_scope:
+        raise ValueError("continuation scope changed")
     candidates, scan_summary, warnings = scan_candidates(args, terms, reference_time)
     if expected_candidate is not None:
         selected = [
@@ -572,10 +574,9 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
     if refreshed != candidate:
         raise CandidateNotFoundError
 
-    windows, evidence_summary = recall_windows(eligible, terms, window_start)
+    windows, evidence_summary, has_more = recall_windows(eligible, terms, window_start)
     if not windows:
         raise CandidateNotFoundError
-    _ranges, has_more = window_ranges(len(eligible), matching_indices(eligible, terms), window_start)
     next_continuation = None
     if has_more:
         cursor = [1, reference_time.isoformat(), scope,
