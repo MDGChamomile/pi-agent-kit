@@ -696,6 +696,41 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(result["summary"]["results_returned"], 3)
         self.assertEqual([item["entry_id"] for item in result["results"]], ["e9", "e8", "e7"])
 
+    def test_header_reader_does_not_decode_body_or_hide_header_io_errors(self):
+        valid = (json.dumps(header("session", Path("/project"))) + "\n").encode()
+        stream = io.BytesIO(valid + b"\xff\n")
+        self.assertEqual(session_search.read_session_header(stream)["id"], "session")
+        self.assertEqual(stream.readline(), b"\xff\n")
+        for raw in (b"not json\n", b"[]\n", b'{"type":"message"}\n'):
+            with self.subTest(raw=raw):
+                self.assertIsNone(session_search.read_session_header(io.BytesIO(raw)))
+        with self.assertRaises(UnicodeError):
+            session_search.read_session_header(io.BytesIO(b"\xff\n"))
+
+    def test_near_header_utf8_failure_keeps_in_scope_partial_counts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "damaged.jsonl"
+            write_session(path, header("damaged", root), [
+                message("u", None, "2026-08-10T00:00:00Z", "user", "needle"),
+            ])
+            with path.open("ab") as handle:
+                handle.write(b"\xff\n")
+            result = session_search.aggregate(self.args(root, root, "--include-evidence"), now=self.NOW)
+        self.assertEqual(result["summary"]["files_selected"], 1)
+        self.assertEqual(result["summary"]["matched_events"], 1)
+        self.assertEqual(result["warnings"]["by_kind"], {"unreadable_file": 1})
+        self.assertIsNone(result["results"][0]["on_latest_leaf"])
+
+    def test_unselected_corrupt_body_is_not_decoded(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            path = root / "foreign.jsonl"
+            path.write_bytes((json.dumps(header("foreign", root / "foreign")) + "\n").encode() + b"\xff\n")
+            result = session_search.aggregate(self.args(root, root), now=self.NOW)
+        self.assertEqual(result["summary"]["files_selected"], 0)
+        self.assertEqual(result["warnings"]["count"], 0)
+
     def test_late_utf8_failure_preserves_consistent_partial_counts(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -741,9 +776,9 @@ class SessionSearchTests(unittest.TestCase):
             write_session(path, header("session", root), [
                 message("a", None, "2026-08-10T00:00:00Z", "user", "needle"),
             ])
-            content = path.read_text(encoding="utf-8")
+            content = path.read_bytes()
 
-            class FailingReader(io.StringIO):
+            class FailingReader(io.BytesIO):
                 def __next__(self):
                     line = self.readline()
                     if not line:
