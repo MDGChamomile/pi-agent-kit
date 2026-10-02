@@ -448,6 +448,31 @@ class SessionRecallTests(unittest.TestCase):
         self.assertEqual(result["warnings"]["by_kind"], {"unreadable_file": 1})
         self.assertNotIn(str(root), json.dumps(result))
 
+    def test_no_match_read_failure_message_differs_from_unavailable_root(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_session(root / "good.jsonl", header("good", root), [
+                message("u", None, "2026-08-10T00:00:00Z", "user", "unrelated topic"),
+            ])
+            (root / "bad.jsonl").write_bytes(
+                (json.dumps(header("bad", root)) + "\n").encode() + b"\xff\n"
+            )
+            errors = []
+            for sessions_root in (root, root / "missing"):
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    code = session_recall.main([
+                        "find", "--sessions-root", str(sessions_root), "--cwd", str(root),
+                        "--term", "인증 오류",
+                    ])
+                result = json.loads(stdout.getvalue())
+                self.assertEqual(code, 2)
+                self.assertEqual(result["error"]["code"], "SESSION_STORAGE_UNAVAILABLE")
+                self.assertNotIn(str(root), json.dumps(result))
+                errors.append(result["error"]["message"])
+        self.assertIn("in-scope session files", errors[0])
+        self.assertEqual(errors[1], "Session storage could not be read.")
+
     def test_readable_empty_session_is_not_a_storage_error(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

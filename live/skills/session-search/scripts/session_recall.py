@@ -48,6 +48,10 @@ class CandidateNotFoundError(Exception):
     pass
 
 
+class RecallReadError(RuntimeError):
+    """Disclosed read failures prevent verifying an empty recall."""
+
+
 def normalize_terms(values: Iterable[str]) -> tuple[str, ...]:
     terms: list[str] = []
     seen: set[str] = set()
@@ -300,7 +304,7 @@ def scan_candidates(
     # Only disclosed, in-scope failures can invalidate an empty result. Unknown
     # or foreign-project files retain their existing private warning policy.
     if not candidates and warnings.output(False)["by_kind"].get("unreadable_file", 0):
-        raise RuntimeError("read failures prevent verifying an empty recall")
+        raise RecallReadError("read failures prevent verifying an empty recall")
 
     candidates.sort(key=candidate_sort_key, reverse=True)
     summary = {
@@ -610,11 +614,13 @@ def main(argv: Iterable[str] | None = None) -> int:
         return session_search.emit_error("INVALID_ARGUMENT", "Arguments are invalid.")
     except CandidateNotFoundError:
         return session_search.emit_error("CANDIDATE_NOT_FOUND", "The selected candidate is unavailable.")
-    except (OSError, RuntimeError):
+    except RecallReadError:
         return session_search.emit_error(
             "SESSION_STORAGE_UNAVAILABLE",
-            "Session files could not be read, so the requested history could not be verified.",
+            "One or more in-scope session files could not be read, so the requested history could not be verified.",
         )
+    except (OSError, RuntimeError):
+        return session_search.emit_error("SESSION_STORAGE_UNAVAILABLE", "Session storage could not be read.")
     print(json.dumps(output, ensure_ascii=False, sort_keys=True))
     return 0
 
