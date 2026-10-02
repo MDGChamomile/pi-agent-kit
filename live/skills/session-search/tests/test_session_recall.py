@@ -78,7 +78,7 @@ class SessionRecallTests(unittest.TestCase):
                                 ("needle " + " " * 1000 + "end", False),
                                 ('needle api_key="' + 'x' * 1000 + '"', False)]:
             with self.subTest(truncated=truncated, length=len(text)):
-                windows, summary = session_recall.recall_windows([
+                windows, summary, has_more = session_recall.recall_windows([
                     session_recall.RecallMessage("1", None, "user", text),
                 ], ("needle",))
                 item = windows[0]["messages"][0]
@@ -86,10 +86,11 @@ class SessionRecallTests(unittest.TestCase):
                 self.assertTrue(item["matches_term"])
                 self.assertLessEqual(len(item["evidence"]), 300)
                 self.assertFalse(summary["evidence_truncated"])
+                self.assertFalse(has_more)
                 self.assertEqual(summary["matching_messages_represented"], 1)
 
     def test_long_neighbor_reports_text_truncation_independently(self):
-        windows, summary = session_recall.recall_windows([
+        windows, summary, _has_more = session_recall.recall_windows([
             session_recall.RecallMessage("1", None, "user", "x" * 1000),
             session_recall.RecallMessage("2", None, "assistant", "needle"),
         ], ("needle",))
@@ -199,7 +200,7 @@ class SessionRecallTests(unittest.TestCase):
             session_recall.RecallMessage(str(index), None, "user", "needle")
             for index in range(8)
         ]
-        windows, _summary = session_recall.recall_windows(messages, ("needle",))
+        windows, _summary, _has_more = session_recall.recall_windows(messages, ("needle",))
         self.assertTrue(all(window["messages_omitted_before"] >= 0 for window in windows))
 
     def test_omitted_after_stops_at_the_next_returned_window(self):
@@ -209,7 +210,8 @@ class SessionRecallTests(unittest.TestCase):
             ))
             for index in range(12)
         ]
-        windows, _summary = session_recall.recall_windows(messages, ("needle",))
+        windows, _summary, has_more = session_recall.recall_windows(messages, ("needle",))
+        self.assertFalse(has_more)
         self.assertEqual(len(windows), 2)
         self.assertEqual(windows[0]["messages_omitted_after"], 3)
         self.assertEqual(windows[1]["messages_omitted_after"], 2)
@@ -221,7 +223,8 @@ class SessionRecallTests(unittest.TestCase):
             ))
             for index in range(24)
         ]
-        windows, summary = session_recall.recall_windows(messages, ("needle",))
+        windows, summary, has_more = session_recall.recall_windows(messages, ("needle",))
+        self.assertTrue(has_more)
         self.assertEqual(len(windows), session_recall.MAX_WINDOWS)
         self.assertTrue(summary["evidence_truncated"])
         self.assertTrue(any(window["messages_omitted_before"] for window in windows[1:]))

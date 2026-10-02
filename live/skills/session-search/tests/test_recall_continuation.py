@@ -62,6 +62,46 @@ class RecallContinuationTests(unittest.TestCase):
         self.assertNotIn(str(self.project), serialized)
         self.assertNotIn("original.jsonl", serialized)
 
+    def test_page_capacity_fits_evidence_budget(self):
+        self.assertLessEqual(
+            session_recall.MAX_WINDOWS
+            * session_recall.MAX_MESSAGES_PER_WINDOW
+            * session_recall.MAX_MESSAGE_CHARS,
+            session_recall.MAX_TOTAL_EVIDENCE_CHARS,
+            "Increasing page capacity beyond the evidence budget requires a cursor "
+            "that resumes inside partially returned windows, not a fixed window step.",
+        )
+
+    def test_each_page_computes_scope_hits_and_ranges_once(self):
+        token = self.token()
+        for selection in (None, token):
+            with self.subTest(continuation=selection is not None), patch.object(
+                session_recall, "continuation_scope", wraps=session_recall.continuation_scope,
+            ) as scope, patch.object(
+                session_recall, "matching_indices", wraps=session_recall.matching_indices,
+            ) as hits, patch.object(
+                session_recall, "window_ranges", wraps=session_recall.window_ranges,
+            ) as ranges:
+                output = self.recall(selection)
+                self.assertIsNotNone(output["next_continuation"])
+                scope.assert_called_once()
+                hits.assert_called_once()
+                ranges.assert_called_once()
+
+    def test_evidence_guard_does_not_change_has_more_windows(self):
+        messages = [
+            session_recall.RecallMessage(str(i), None, "user", "needle " + "x" * 500)
+            for i in range(3)
+        ]
+        # Exercise the retained guard separately from the fixed-page invariant.
+        with patch.object(session_recall, "MAX_TOTAL_EVIDENCE_CHARS", 350):
+            windows, summary, has_more = session_recall.recall_windows(messages, ("needle",))
+        self.assertEqual(len(windows), 1)
+        self.assertEqual(summary["messages_returned"], 1)
+        self.assertLessEqual(summary["evidence_chars"], 350)
+        self.assertTrue(summary["evidence_truncated"])
+        self.assertFalse(has_more)
+
     def test_reads_all_matching_windows_once_in_bounded_masked_pages(self):
         output = self.recall()
         matches = []
