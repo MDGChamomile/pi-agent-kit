@@ -153,13 +153,8 @@ def read_active_messages(
         # Decode only the header line before deciding scope. TextIOWrapper can
         # decode body bytes ahead of readline() and hide an in-scope failure.
         with path.open("rb") as handle:
-            try:
-                header = json.loads(handle.readline().decode("utf-8"))
-            except (json.JSONDecodeError, TypeError):
-                if all_projects:
-                    warnings.add(path, "invalid_header")
-                return None
-            if not isinstance(header, dict) or header.get("type") != "session":
+            header = session_search.read_session_header(handle)
+            if header is None:
                 if all_projects:
                     warnings.add(path, "invalid_header")
                 return None
