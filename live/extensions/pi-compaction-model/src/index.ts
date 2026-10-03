@@ -139,13 +139,3 @@ export default function compactionModel(pi: ExtensionAPI): void {
     }
   });
 }
-
-export {
-  COMPACTION_REASONS,
-  THINKING_LEVELS,
-  parseModelReference,
-  resolveConfig,
-  type CompactionModelConfig,
-  type CompactionReason,
-  type ThinkingLevel,
-} from "./config.js";
