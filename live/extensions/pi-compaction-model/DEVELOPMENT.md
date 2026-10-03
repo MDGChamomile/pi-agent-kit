@@ -11,7 +11,7 @@ bun install --frozen-lockfile
 bun run check
 ```
 
-The `live-validation` CI workflow runs these commands with Bun 1.3.14. The development dependency and lockfile now pin Pi 0.87.1; typechecking and all 58 offline tests passed against that version. The declared runtime minimum remains `>=0.80.7`; updating the test baseline does not change it or establish a tested compatibility matrix.
+The `live-validation` CI workflow runs these commands with Bun 1.3.14. The development dependency and lockfile pin Pi 0.87.1. The declared runtime minimum remains `>=0.80.7`; updating the test baseline does not change it or establish a tested compatibility matrix.
 
 The separate `pi-latest-compatibility` workflow installs the pinned environment, then selects Pi's npm `latest` release in its disposable checkout and runs `bun run check`. It records the resolved Pi version in the job summary and does not commit dependency changes or make model requests. It runs weekly on Mondays at 03:23 UTC and can be started manually once registered on the default branch. GitHub runs scheduled workflows only from the default branch, so weekly checks begin after this workflow reaches `main`. Changes to the workflow itself also trigger checks on pushes to `updates` and on pull requests, allowing verification before release.
 
