@@ -75,4 +75,4 @@ The maintained resources remain:
 - [`deep-plan`](live/skills/deep-plan/README.md)
 - [`session-search`](live/skills/session-search/README.md)
 
-The `live-validation` workflow continues to check these resources using the [documented offline checks](CONTRIBUTING.md#verification-entry-points). `security-audit` has since moved to [`retired/skills/security-audit/`](https://github.com/MDGChamomile/pi-agent-kit/blob/908e3cabfe2cfb42c6f74d854c91ae646dec8b24/retired/skills/security-audit/README.md); moving the source does not uninstall existing copies. Existing retired resources, their licenses, and the repository's historical releases remain intact.
+The `live-validation` workflow continues to check these resources using the [documented offline checks](CONTRIBUTING.md#verification-entry-points). `security-audit` has since moved to [`retired/skills/security-audit/`](https://github.com/MDGChamomile/pi-agent-kit/blob/908e3cabfe2cfb42c6f74d854c91ae646dec8b24/retired/skills/security-audit/README.md); moving the source does not uninstall existing copies. Retired resources and their licenses remain available in the repository history and historical releases.
