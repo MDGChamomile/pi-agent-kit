@@ -1,10 +1,16 @@
 # Pi Agent Kit migration
 
-## Unreleased
+## v0.7.0
+
+This remains a source-only GitHub release, not an npm package or an automatic update of installed Pi resources. Review the changed resources, preserve local customizations, and update only the copies you adopt. Restart Pi or use `/reload` after updating auto-discovered resources.
 
 ### Compaction extension minimum Pi version
 
 `pi-compaction-model` now requires Pi 1.0.0 or later (`peerDependencies: >=1.0.0`), raised from `>=0.80.7`. Its offline checks now pin Pi 1.0.0. Update Pi before adopting this version of the extension; keep an earlier copy if you must stay on an older Pi. Runtime behavior, including the single-retry policy, is unchanged.
+
+### Retired resources
+
+The `retired/` directory is no longer in the current tree; the [README](README.md#retired) links each resource's last version in the repository history. Existing copies are not removed, but a symlink or launcher that targets a `retired/` path in this checkout breaks when the checkout is updated. Copy the resource from history first if you still use it.
 
 ## v0.6.0
 
