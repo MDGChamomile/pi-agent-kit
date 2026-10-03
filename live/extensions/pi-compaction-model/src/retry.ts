@@ -1,8 +1,9 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { compact } from "@earendil-works/pi-coding-agent";
 
-// compact() on the minimum supported Pi version has no retry argument and
-// flattens provider failures to Error messages. Keep this classifier conservative.
+// compact() flattens provider failures to Error messages. This fixed policy
+// predates compact()'s native retry argument and intentionally does not use it.
+// Keep this classifier conservative.
 export function isTransientCompactionError(error: unknown): boolean {
   if (!(error instanceof Error) || error.name === "AbortError") return false;
   const message = error.message;

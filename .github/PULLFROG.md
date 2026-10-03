@@ -9,6 +9,8 @@ settings; verify the console and workflow state directly.
 - The owner may approve and configure automatic PR reviews and re-reviews on
   subsequent pushes. Ordinary contributions target `updates`; maintainers use
   PRs from `updates` to `main` for releases (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
+- Enable **Limit reviews to target branches** and set it to `updates` only.
+  This filter is not a push restriction or an implementation branch setting.
 - Pullfrog reviews only. Set Security → Code pushes to **No code pushes** and
   keep workflow `push: disabled`; explicit workflow inputs can override the
   console setting. Disable addressing reviews, CI fixes, conflict fixes, and

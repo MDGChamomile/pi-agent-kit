@@ -99,7 +99,7 @@ export default function compactionModel(pi: ExtensionAPI): void {
         return;
       }
 
-      // Older Pi declarations do not expose credential-specific endpoints.
+      // Use the credential-specific endpoint only when auth supplies one.
       const authBaseUrl = "baseUrl" in auth && typeof auth.baseUrl === "string"
         ? auth.baseUrl
         : undefined;

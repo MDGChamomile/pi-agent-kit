@@ -500,7 +500,7 @@ def discover_session_files(
 
     for root in allowed_roots.values():
         # Unlike Path.rglob, walk's onerror makes inaccessible subtrees visible.
-        # Do not follow nested directory symlinks, matching the previous scan.
+        # Do not follow nested directory symlinks.
         for directory, _dirs, files in os.walk(root, onerror=traversal_error):
             for name in files:
                 if name.endswith(".jsonl"):
