@@ -11,7 +11,7 @@ bun install --frozen-lockfile
 bun run check
 ```
 
-The `live-validation` CI workflow runs these commands with Bun 1.3.14. The development dependency and lockfile pin Pi 0.87.1. The declared runtime minimum remains `>=0.80.7`; updating the test baseline does not change it or establish a tested compatibility matrix.
+The `live-validation` CI workflow runs these commands with Bun 1.3.14. The development dependency and lockfile pin Pi 1.0.0, the declared runtime minimum (`>=1.0.0`), so this check tests the minimum directly.
 
 The separate `pi-latest-compatibility` workflow installs the pinned environment, then selects Pi's npm `latest` release in its disposable checkout and runs `bun run check`. It records the resolved Pi version in the job summary and does not commit dependency changes or make model requests. It runs weekly on Mondays at 03:23 UTC and can be started manually once registered on the default branch. GitHub runs scheduled workflows only from the default branch, so weekly checks begin after this workflow reaches `main`. Changes to the workflow itself also trigger checks on pushes to `updates` and on pull requests, allowing verification before release.
 
@@ -37,7 +37,7 @@ The temporary SDK harness used synthetic in-memory messages and isolated setting
 
 The fixed single-retry policy passed `bun run check` with Bun 1.3.14 and TypeScript 7.0.2 against both the frozen Pi 0.80.7 dependency and Pi 0.85.1 in an isolated copy (29 tests each). `test/index.test.ts` covers transient recovery for all three reasons, exhaustion, unchanged request arguments, deterministic/unknown failures, lookup/authentication failures, and cancellation before/during requests and backoff. `test/retry.test.ts` verifies cancellation with the real backoff timer; it runs in a separate process to avoid timer/module mock leakage. No live provider requests were made.
 
-The retry wrapper intentionally does not inherit Pi settings or pass a native retry policy. Pi 0.80.7 lacks the compaction retry arguments; the wrapper bounds complete compaction attempts uniformly across these versions. It is not a generic retry framework and does not bound provider-internal HTTP attempts. Review the wrapper when changing the minimum supported Pi version.
+The retry wrapper intentionally does not inherit Pi settings or pass a native retry policy. It was introduced while the minimum supported Pi (0.80.7) lacked the compaction retry arguments. Pi 1.0.0's `compact()` accepts a native `retry` policy, but the wrapper is retained unchanged; replacing it would be a separate behavior change. It is not a generic retry framework and does not bound provider-internal HTTP attempts. Review the wrapper when changing the minimum supported Pi version.
 
 ## Live verification boundary
 

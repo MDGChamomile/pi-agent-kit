@@ -24,7 +24,7 @@ Kit-specific changes: source-install documentation and private package metadata;
 
 ## Install from source
 
-Requires Pi with the APIs used by this extension (upstream declares `>=0.80.7`). See [Development](#development) for the verification summary and detailed record; the declared minimum is not a tested compatibility matrix. Runtime dependencies are supplied by Pi; Bun is needed only for development. The commands below assume a POSIX shell.
+Requires Pi 1.0.0 or later. Offline CI tests the pinned 1.0.0 minimum and, weekly, Pi's latest release; see [Development](#development). This is not a full compatibility matrix. Runtime dependencies are supplied by Pi; Bun is needed only for development. The commands below assume a POSIX shell.
 
 Review this directory, then copy it from a checkout:
 
@@ -156,7 +156,7 @@ An empty valid `reasons` array is not an error; it disables dedicated-model rout
 
 For recognized transient provider or transport failures (such as a 503 response, temporary rate limiting, or a dropped stream), the extension waits one second and retries the dedicated compaction once. There are at most two `compact()` invocations per hook. A second failure, an unknown error, or a deterministic error such as authentication, invalid requests, context overflow, or quota/billing exhaustion returns control to Pi's native handling path with a warning. Model lookup and authentication-resolution failures are not retried.
 
-This is a fixed extension policy, independent of Pi's `retry` settings (including `retry.enabled`). It retains Pi 0.80.7 compatibility, whose `compact()` has no native retry argument. The extension does not enable a nested native summarization retry loop. Error classification is conservative and message-based because native compaction flattens provider errors; unrecognized transient errors can still fall back without a retry. Provider retry-delay cap failures are not retried by this wrapper.
+This is a fixed extension policy, independent of Pi's `retry` settings (including `retry.enabled`). The extension passes no native retry policy to `compact()` and does not enable a nested native summarization retry loop. Error classification is conservative and message-based because native compaction flattens provider errors; unrecognized transient errors can still fall back without a retry. Provider retry-delay cap failures are not retried by this wrapper.
 
 A retry repeats the whole compaction, including any completed part of a split-turn summary. Split-turn compaction, provider/transport retries, and subsequent native fallback can therefore make the total number of HTTP requests greater than two. Retrying can add latency and provider usage.
 
