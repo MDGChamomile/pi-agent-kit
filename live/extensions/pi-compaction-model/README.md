@@ -171,9 +171,7 @@ bun install --frozen-lockfile
 bun run check
 ```
 
-The `live-validation` workflow runs the same commands against pinned Pi 0.87.1; typechecking and all 58 offline tests passed. A separate `pi-latest-compatibility` workflow checks the latest stable Pi weekly after reaching `main`, without updating the repository's pinned version. Earlier Pi 0.85.1 checks also covered loader registration and bounded dedicated-model/fallback smoke scenarios; those live results do not establish live compatibility with Pi 0.87.1.
-
-These results do not establish compatibility with every provider or failure mode. Offline checks make no model requests, while live compaction sends session content to the configured provider and can incur usage charges. See [the development and verification record](DEVELOPMENT.md) for environments, harness details, request counts, limitations, and source-only evidence.
+See [the development and verification record](DEVELOPMENT.md) for CI coverage, the weekly latest-Pi check, and historical live verification. Offline checks make no model requests; live compaction sends session content to the configured provider and can incur usage charges.
 
 ## License
 

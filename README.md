@@ -11,7 +11,7 @@ Pi Agent Kit is the public, source-first collection of resources I currently use
 - **Skills** provide focused workflows that Pi loads on demand.
 - **Extensions** add tools or enforce runtime boundaries.
 - **Live** resources are currently used and maintained.
-- **Retired** resources remain available as references.
+- **Retired** resources are kept in the repository history as references.
 
 The collection follows the [harness-minimalism principles](https://github.com/MDGChamomile/MDGChamomile/blob/main/PRINCIPLE.md) maintained in the MDGChamomile repository. The local [PRINCIPLE.md](PRINCIPLE.md) points to that single source of truth. Read the source, take what is useful, and adapt it to your own workflow; this is not an install-everything Pi package.
 
@@ -50,16 +50,16 @@ This skill sets `disable-model-invocation: true`, so Pi does not advertise it to
 
 ## Retired
 
-Resources kept for reference but no longer actively used or maintained:
+Resources no longer actively used or maintained. They are not kept in the current tree; the links point to their last version in the repository history:
 
 | Resource | Purpose |
 | --- | --- |
-| [`whitebox`](retired/extensions/whitebox/README.md) | Run project commands and Pi file tools inside an offline Linux Bubblewrap boundary |
-| [`git-history`](retired/extensions/git-history/index.ts) | Add `/snapshot` to review and commit changes in the Pi agent directory |
-| [`meta-prompt`](retired/skills/meta-prompt/SKILL.md) | Write or improve a compact, ready-to-use prompt |
-| [`nomore-harness`](retired/skills/nomore-harness/SKILL.md) | Review proposed additions to a Pi environment before adoption |
-| [`security-audit`](retired/skills/security-audit/README.md) | Review source defensively with explicit scope and evidence |
-| [`simplykst`](retired/skills/simplykst/README.md) | Analyze Korean stocks with separate Trading and Investing ratings |
+| [`whitebox`](https://github.com/MDGChamomile/pi-agent-kit/blob/908e3cabfe2cfb42c6f74d854c91ae646dec8b24/retired/extensions/whitebox/README.md) | Run project commands and Pi file tools inside an offline Linux Bubblewrap boundary |
+| [`git-history`](https://github.com/MDGChamomile/pi-agent-kit/blob/908e3cabfe2cfb42c6f74d854c91ae646dec8b24/retired/extensions/git-history/index.ts) | Add `/snapshot` to review and commit changes in the Pi agent directory |
+| [`meta-prompt`](https://github.com/MDGChamomile/pi-agent-kit/blob/908e3cabfe2cfb42c6f74d854c91ae646dec8b24/retired/skills/meta-prompt/SKILL.md) | Write or improve a compact, ready-to-use prompt |
+| [`nomore-harness`](https://github.com/MDGChamomile/pi-agent-kit/blob/908e3cabfe2cfb42c6f74d854c91ae646dec8b24/retired/skills/nomore-harness/SKILL.md) | Review proposed additions to a Pi environment before adoption |
+| [`security-audit`](https://github.com/MDGChamomile/pi-agent-kit/blob/908e3cabfe2cfb42c6f74d854c91ae646dec8b24/retired/skills/security-audit/README.md) | Review source defensively with explicit scope and evidence |
+| [`simplykst`](https://github.com/MDGChamomile/pi-agent-kit/blob/908e3cabfe2cfb42c6f74d854c91ae646dec8b24/retired/skills/simplykst/README.md) | Analyze Korean stocks with separate Trading and Investing ratings |
 
 ## Contributing
 
