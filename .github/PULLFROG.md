@@ -20,10 +20,12 @@ settings; verify the console and workflow state directly.
   credentials in Pullfrog's encrypted store and requires the owner's consent.
   Do not expose credentials in files, comments, prompts, or logs.
 - Mentions are enabled. The owner can request a review by commenting
-  `@pullfrog <request>` on a PR; `--model=<provider/model>` and
-  `--effort=<level>` in that comment apply to that run only. Each mention
-  starts a paid run, and the owner's own mention is its authorization. Code
-  pushes stay disabled, so a mention cannot make Pullfrog change the branch.
+  `@pullfrog <request>` on a PR. Each mention starts a paid run, and the
+  owner's own mention is its authorization. Code pushes stay disabled, so a
+  mention cannot make Pullfrog change the branch. The run uses the
+  console-selected model; a `--model=` flag in the comment was not applied in
+  practice, so check the model named in the review footer before treating a
+  run as another model's opinion.
 - Put the instructions below into the console's Review instructions field if
   the owner authorizes console configuration.
 
