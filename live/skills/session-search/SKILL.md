@@ -27,9 +27,10 @@ Resolve paths relative to this `SKILL.md`. Run the selected script with `--help`
 
 1. Translate the natural-language topic into two to eight meaningful literal terms. Prefer distinctive words or short phrases, including Unicode and Korean terms; do not pass the whole question as one exact phrase.
 2. Run `session_recall.py find` first. Repeated terms are alternatives used to rank matching sessions. Keep the default current-project scope unless the user explicitly requests another scope.
-3. Treat the returned candidate ranks and match counts only as a local relevance ordering. Do not infer an outcome from them.
+3. Treat the returned candidate ranks and match counts only as a local relevance ordering. Do not infer an outcome from them. If storage errors or `unreadable_file` warnings are reported, explain in the user's language: "I could not read the session files, so I cannot verify this." Do not describe this as no prior discussion. Even a successful empty result does not prove historical absence: foreign or unknown-project files remain undisclosed in the default scope.
 4. Before running `session_recall.py recall`, obtain the evidence consent described below. Recall the minimum candidate ranks needed to answer the question.
-5. Explain omitted context when material. Recall searches only the active branch, includes bounded user and assistant text around matches, and excludes thinking, tool calls, tool results, and unrelated first or last messages.
+5. If the evidence is insufficient and `next_continuation` is not null, request the next page with `--continuation TOKEN`, the same terms and scope, and `--include-evidence` within the approved disclosure scope. Do not also pass `--candidate-rank`. Stop when the evidence is sufficient; do not automatically exhaust every page. A changed or unavailable candidate requires a fresh find-then-recall, not a silent switch. See the [continuation guide](README.md#read-more-matching-windows).
+6. Explain omitted context when material. Recall searches only the active branch, includes bounded user and assistant text around matches, and excludes thinking, tool calls, tool results, and unrelated first or last messages. Continuation reads later matching windows, not complete shortened messages or arbitrary conversation tails.
 
 ## Privacy and consent
 

@@ -9,13 +9,7 @@ import {
 } from "./config.js";
 import { compactWithOneRetry } from "./retry.js";
 
-function warn(message: string, error?: unknown): void {
-  if (error === undefined) {
-    console.warn(`[pi-compaction-model] ${message}`);
-  } else {
-    console.warn(`[pi-compaction-model] ${message}`, error);
-  }
-}
+import { warn } from "./warnings.js";
 
 const OPENROUTER_ATTRIBUTION_HEADERS = {
   "HTTP-Referer": "https://pi.dev",
@@ -88,24 +82,24 @@ export default function compactionModel(pi: ExtensionAPI): void {
 
     const reference = parseModelReference(config.model);
     if (!reference) {
-      warn(`Invalid model '${config.model}'; expected provider/model. Using Pi's active model.`);
+      warn(ctx, `Invalid model '${config.model}'; expected provider/model. Using Pi's active model.`);
       return;
     }
 
     const model = ctx.modelRegistry.find(reference.provider, reference.modelId);
     if (!model) {
-      warn(`Model not found: ${config.model}. Using Pi's active model.`);
+      warn(ctx, `Model not found: ${config.model}. Using Pi's active model.`);
       return;
     }
 
     try {
       const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
       if (!auth.ok) {
-        warn(`Authentication failed for ${config.model}: ${auth.error}. Using Pi's active model.`);
+        warn(ctx, `Authentication failed for ${config.model}: ${auth.error}. Using Pi's active model.`);
         return;
       }
 
-      // Older Pi declarations do not expose credential-specific endpoints.
+      // Use the credential-specific endpoint only when auth supplies one.
       const authBaseUrl = "baseUrl" in auth && typeof auth.baseUrl === "string"
         ? auth.baseUrl
         : undefined;
@@ -140,18 +134,8 @@ export default function compactionModel(pi: ExtensionAPI): void {
       if (event.signal.aborted || (error instanceof Error && error.name === "AbortError")) {
         return { cancel: true };
       }
-      warn(`Compaction with ${config.model} failed; using Pi's active model.`, error);
+      warn(ctx, `Compaction with ${config.model} failed; using Pi's active model.`, error);
       return;
     }
   });
 }
-
-export {
-  COMPACTION_REASONS,
-  THINKING_LEVELS,
-  parseModelReference,
-  resolveConfig,
-  type CompactionModelConfig,
-  type CompactionReason,
-  type ThinkingLevel,
-} from "./config.js";

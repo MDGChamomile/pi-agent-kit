@@ -24,7 +24,7 @@ Kit-specific changes: source-install documentation and private package metadata;
 
 ## Install from source
 
-Requires Pi with the APIs used by this extension (upstream declares `>=0.80.7`). See [Development](#development) for the verification summary and detailed record; the declared minimum is not a tested compatibility matrix. Runtime dependencies are supplied by Pi; Bun is needed only for development. The commands below assume a POSIX shell.
+Requires Pi 1.0.0 or later. See [Development](#development) for the tested versions; this is not a full compatibility matrix. Runtime dependencies are supplied by Pi; Bun is needed only for development. The commands below assume a POSIX shell.
 
 Review this directory, then copy it from a checkout:
 
@@ -136,6 +136,8 @@ For OpenRouter models, the extension adds the same app-attribution headers as Pi
 
 ## Failure behavior
 
+Configuration and request warnings use Pi's warning notifications when `ctx.hasUI` is true (interactive and supported RPC clients). Without a UI, they use `console.warn` on stderr. Cancellation and successful requests, including a successful retry, do not produce fallback warnings.
+
 ### Configuration errors
 
 Configuration fields recover independently:
@@ -154,7 +156,9 @@ An empty valid `reasons` array is not an error; it disables dedicated-model rout
 
 For recognized transient provider or transport failures (such as a 503 response, temporary rate limiting, or a dropped stream), the extension waits one second and retries the dedicated compaction once. There are at most two `compact()` invocations per hook. A second failure, an unknown error, or a deterministic error such as authentication, invalid requests, context overflow, or quota/billing exhaustion returns control to Pi's native handling path with a warning. Model lookup and authentication-resolution failures are not retried.
 
-This is a fixed extension policy, independent of Pi's `retry` settings (including `retry.enabled`). It retains Pi 0.80.7 compatibility, whose `compact()` has no native retry argument. The extension does not enable a nested native summarization retry loop. Error classification is conservative and message-based because native compaction flattens provider errors; unrecognized transient errors can still fall back without a retry. Provider retry-delay cap failures are not retried by this wrapper.
+This is a fixed extension policy, independent of Pi's `retry` settings (including `retry.enabled`). The extension passes no native retry policy to `compact()` and does not enable a nested native summarization retry loop. Error classification is conservative and message-based because native compaction flattens provider errors; unrecognized transient errors can still fall back without a retry. Provider retry-delay cap failures are not retried by this wrapper.
+
+The wrapper predates `compact()`'s native `retry` argument (added after the former 0.80.7 minimum) and intentionally does not use it: native retry applies to each internal summarization request, so a split-turn compaction could make more than two attempts. It is not a generic retry framework and does not bound provider-internal HTTP attempts.
 
 A retry repeats the whole compaction, including any completed part of a split-turn summary. Split-turn compaction, provider/transport retries, and subsequent native fallback can therefore make the total number of HTTP requests greater than two. Retrying can add latency and provider usage.
 
@@ -169,9 +173,7 @@ bun install --frozen-lockfile
 bun run check
 ```
 
-The `live-validation` workflow runs the same commands against pinned Pi 0.87.1; typechecking and all 50 offline tests passed. A separate `pi-latest-compatibility` workflow checks the latest stable Pi weekly after reaching `main`, without updating the repository's pinned version. Earlier Pi 0.85.1 checks also covered loader registration and bounded dedicated-model/fallback smoke scenarios; those live results do not establish live compatibility with Pi 0.87.1.
-
-These results do not establish compatibility with every provider or failure mode. Offline checks make no model requests, while live compaction sends session content to the configured provider and can incur usage charges. See [the development and verification record](DEVELOPMENT.md) for environments, harness details, request counts, limitations, and source-only evidence.
+The `live-validation` workflow runs these checks against the pinned minimum, Pi 1.0.0, and `pi-latest-compatibility` runs them weekly against Pi's latest release. Offline checks make no model requests; live compaction sends session content to the configured provider and can incur usage charges.
 
 ## License
 

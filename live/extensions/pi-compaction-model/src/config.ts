@@ -3,6 +3,7 @@ import {
   SettingsManager,
   type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { warn } from "./warnings.js";
 
 export const COMPACTION_REASONS = ["manual", "threshold", "overflow"] as const;
 export type CompactionReason = (typeof COMPACTION_REASONS)[number];
@@ -108,6 +109,7 @@ export function loadConfig(
   return resolveConfig(
     settings.getGlobalSettings(),
     ctx.isProjectTrusted() ? settings.getProjectSettings() : undefined,
+    (message) => warn(ctx, message),
   );
 }
 

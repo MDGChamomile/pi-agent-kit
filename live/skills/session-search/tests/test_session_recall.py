@@ -78,7 +78,7 @@ class SessionRecallTests(unittest.TestCase):
                                 ("needle " + " " * 1000 + "end", False),
                                 ('needle api_key="' + 'x' * 1000 + '"', False)]:
             with self.subTest(truncated=truncated, length=len(text)):
-                windows, summary = session_recall.recall_windows([
+                windows, summary, has_more = session_recall.recall_windows([
                     session_recall.RecallMessage("1", None, "user", text),
                 ], ("needle",))
                 item = windows[0]["messages"][0]
@@ -86,10 +86,11 @@ class SessionRecallTests(unittest.TestCase):
                 self.assertTrue(item["matches_term"])
                 self.assertLessEqual(len(item["evidence"]), 300)
                 self.assertFalse(summary["evidence_truncated"])
+                self.assertFalse(has_more)
                 self.assertEqual(summary["matching_messages_represented"], 1)
 
     def test_long_neighbor_reports_text_truncation_independently(self):
-        windows, summary = session_recall.recall_windows([
+        windows, summary, _has_more = session_recall.recall_windows([
             session_recall.RecallMessage("1", None, "user", "x" * 1000),
             session_recall.RecallMessage("2", None, "assistant", "needle"),
         ], ("needle",))
@@ -199,7 +200,7 @@ class SessionRecallTests(unittest.TestCase):
             session_recall.RecallMessage(str(index), None, "user", "needle")
             for index in range(8)
         ]
-        windows, _summary = session_recall.recall_windows(messages, ("needle",))
+        windows, _summary, _has_more = session_recall.recall_windows(messages, ("needle",))
         self.assertTrue(all(window["messages_omitted_before"] >= 0 for window in windows))
 
     def test_omitted_after_stops_at_the_next_returned_window(self):
@@ -209,7 +210,8 @@ class SessionRecallTests(unittest.TestCase):
             ))
             for index in range(12)
         ]
-        windows, _summary = session_recall.recall_windows(messages, ("needle",))
+        windows, _summary, has_more = session_recall.recall_windows(messages, ("needle",))
+        self.assertFalse(has_more)
         self.assertEqual(len(windows), 2)
         self.assertEqual(windows[0]["messages_omitted_after"], 3)
         self.assertEqual(windows[1]["messages_omitted_after"], 2)
@@ -221,7 +223,8 @@ class SessionRecallTests(unittest.TestCase):
             ))
             for index in range(24)
         ]
-        windows, summary = session_recall.recall_windows(messages, ("needle",))
+        windows, summary, has_more = session_recall.recall_windows(messages, ("needle",))
+        self.assertTrue(has_more)
         self.assertEqual(len(windows), session_recall.MAX_WINDOWS)
         self.assertTrue(summary["evidence_truncated"])
         self.assertTrue(any(window["messages_omitted_before"] for window in windows[1:]))
@@ -395,11 +398,18 @@ class SessionRecallTests(unittest.TestCase):
                 with self.subTest(all_projects=all_projects):
                     args = self.args("find", root, root)
                     args.all_projects = all_projects
-                    result = session_recall.find_output(args, self.NOW)
-                    self.assertEqual(result["summary"]["matched_sessions"], 0)
-                    self.assertEqual(result["warnings"], {
-                        "count": 1, "by_kind": {"unreadable_file": 1},
-                    })
+                    with self.assertRaises(RuntimeError):
+                        session_recall.find_output(args, self.NOW)
+                    argv = ["find", "--sessions-root", str(root), "--term", "인증 오류",
+                            *(["--all-projects"] if all_projects else ["--cwd", str(root)])]
+                    stdout = io.StringIO()
+                    with redirect_stdout(stdout):
+                        code = session_recall.main(argv)
+                    result = json.loads(stdout.getvalue())
+                    self.assertEqual(code, 2)
+                    self.assertEqual(result["status"], "error")
+                    self.assertEqual(result["error"]["code"], "SESSION_STORAGE_UNAVAILABLE")
+                    self.assertIn("could not be verified", result["error"]["message"])
                     self.assertNotIn(str(root), json.dumps(result))
 
     def test_near_header_decode_failure_warns_only_for_selected_scope(self):
@@ -414,10 +424,76 @@ class SessionRecallTests(unittest.TestCase):
                         path.write_bytes(prefix + b'\xff\n')
                         args = self.args('find', root, root)
                         args.all_projects = all_projects
-                        result = session_recall.find_output(args, self.NOW)
-                        expected = {'unreadable_file': 1} if all_projects or scope == 'selected' else {}
-                        self.assertEqual(result['warnings']['by_kind'], expected)
-                        self.assertNotIn(str(root), json.dumps(result))
+                        disclosed_failure = all_projects or scope == 'selected'
+                        if disclosed_failure:
+                            with self.assertRaises(RuntimeError):
+                                session_recall.find_output(args, self.NOW)
+                        else:
+                            result = session_recall.find_output(args, self.NOW)
+                            self.assertEqual(result['warnings']['by_kind'], {})
+                            self.assertNotIn(str(root), json.dumps(result))
+
+    def test_read_failure_keeps_available_candidates_with_warning(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_session(root / "good.jsonl", header("good", root), [
+                message("u", None, "2026-08-10T00:00:00Z", "user", "인증 오류"),
+            ])
+            (root / "bad.jsonl").write_bytes(
+                (json.dumps(header("bad", root)) + "\n").encode() + b"\xff\n"
+            )
+            result = session_recall.find_output(self.args("find", root, root), self.NOW)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["summary"]["matched_sessions"], 1)
+        self.assertEqual(result["warnings"]["by_kind"], {"unreadable_file": 1})
+        self.assertNotIn(str(root), json.dumps(result))
+
+    def test_no_match_read_failure_message_differs_from_unavailable_root(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_session(root / "good.jsonl", header("good", root), [
+                message("u", None, "2026-08-10T00:00:00Z", "user", "unrelated topic"),
+            ])
+            (root / "bad.jsonl").write_bytes(
+                (json.dumps(header("bad", root)) + "\n").encode() + b"\xff\n"
+            )
+            errors = []
+            for sessions_root in (root, root / "missing"):
+                stdout = io.StringIO()
+                with redirect_stdout(stdout):
+                    code = session_recall.main([
+                        "find", "--sessions-root", str(sessions_root), "--cwd", str(root),
+                        "--term", "인증 오류",
+                    ])
+                result = json.loads(stdout.getvalue())
+                self.assertEqual(code, 2)
+                self.assertEqual(result["error"]["code"], "SESSION_STORAGE_UNAVAILABLE")
+                self.assertNotIn(str(root), json.dumps(result))
+                errors.append(result["error"]["message"])
+        self.assertIn("in-scope session files", errors[0])
+        self.assertEqual(errors[1], "Session storage could not be read.")
+
+    def test_readable_empty_session_is_not_a_storage_error(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_session(root / "empty.jsonl", header("empty", root), [])
+            result = session_recall.find_output(self.args("find", root, root), self.NOW)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["candidates"], [])
+        self.assertEqual(result["warnings"]["count"], 0)
+
+    def test_open_failure_remains_private_unless_all_projects_selected(self):
+        path = Path("/synthetic/private.jsonl")
+        with patch.object(session_recall, "permitted_files", return_value=[path]), patch.object(
+            Path, "open", side_effect=OSError("synthetic open failure"),
+        ):
+            args = self.args("find", Path("/synthetic"), Path("/project"))
+            result = session_recall.find_output(args, self.NOW)
+            self.assertEqual(result["candidates"], [])
+            self.assertEqual(result["warnings"]["count"], 0)
+            args.all_projects = True
+            with self.assertRaises(RuntimeError):
+                session_recall.find_output(args, self.NOW)
 
     def test_read_failures_warn_only_after_scope_is_known(self):
         class FailingBody(io.BytesIO):

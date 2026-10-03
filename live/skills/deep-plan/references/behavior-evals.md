@@ -8,6 +8,8 @@ When changing this skill, select checks by the change's impact rather than runni
 
 The expected invariants matter more than exact wording. Run artifact-writing scenarios in a disposable explicit destination and inspect the resulting tree, content, and links. Do not reuse a destination between scenarios unless testing a collision. Report the selected checks, results, and any verification gaps. Once the selected required checks pass, stop verification unless new changes, failures, or unresolved concerns justify expanding or repeating it.
 
+Earlier live check records (2026-09-26 to 2026-10-01) are kept in the [repository history](https://github.com/MDGChamomile/pi-agent-kit/blob/908e3cabfe2cfb42c6f74d854c91ae646dec8b24/live/skills/deep-plan/references/behavior-evals.md).
+
 ## Workflow scenarios
 
 | Scenario | Expected invariants | Failure example |
@@ -57,42 +59,12 @@ timeouts, provider errors, and output truncation are inconclusive, not passes.
 
 Obtain authorization for any live model calls. Record the skill revision, Pi and
 model versions, thinking level, fixture, call/output limits, actual calls, and
-observed result. A staged continuation with a synthetic question tool checks
+observed result in the pull request, not in this installable skill directory. A staged continuation with a synthetic question tool checks
 workflow behavior, not a full interactive UI or end-to-end artifact flow. If the
 baseline passes, keep the workflow text unchanged and retain these cases. If it
 fails, make only the necessary instruction change and repeat the affected cases
 plus the pause and no-redundant-question controls. Do not add a question quota or
 an always-on progress mechanism merely to make an evaluation pass.
-
-### Continuity check record — 2026-09-26
-
-A consented synthetic SDK check used Pi 0.87.1, `openai-codex/gpt-6-astra`, and
-`medium` thinking. It staged the inspected-repository facts above, the loaded
-skill, and an assistant recommendation to reject existing destinations, then
-submitted each Korean continuation independently. Personal resources and session
-history were excluded. A synthetic `ask_user` stopped at the next decision, and
-a non-writing `write` sentinel recorded any mutation attempt.
-
-| Case | Baseline at `3ed32b9` | First general continuity wording | Final explicit terminology-question wording |
-| --- | --- | --- | --- |
-| Explanation during Fog | Explained, then stopped without a question | Same failure | Explained, then asked about destination policy |
-| Last decision resolved | Requested Same Page confirmation | Passed | Passed without reopening settled decisions |
-| CSV changed to JSON during explanation | Explained and asked about destination policy with JSON retained | Passed | Passed |
-| Explicit pause | Stopped without questions or mutation attempts | Passed | Passed |
-
-Each variant had one observation per case; these are bounded regression checks,
-not a statistical reliability estimate or a full interactive UI/artifact test.
-The final skill body SHA-256 (frontmatter removed) was
-`9e114099cfc3ce164d2fbdfa21f44e18dd6966a8827fb638315f2d71852e38cd`.
-All variants made zero sentinel mutation attempts. The harness allowed at most
-two model requests per case, 4,096 output tokens per request, and 120 seconds per
-case, with retries disabled. There were 12 completed response turns and one
-additional aborted continuation attempt after an already captured question
-(13 stream-dispatch attempts in total). The harness was then corrected to block further
-provider dispatch after a captured boundary; boundary aborts were not counted as
-workflow failures. No provider failures, timeouts, or output truncations obscured
-the four final observations. Further models and natural multi-turn sessions
-remain untested.
 
 ## Artifact scenarios
 
@@ -125,83 +97,3 @@ For every completed artifact scenario, also verify:
 - every PLAN completion condition maps to direct proof or linked spec acceptance evidence before the pending PLAN is atomically published;
 - shared decisions are not needlessly duplicated and no child contradicts PLAN;
 - destination precedence agrees with `scripts/records-root.mjs`, and no installation files or historical records were changed.
-
-### Storage check record — 2026-09-27
-
-A consented synthetic SDK check used Pi 0.87.1, `openai-codex/gpt-6-astra`,
-`medium` thinking, in-memory sessions/settings/credentials, and no personal
-instructions, skills, or session history. Five independent continuations started
-after confirmed alignment, with the execution-record reference supplied and
-parent directories already present. Restricted fixture tools executed the actual
-bundled resolver and publication helper; writes were confined to the selected
-record destination, and permission failure was injected by the tool boundary.
-
-| Case | Observed result | Model requests |
-| --- | --- | --- |
-| Default storage with a tool-enforced read-only installation and historical records | Published a PLAN-only record under the external default; installation and history unchanged | 7 |
-| Persistent override competing with XDG state | Used the persistent root with project partitioning | 7 |
-| Explicit destination competing with environment settings | Used the explicit directory directly | 7 |
-| Unwritable selected destination | Reported the injected permission blocker; no alternate destination or artifact writes | 4 |
-| Existing record directory | Reported collision; preserved the existing plan without writes | 3 |
-
-The three completed plans were read back for required sections, alignment,
-execution authorization, and verification gates. The tool trace confirmed date
-resolution, exclusive record-directory creation, pending-file inspection, and
-publication through the no-clobber helper. Fixture project and historical files
-remained byte-for-byte unchanged.
-
-An earlier default-storage fixture exhausted its 12-request per-case limit while
-checking missing ancestors and left an incomplete pending record. It is
-inconclusive, not a pass. That fixture was left untouched; the five cases above
-used fresh fixtures with existing parents. That batch did not verify a first-run
-default-storage continuation with missing ancestors; offline parent-creation and
-publication coverage alone does not establish that model workflow. See the
-subsequent first-use check below.
-Across both harness runs, there were 40 model dispatches and 40 observed fetch calls, within the enforced batch cap.
-Agent/provider retries and cache warming were disabled; each case had a
-180-second timeout and requested 4,096 output tokens per model call (not a
-verified server-side output cap).
-
-These are one observation per case, not statistical reliability, unrestricted
-shell/UI, or cross-platform filesystem verification. Empty/relative environment
-values, canonical project aliases, and same-named projects were covered offline
-in the 10-test resolver/publication suite. No active Pi installation or existing
-user records were changed.
-
-Tested source SHA-256 values:
-
-- `SKILL.md`: `d272adcccc1759cb5a46c57e91f1f45bceb31be27f463b465c969d5fede6ea75`
-- `references/execution-record.md`: `79bc7eea13efb5cecdc00cd780c27c3097a7259bfb50151e0cb20b819a2d25a8`
-- `scripts/records-root.mjs`: `4a11a39e3f91b2dfc31e1cb297251a118b0be9f9ecf22ab2d1160c322f597d81`
-
-### First-use storage check record — 2026-10-01
-
-A separately authorized synthetic SDK continuation used Pi 0.99.2, Node.js
-22.22.3, `openai-codex/gpt-6-astra`, and `medium` thinking. Alignment was already
-explicitly confirmed, record writing was authorized, and implementation was not.
-A fresh fixture HOME had no `.local` directory or records ancestors; no explicit
-destination, persistent override, or XDG override was supplied. Personal
-instructions, resources, and session history were excluded. Bubblewrap kept the
-fixture project and skill installation read-only, restricted writes to the fresh
-fixture HOME, and disabled network access for shell tools.
-
-The continuation resolved the default external project-partitioned root, reserved
-a new record directory exclusively, wrote and read back `PLAN.pending.md`, and
-published one `PLAN.md` through the bundled no-clobber helper. The final plan
-contained the required sections, execution steps and proofs, `Alignment:
-Confirmed`, `Readiness: Ready`, and `Execution: Unauthorized`. Only the expected
-records ancestors and PLAN-only directory were created; no pending alias remained,
-and project and installation contents were unchanged.
-
-The run completed with four model dispatches and four observed fetch calls,
-without a provider error, timeout, output truncation, or budget exhaustion. The
-harness allowed at most 16 dispatches/fetches and 300 seconds, disabled retries
-and cache warming, and requested 4,096 output tokens per call without claiming a
-verified server-side cap. The three source digests listed above still matched;
-`publish-plan.mjs` was
-`f72a36f06cbc0371ff33498857af49fe1a3aa1692a711048aaeeda0ffa5e6526`.
-
-This is one observation of the post-alignment, single-artifact first-use path,
-not a reliability estimate, a full planning interview, a missing-`ask_user` gate
-test, a multi-artifact test, or cross-platform filesystem verification. No active
-Pi installation or existing user records were changed.

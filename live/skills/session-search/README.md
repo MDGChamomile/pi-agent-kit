@@ -8,7 +8,7 @@ Read [`SKILL.md`](SKILL.md) for the executable agent workflow. Use Pi's built-in
 
 A real Pi run recalls a retry diagnosis from three hand-authored synthetic sessions: find path-free candidates, approve disclosure of bounded snippets, then explain the recorded decision and its limits. No personal session history is used.
 
-![Session-search showing candidate metadata, requesting evidence-disclosure approval, and explaining a prior retry decision](assets/session-search-demo.gif)
+![Session-search showing candidate metadata, requesting evidence-disclosure approval, and explaining a prior retry decision](https://raw.githubusercontent.com/MDGChamomile/pi-agent-kit/updates/docs/assets/session-search-demo.gif)
 
 The GIF replays actual terminal output with typing and waits accelerated; model responses and helper results are not scripted. The demonstration uses `pi-ask-user` for the consent prompt and an isolated session directory. It shows the recall workflow, not a search-quality or latency benchmark.
 
@@ -33,6 +33,8 @@ Session data is inherently sensitive. In an agent workflow, local tool output be
 The parser supports Pi session versions 1 through 3. It treats a missing version as legacy v1 with a warning and skips newer, unsupported versions visibly instead of guessing at their structure.
 
 ## Installation
+
+The demo GIF is hosted in the repository's `docs/assets/`, outside this installable directory. The README uses an online image URL so it also works when copied on its own; viewing the demo requires network access.
 
 From the repository root, copy this directory into one of Pi's skill locations, for example:
 
@@ -162,11 +164,26 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py recall \
 
 Recall re-runs the deterministic candidate ranking rather than accepting a user-provided path or session ID. It validates discovered files against the selected session roots, applies the same cwd and current-session defaults as aggregate search, and reads only the selected candidate again for evidence. If the selected candidate changes during that second read, recall returns `CANDIDATE_NOT_FOUND` rather than mixing stale rank metadata with new evidence. A rank can still refer to a different candidate when files change between separate find and recall invocations, so run `find` again when the session store may have changed.
 
-For v2 and v3 sessions, recall follows the parent chain from the last recorded entry and searches user and assistant text on that active branch. For v1 it uses the linear entry sequence. Compaction entries and `retainedTail` are not emitted as messages, so they do not duplicate original branch messages. Invalid or cyclic branch structures are skipped with path-free warning counts. Non-string message roles are ignored for matching and evidence without discarding their branch links. UTF-8 body failures produce a path-free warning once the header confirms the selected project; files with an unknown or different project remain undisclosed in the default scope.
+For v2 and v3 sessions, recall follows the parent chain from the last recorded entry and searches user and assistant text on that active branch. For v1 it uses the linear entry sequence. Compaction entries and `retainedTail` are not emitted as messages, so they do not duplicate original branch messages. Invalid or cyclic branch structures are skipped with path-free warning counts. Non-string message roles are ignored for matching and evidence without discarding their branch links. UTF-8 body failures produce a path-free warning once the header confirms the selected project; files with an unknown or different project remain undisclosed in the default scope. If no candidate can be returned and a read failure was disclosed within the selected scope, `find` and `recall` return `SESSION_STORAGE_UNAVAILABLE` (exit code 2), not a successful empty result. If candidates remain, results retain path-free read-failure warnings and may be incomplete. Explain reported read failures as an inability to verify the history, not as no prior discussion. Successful empty results also do not prove historical absence: failures whose project cannot be determined remain undisclosed by design.
 
 A recall window contains a matching message and at most one neighboring text message on each side. Overlapping windows are merged up to five messages. Output is capped at three windows, 300 characters per message, and 6,000 evidence characters overall. Omitted-message counts make gaps visible. Each returned message has a `text_truncated` boolean indicating whether its masked, whitespace-normalized text was shortened for the excerpt; masking alone does not set this flag. The summary's `evidence_truncated` still reports omitted windows or unrepresented matching messages, not shortening within a returned message. Thinking blocks, tool calls, tool results, compaction summaries, and unrelated first or last messages are excluded. First or last messages can still appear when they are naturally adjacent to a match.
 
-`find` never requires evidence consent because it returns only path-free candidate metadata. `recall` requires `--include-evidence`; in an agent workflow this flag may be used only after the user explicitly approves sending the masked snippets and timestamps to the active model provider.
+### Read more matching windows
+
+Recall returns `next_continuation` when more matching windows remain, or `null` when there are no further windows. If the first page does not answer the question, pass that opaque token to another recall using the same terms and scope:
+
+```bash
+python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py recall \
+  --term authentication --term cache --continuation '<next_continuation>' --include-evidence
+```
+
+Do not combine `--continuation` with `--candidate-rank`. Initial recall still selects the current rank; continuation stays with the same active-branch conversation even if another session takes that rank. A changed, removed, or moved candidate returns `CANDIDATE_NOT_FOUND`, rather than silently switching sessions. Re-run `find` and start a new ranked recall if needed. Scope or term changes and malformed tokens return `INVALID_ARGUMENT`. With `--days`, the original time cutoff is retained across pages.
+
+Each page keeps the same three-window, five-message-per-window, 300-character-per-message, and total evidence limits and masking. The summary counts describe that page; `matching_messages` still counts all eligible matches. `evidence_truncated` can remain true on the final page because other matches were returned on earlier pages. Use `next_continuation`, not that flag, to determine whether another page exists. Continuation exposes later matching windows, not the full text of shortened messages or arbitrary non-matching conversation tails.
+
+Tokens do not contain plaintext paths, session IDs, search terms, or conversation text. They are stateless locators, not authorization or encryption: every invocation rediscovers files inside the supplied scope and rechecks the conversation fingerprint. No index, cache, or token file is written; continuation still rescans eligible sessions. Read another page only when needed to answer the question, and stop once the evidence is sufficient; do not automatically collect the entire conversation.
+
+`find` never requires evidence consent because it returns only path-free candidate metadata. Every `recall` page requires `--include-evidence`; in an agent workflow this flag may be used only within the user's explicit approval to send masked snippets and timestamps to the active model provider. A continuation token does not expand that approval.
 
 ## Aggregate output and evidence
 
@@ -214,7 +231,7 @@ opt-in evidence and masking rules. Recall still excludes tool results.
 - Counts and candidate ranks describe recorded messages and entries, not inferred tasks or outcomes.
 - Aggregate search still scans recorded branches and only marks evidence from the inferred latest branch. Recall restricts matching and evidence to the active branch.
 - Aggregate opens each selected session body once, including for a batch of independent summary filters. Separate CLI invocations still repeat the scan. Recall find must read a selected body to determine its active branch; recall then reads the chosen candidate again to build evidence. There is no persistent index.
-- Recall candidate ranks can change if session files change between find and recall invocations.
+- Recall candidate ranks can change if session files change between find and initial recall invocations. Continuation preserves only the already recalled candidate, not the find ranking.
 - Secret masking is deliberately best-effort and is not a data-loss-prevention guarantee.
 
 ## Tests

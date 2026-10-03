@@ -15,7 +15,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, BinaryIO, Callable, Iterable
 
 DEFAULT_LIMIT = 20
 MAX_EVIDENCE_CHARS = 300
@@ -372,6 +372,15 @@ class WarningCollector:
         return result
 
 
+def read_session_header(handle: BinaryIO) -> dict[str, Any] | None:
+    """Decode only the header; callers retain their own scope and warning policy."""
+    try:
+        header = json.loads(handle.readline().decode("utf-8"))
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return header if isinstance(header, dict) and header.get("type") == "session" else None
+
+
 def session_version(header: dict[str, Any], path: Path, warnings: WarningCollector) -> int | None:
     value = header.get("version")
     if value is None:
@@ -491,7 +500,7 @@ def discover_session_files(
 
     for root in allowed_roots.values():
         # Unlike Path.rglob, walk's onerror makes inaccessible subtrees visible.
-        # Do not follow nested directory symlinks, matching the previous scan.
+        # Do not follow nested directory symlinks.
         for directory, _dirs, files in os.walk(root, onerror=traversal_error):
             for name in files:
                 if name.endswith(".jsonl"):
@@ -691,13 +700,9 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             continue
         attempted_files += 1
         try:
-            with path.open("r", encoding="utf-8") as handle:
-                try:
-                    header = json.loads(handle.readline())
-                except (json.JSONDecodeError, TypeError):
-                    warnings.add(path, "invalid_header")
-                    continue
-                if not isinstance(header, dict) or header.get("type") != "session":
+            with path.open("rb") as handle:
+                header = read_session_header(handle)
+                if header is None:
                     warnings.add(path, "invalid_header")
                     continue
                 readable_headers += 1
@@ -723,7 +728,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
 
                 for line in handle:
                     try:
-                        entry = json.loads(line)
+                        entry = json.loads(line.decode("utf-8"))
                     except (json.JSONDecodeError, TypeError):
                         warnings.add(path, "invalid_json_line")
                         continue
