@@ -19,6 +19,11 @@ settings; verify the console and workflow state directly.
 - Choose model access explicitly. Codex subscription authentication stores
   credentials in Pullfrog's encrypted store and requires the owner's consent.
   Do not expose credentials in files, comments, prompts, or logs.
+- Mentions are enabled. The owner can request a review by commenting
+  `@pullfrog <request>` on a PR; `--model=<provider/model>` and
+  `--effort=<level>` in that comment apply to that run only. Each mention
+  starts a paid run, and the owner's own mention is its authorization. Code
+  pushes stay disabled, so a mention cannot make Pullfrog change the branch.
 - Put the instructions below into the console's Review instructions field if
   the owner authorizes console configuration.
 
@@ -46,8 +51,8 @@ unverified.
 - After a push, confirm that the review of the **latest head commit** has
   completed and inspect its findings and unresolved threads before merging.
 - If an expected review does not start, investigate the trigger, target base,
-  permissions, and console/workflow state. Manual dispatches, mention-triggered
-  reruns, and additional paid runs each require separate approval.
+  permissions, and console/workflow state. Manual dispatches and additional
+  paid runs not requested by the owner each require separate approval.
 
 ## Activation
 
