@@ -24,7 +24,7 @@ Kit-specific changes: source-install documentation and private package metadata;
 
 ## Install from source
 
-Requires Pi 1.0.0 or later. Offline CI tests the pinned 1.0.0 minimum and, weekly, Pi's latest release; see [Development](#development). This is not a full compatibility matrix. Runtime dependencies are supplied by Pi; Bun is needed only for development. The commands below assume a POSIX shell.
+Requires Pi 1.0.0 or later. See [Development](#development) for the tested versions; this is not a full compatibility matrix. Runtime dependencies are supplied by Pi; Bun is needed only for development. The commands below assume a POSIX shell.
 
 Review this directory, then copy it from a checkout:
 
@@ -158,6 +158,8 @@ For recognized transient provider or transport failures (such as a 503 response,
 
 This is a fixed extension policy, independent of Pi's `retry` settings (including `retry.enabled`). The extension passes no native retry policy to `compact()` and does not enable a nested native summarization retry loop. Error classification is conservative and message-based because native compaction flattens provider errors; unrecognized transient errors can still fall back without a retry. Provider retry-delay cap failures are not retried by this wrapper.
 
+The wrapper predates `compact()`'s native `retry` argument (added after the former 0.80.7 minimum) and intentionally does not use it: native retry applies to each internal summarization request, so a split-turn compaction could make more than two attempts. It is not a generic retry framework and does not bound provider-internal HTTP attempts.
+
 A retry repeats the whole compaction, including any completed part of a split-turn summary. Split-turn compaction, provider/transport retries, and subsequent native fallback can therefore make the total number of HTTP requests greater than two. Retrying can add latency and provider usage.
 
 Cancellation before an attempt, during the wait, or during a request stops further extension attempts and returns `{ cancel: true }`, without a fallback warning. An `AbortError` is also treated as cancellation. Returning no result on other failures hands control back to Pi; the extension does not itself start an active-model request.
@@ -171,7 +173,7 @@ bun install --frozen-lockfile
 bun run check
 ```
 
-See [the development and verification record](DEVELOPMENT.md) for CI coverage, the weekly latest-Pi check, and historical live verification. Offline checks make no model requests; live compaction sends session content to the configured provider and can incur usage charges.
+The `live-validation` workflow runs these checks against the pinned minimum, Pi 1.0.0, and `pi-latest-compatibility` runs them weekly against Pi's latest release. Offline checks make no model requests; live compaction sends session content to the configured provider and can incur usage charges.
 
 ## License
 
