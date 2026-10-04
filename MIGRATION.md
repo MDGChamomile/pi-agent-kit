@@ -1,5 +1,19 @@
 # Pi Agent Kit migration
 
+## v0.7.1
+
+This remains a source-only GitHub release, not an npm package or an automatic update of installed Pi resources. Review the changes and update only the resources you adopt; preserve local customizations. Restart Pi or use `/reload` after updating auto-discovered resources.
+
+### Session search
+
+Aggregate, batch, `find`, and `recall` now accept fixed `--since` (inclusive) and `--until` (exclusive) timestamp boundaries with an explicit timezone. They cannot be combined with `--days`; invalid boundaries fail before session discovery. Fractional timestamps are normalized consistently on Python 3.10 and later.
+
+Use repeatable `--exclude-session-file PATH` to skip explicitly selected session files before their headers or bodies are opened. This is exact normalized path matching, not a glob, directory prefix, or session ID filter. Automatic current-session exclusion is unchanged. See the [session-search guide](live/skills/session-search/README.md#time-ranges) for time ranges and [file exclusions](live/skills/session-search/README.md#exclude-specific-session-files) for matching and count semantics.
+
+### Contributor workflow
+
+PRs gain a Summary / Verification / Risk template and clearer review-completion guidance. Pullfrog remains review-only, including owner-authorized external-contributor PR reviews. PR validation no longer uses workflow-level path filtering, so required checks can be reported for every PR.
+
 ## v0.7.0
 
 This remains a source-only GitHub release, not an npm package or an automatic update of installed Pi resources. Review the changed resources, preserve local customizations, and update only the copies you adopt. Restart Pi or use `/reload` after updating auto-discovered resources.

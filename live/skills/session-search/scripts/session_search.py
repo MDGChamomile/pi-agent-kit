@@ -445,7 +445,7 @@ class SessionArgumentParser(argparse.ArgumentParser):
 def build_parser() -> argparse.ArgumentParser:
     parser = SessionArgumentParser(description="Aggregate local evidence across multiple Pi sessions; use /resume for a single session.")
     parser.add_argument("-q", "--query", action="append", default=[], help="case-insensitive literal filter; repeat to require every value (AND)")
-    parser.add_argument("--days", type=float, help="include entries from the last N days, based on entry timestamps")
+    add_time_arguments(parser)
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument("--all-projects", action="store_true", help="search sessions from every project")
     scope.add_argument("--cwd", default=os.getcwd(), help="project cwd to match exactly (default: current cwd)")
@@ -457,6 +457,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="independent summary-only filter object; repeat up to 8 times; "
                              "keys: query, role, tool, skill (string arrays), error (boolean)")
     parser.add_argument("--include-current", action="store_true", help="include PI_SESSION_FILE (excluded by default)")
+    add_exclusion_argument(parser)
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help=f"maximum evidence results with --include-evidence (default: {DEFAULT_LIMIT})")
     evidence = parser.add_mutually_exclusive_group()
     evidence.add_argument(
@@ -480,6 +481,34 @@ def build_parser() -> argparse.ArgumentParser:
              "PI_CODING_AGENT_DIR/sessions, ~/.pi/agent/sessions",
     )
     return parser
+
+
+def add_exclusion_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--exclude-session-file", action="append", default=[], metavar="PATH",
+                        help="exclude an exact session file before opening; repeatable; paths resolve from process cwd; "
+                             "overrides --include-current; reports path-free requested/excluded/unmatched counts")
+
+
+def normalized_exclusions(values: Iterable[str]) -> frozenset[str]:
+    paths: set[str] = set()
+    for value in values:
+        # Validate before Path('') can silently become the current directory.
+        if not value or "\x00" in value:
+            raise ValueError("session exclusion is invalid")
+        try:
+            paths.add(normalized_path(value))
+        except (ValueError, OSError, RuntimeError) as error:
+            raise ValueError("session exclusion is invalid") from error
+    return frozenset(paths)
+
+
+def exclusion_summary(exclusions: frozenset[str], matched: set[str], excluded_count: int) -> dict[str, int]:
+    # A current-session overlap is matched, but counted only in the automatic counter.
+    return {
+        "session_file_exclusions_requested": len(exclusions),
+        "explicit_session_files_excluded": excluded_count,
+        "session_file_exclusions_unmatched": len(exclusions - matched),
+    }
 
 
 def discover_session_files(
@@ -528,6 +557,57 @@ def cutoff_for_days(
         return current_time.astimezone(timezone.utc) - timedelta(days=days)
     except OverflowError as error:
         raise ValueError("--days exceeds the supported date range") from error
+
+
+def add_time_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--days", type=float, help="include entries/messages from the last N days")
+    parser.add_argument("--since", metavar="TIMESTAMP",
+                        help="inclusive start: YYYY-MM-DDTHH:MM:SS[.ffffff]Z or ±HH:MM offset; not with --days")
+    parser.add_argument("--until", metavar="TIMESTAMP",
+                        help="exclusive end: same timezone-required format as --since; not with --days")
+
+
+def parse_time_boundary(value: str) -> datetime:
+    # Keep CLI validation separate from the permissive historical-record parser.
+    match = re.fullmatch(
+        r"([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})"
+        r"(?:\.([0-9]{1,6}))?(Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])", value,
+    )
+    if match is None:
+        raise ValueError("time boundary is invalid")
+    # Python 3.10 fromisoformat accepts only 3 or 6 fractional digits.
+    seconds, fraction, offset = match.groups()
+    parsed = parse_timestamp(f"{seconds}.{(fraction or '').ljust(6, '0')}{offset}")
+    if parsed is None:
+        raise ValueError("time boundary is invalid")
+    return parsed
+
+
+@dataclass(frozen=True)
+class TimeRange:
+    since: datetime | None = None
+    until: datetime | None = None
+
+    def contains(self, timestamp: datetime | None) -> bool:
+        if self.since is None and self.until is None:
+            return True
+        return (timestamp is not None
+                and (self.since is None or timestamp >= self.since)
+                and (self.until is None or timestamp < self.until))
+
+    def view(self) -> dict[str, str | None]:
+        return {name: value.isoformat().replace("+00:00", "Z") if value is not None else None
+                for name, value in (("since", self.since), ("until", self.until))}
+
+
+def time_range_for_args(args: argparse.Namespace, now: datetime | None = None) -> TimeRange:
+    if args.days is not None and (args.since is not None or args.until is not None):
+        raise ValueError("relative and absolute time bounds cannot be combined")
+    since = parse_time_boundary(args.since) if args.since is not None else cutoff_for_days(args.days, now)
+    until = parse_time_boundary(args.until) if args.until is not None else None
+    if since is not None and until is not None and since >= until:
+        raise ValueError("time range is empty or reversed")
+    return TimeRange(since, until)
 
 
 def aggregate_filters(args: argparse.Namespace) -> list[EventFilters]:
@@ -674,10 +754,11 @@ class EventAggregation:
 
 
 def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str, Any]:
-    cutoff = cutoff_for_days(args.days, now)
+    time_range = time_range_for_args(args, now)
     if args.limit < 0:
         raise ValueError("--limit must be non-negative")
     filters = aggregate_filters(args)
+    exclusions = normalized_exclusions(args.exclude_session_file)
     paths = discover_session_files([args.sessions_root, *args.additional_sessions_root])
     target_cwd = normalized_path(args.cwd)
     current = normalized_path(os.environ["PI_SESSION_FILE"]) if os.environ.get("PI_SESSION_FILE") else None
@@ -690,13 +771,21 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     scanned_entries = 0
     eligible_entries = 0
     excluded_current = 0
+    excluded_explicit = 0
+    matched_exclusions: set[str] = set()
     attempted_files = 0
     readable_headers = 0
 
     for path in paths:
         files_discovered += 1
-        if not args.include_current and current and normalized_path(path) == current:
+        path_key = normalized_path(path)
+        if path_key in exclusions:
+            matched_exclusions.add(path_key)
+        if not args.include_current and current and path_key == current:
             excluded_current += 1
+            continue
+        if path_key in exclusions:
+            excluded_explicit += 1
             continue
         attempted_files += 1
         try:
@@ -755,7 +844,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                     record_skill_read_calls(entry, skill_reads_by_call_id, names_by_path, recorded_cwd)
 
                     timestamp = parse_timestamp(entry.get("timestamp"))
-                    if cutoff is not None and (timestamp is None or timestamp < cutoff):
+                    if not time_range.contains(timestamp):
                         continue
                     eligible_entries += 1
                     # Parse each entry into events once, then evaluate independent filters.
@@ -780,6 +869,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         "files_discovered": files_discovered,
         "files_selected": selected_files,
         "current_session_files_excluded": excluded_current,
+        **exclusion_summary(exclusions, matched_exclusions, excluded_explicit),
         "entries_scanned": scanned_entries,
         "entries_eligible": eligible_entries,
     }
@@ -790,6 +880,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             "cwd": target_cwd if args.include_evidence and not args.all_projects else None,
             "all_projects": args.all_projects,
             "days": args.days,
+            **time_range.view(),
             "include_current": args.include_current,
         },
         **({
