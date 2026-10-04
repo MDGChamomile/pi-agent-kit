@@ -540,12 +540,15 @@ def add_time_arguments(parser: argparse.ArgumentParser) -> None:
 
 def parse_time_boundary(value: str) -> datetime:
     # Keep CLI validation separate from the permissive historical-record parser.
-    if not re.fullmatch(
-        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
-        r"(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])", value,
-    ):
+    match = re.fullmatch(
+        r"([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})"
+        r"(?:\.([0-9]{1,6}))?(Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])", value,
+    )
+    if match is None:
         raise ValueError("time boundary is invalid")
-    parsed = parse_timestamp(value)
+    # Python 3.10 fromisoformat accepts only 3 or 6 fractional digits.
+    seconds, fraction, offset = match.groups()
+    parsed = parse_timestamp(f"{seconds}.{(fraction or '').ljust(6, '0')}{offset}")
     if parsed is None:
         raise ValueError("time boundary is invalid")
     return parsed

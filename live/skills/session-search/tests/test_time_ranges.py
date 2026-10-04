@@ -74,6 +74,20 @@ class TimeRangeTests(unittest.TestCase):
         self.assertEqual(result["scope"]["since"], self.START)
         self.assertEqual(result["scope"]["until"], self.END)
 
+    def test_every_supported_fraction_length_has_exact_boundaries(self):
+        for fraction in ("1", "12", "123", "1234", "12345", "123456"):
+            with self.subTest(fraction=fraction):
+                boundary = f"2026-08-10T00:00:00.{fraction}Z"
+                canonical = f"2026-08-10T00:00:00.{fraction.ljust(6, '0')}Z"
+                self.write([canonical])
+                for mode in ("aggregate", "find", "recall"):
+                    result = self.output(mode, "--since", boundary)
+                    self.assertEqual(result["scope"]["since"], canonical)
+                    self.assertEqual(result["summary"]["matched_sessions"], 1)
+                aggregate = self.output("aggregate", "--until", boundary)
+                self.assertEqual(aggregate["summary"]["entries_eligible"], 0)
+                self.assertEqual(self.output("find", "--until", boundary)["candidates"], [])
+
     def test_invalid_input_fails_before_discovery_without_echo(self):
         invalid = ["", "private-secret", "2026-08-10", "2026-08-10T00:00:00",
                    "2026-08-10 00:00:00Z", "2026-08-10T00:00:00.1234567Z",
