@@ -2,7 +2,7 @@
 
 ## v0.7.1
 
-This remains a source-only GitHub release, not an npm package or an automatic update of installed Pi resources. Review the changes and update only the resources you adopt; preserve local customizations.
+This remains a source-only GitHub release, not an npm package or an automatic update of installed Pi resources. Review the changes and update only the resources you adopt; preserve local customizations. Restart Pi or use `/reload` after updating auto-discovered resources.
 
 ### Session search
 
