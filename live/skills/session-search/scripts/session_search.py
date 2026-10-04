@@ -445,7 +445,7 @@ class SessionArgumentParser(argparse.ArgumentParser):
 def build_parser() -> argparse.ArgumentParser:
     parser = SessionArgumentParser(description="Aggregate local evidence across multiple Pi sessions; use /resume for a single session.")
     parser.add_argument("-q", "--query", action="append", default=[], help="case-insensitive literal filter; repeat to require every value (AND)")
-    parser.add_argument("--days", type=float, help="include entries from the last N days, based on entry timestamps")
+    add_time_arguments(parser)
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument("--all-projects", action="store_true", help="search sessions from every project")
     scope.add_argument("--cwd", default=os.getcwd(), help="project cwd to match exactly (default: current cwd)")
@@ -528,6 +528,54 @@ def cutoff_for_days(
         return current_time.astimezone(timezone.utc) - timedelta(days=days)
     except OverflowError as error:
         raise ValueError("--days exceeds the supported date range") from error
+
+
+def add_time_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--days", type=float, help="include entries/messages from the last N days")
+    parser.add_argument("--since", metavar="TIMESTAMP",
+                        help="inclusive start: YYYY-MM-DDTHH:MM:SS[.ffffff]Z or ±HH:MM offset; not with --days")
+    parser.add_argument("--until", metavar="TIMESTAMP",
+                        help="exclusive end: same timezone-required format as --since; not with --days")
+
+
+def parse_time_boundary(value: str) -> datetime:
+    # Keep CLI validation separate from the permissive historical-record parser.
+    if not re.fullmatch(
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+        r"(?:\.[0-9]{1,6})?(?:Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])", value,
+    ):
+        raise ValueError("time boundary is invalid")
+    parsed = parse_timestamp(value)
+    if parsed is None:
+        raise ValueError("time boundary is invalid")
+    return parsed
+
+
+@dataclass(frozen=True)
+class TimeRange:
+    since: datetime | None = None
+    until: datetime | None = None
+
+    def contains(self, timestamp: datetime | None) -> bool:
+        if self.since is None and self.until is None:
+            return True
+        return (timestamp is not None
+                and (self.since is None or timestamp >= self.since)
+                and (self.until is None or timestamp < self.until))
+
+    def view(self) -> dict[str, str | None]:
+        return {name: value.isoformat().replace("+00:00", "Z") if value is not None else None
+                for name, value in (("since", self.since), ("until", self.until))}
+
+
+def time_range_for_args(args: argparse.Namespace, now: datetime | None = None) -> TimeRange:
+    if args.days is not None and (args.since is not None or args.until is not None):
+        raise ValueError("relative and absolute time bounds cannot be combined")
+    since = parse_time_boundary(args.since) if args.since is not None else cutoff_for_days(args.days, now)
+    until = parse_time_boundary(args.until) if args.until is not None else None
+    if since is not None and until is not None and since >= until:
+        raise ValueError("time range is empty or reversed")
+    return TimeRange(since, until)
 
 
 def aggregate_filters(args: argparse.Namespace) -> list[EventFilters]:
@@ -674,7 +722,7 @@ class EventAggregation:
 
 
 def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str, Any]:
-    cutoff = cutoff_for_days(args.days, now)
+    time_range = time_range_for_args(args, now)
     if args.limit < 0:
         raise ValueError("--limit must be non-negative")
     filters = aggregate_filters(args)
@@ -755,7 +803,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                     record_skill_read_calls(entry, skill_reads_by_call_id, names_by_path, recorded_cwd)
 
                     timestamp = parse_timestamp(entry.get("timestamp"))
-                    if cutoff is not None and (timestamp is None or timestamp < cutoff):
+                    if not time_range.contains(timestamp):
                         continue
                     eligible_entries += 1
                     # Parse each entry into events once, then evaluate independent filters.
@@ -790,6 +838,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             "cwd": target_cwd if args.include_evidence and not args.all_projects else None,
             "all_projects": args.all_projects,
             "days": args.days,
+            **time_range.view(),
             "include_current": args.include_current,
         },
         **({

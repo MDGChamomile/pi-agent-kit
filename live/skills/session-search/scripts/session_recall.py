@@ -235,12 +235,12 @@ def candidate_for_messages(
     messages: list[RecallMessage],
     terms: tuple[str, ...],
     cutoff: datetime | None,
+    until: datetime | None = None,
 ) -> tuple[Candidate | None, list[RecallMessage]]:
+    time_range = session_search.TimeRange(cutoff, until)
     eligible = [
         message for message in messages
-        if cutoff is None
-        or ((timestamp := session_search.parse_timestamp(message.timestamp)) is not None
-            and timestamp >= cutoff)
+        if time_range.contains(session_search.parse_timestamp(message.timestamp))
     ]
     matched_terms: set[str] = set()
     matching_messages = 0
@@ -269,8 +269,10 @@ def scan_candidates(
     args: argparse.Namespace,
     terms: tuple[str, ...],
     now: datetime | None = None,
+    *, time_range: session_search.TimeRange | None = None,
 ) -> tuple[list[Candidate], dict[str, int], session_search.WarningCollector]:
-    cutoff = session_search.cutoff_for_days(args.days, now)
+    if time_range is None:
+        time_range = session_search.time_range_for_args(args, now)
     roots = [args.sessions_root, *args.additional_sessions_root]
     warnings = session_search.WarningCollector()
     paths = permitted_files(roots, warnings)
@@ -297,7 +299,7 @@ def scan_candidates(
             continue
         files_selected += 1
         scanned_entries += scanned
-        candidate, _eligible = candidate_for_messages(path, messages, terms, cutoff)
+        candidate, _eligible = candidate_for_messages(path, messages, terms, time_range.since, time_range.until)
         if candidate is not None:
             candidates.append(candidate)
 
@@ -410,7 +412,7 @@ def recall_windows(
 def add_scope_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--term", action="append", default=[], required=True,
                         help="case-insensitive literal recall term; repeat for alternatives (OR)")
-    parser.add_argument("--days", type=float, help="include messages from the last N days")
+    session_search.add_time_arguments(parser)
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument("--all-projects", action="store_true", help="search sessions from every project")
     scope.add_argument("--cwd", default=os.getcwd(), help="project cwd to match exactly (default: current cwd)")
@@ -444,10 +446,11 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def scope_view(args: argparse.Namespace) -> dict[str, Any]:
+def scope_view(args: argparse.Namespace, time_range: session_search.TimeRange) -> dict[str, Any]:
     return {
         "all_projects": args.all_projects,
         "days": args.days,
+        **time_range.view(),
         "include_current": args.include_current,
         "branch_scope": "active",
     }
@@ -457,7 +460,8 @@ def find_output(args: argparse.Namespace, now: datetime | None = None) -> dict[s
     terms = normalize_terms(args.term)
     if args.limit < 1 or args.limit > MAX_CANDIDATE_LIMIT:
         raise ValueError("candidate limit is invalid")
-    candidates, summary, warnings = scan_candidates(args, terms, now)
+    time_range = session_search.time_range_for_args(args, now)
+    candidates, summary, warnings = scan_candidates(args, terms, time_range=time_range)
     returned = candidates[:args.limit]
     summary.update({
         "candidates_returned": len(returned),
@@ -468,7 +472,7 @@ def find_output(args: argparse.Namespace, now: datetime | None = None) -> dict[s
         "status": "ok",
         "mode": "find",
         "evidence_included": False,
-        "scope": scope_view(args),
+        "scope": scope_view(args, time_range),
         "summary": summary,
         "candidates": [
             {
@@ -490,9 +494,13 @@ def continuation_digest(value: Any) -> str:
 
 def continuation_scope(
     args: argparse.Namespace, terms: tuple[str, ...], reference_time: datetime,
+    time_range: session_search.TimeRange,
 ) -> str:
     current = os.environ.get("PI_SESSION_FILE")
+    # Preserve legacy digests when neither new option is used.
+    absolute_bounds = time_range.view() if args.since is not None or args.until is not None else {}
     return continuation_digest({
+        **absolute_bounds,
         "roots": sorted({session_search.normalized_path(root) for root in
                          [args.sessions_root, *args.additional_sessions_root]}),
         "cwd": None if args.all_projects else session_search.normalized_path(args.cwd),
@@ -546,10 +554,11 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
     expected_scope = None
     if args.continuation is not None:
         reference_time, expected_scope, expected_candidate, window_start = decode_continuation(args.continuation)
-    scope = continuation_scope(args, terms, reference_time)
+    time_range = session_search.time_range_for_args(args, reference_time)
+    scope = continuation_scope(args, terms, reference_time, time_range)
     if expected_scope is not None and scope != expected_scope:
         raise ValueError("continuation scope changed")
-    candidates, scan_summary, warnings = scan_candidates(args, terms, reference_time)
+    candidates, scan_summary, warnings = scan_candidates(args, terms, time_range=time_range)
     if expected_candidate is not None:
         selected = [
             (rank, candidate) for rank, candidate in enumerate(candidates, 1)
@@ -573,7 +582,7 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
         raise CandidateNotFoundError
     messages, _scanned = loaded
     refreshed, eligible = candidate_for_messages(
-        candidate.path, messages, terms, session_search.cutoff_for_days(args.days, reference_time)
+        candidate.path, messages, terms, time_range.since, time_range.until
     )
     if refreshed != candidate:
         raise CandidateNotFoundError
@@ -598,7 +607,7 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
         "mode": "recall",
         "evidence_included": True,
         "next_continuation": next_continuation,
-        "scope": scope_view(args),
+        "scope": scope_view(args, time_range),
         "summary": summary,
         "results": windows,
         "warnings": warnings.output(False),
