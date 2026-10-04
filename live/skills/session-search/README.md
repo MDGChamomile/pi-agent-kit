@@ -134,6 +134,56 @@ For recurring agent use, configure Pi's storage environment variables or specify
 
 Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each aggregate filter.
 
+### Exclude specific session files
+
+Use repeatable `--exclude-session-file PATH` with aggregate, batch, `find`, or
+`recall` to omit explicitly selected files before their headers or bodies are
+opened. It does not select a recall candidate or expand the session roots.
+
+```bash
+python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py find \
+  --term authentication --term cache \
+  --exclude-session-file /path/to/session-store/discussion.jsonl \
+  --exclude-session-file /path/to/session-store/duplicate.jsonl
+```
+
+Paths are expanded and resolved with the existing `normalized_path` rules
+(`Path.expanduser().resolve(strict=False)`), including `~` and known `~user`
+homes. Relative paths use the process working directory, **not** `--cwd`.
+Duplicates and symlink aliases share one normalized exclusion. Matching uses
+exact normalized path strings, not session IDs, inode identity, directory
+prefixes, globs, or additional case folding. Separate copies and hard links
+remain eligible unless their own paths are excluded.
+
+Automatic current-session exclusion is unchanged. `--include-current` disables
+only that automatic exclusion; explicit exclusions still apply. Empty paths,
+NUL-containing paths, and normalization failures return path-free
+`INVALID_ARGUMENT` before discovery. Missing paths, directories, and targets
+not discovered within the selected roots are unmatched, not storage errors.
+Exclusions do not suppress root traversal failures or change symlink-containment
+rules. They prevent file reads, not filesystem metadata access during discovery.
+
+The summary adds these path-free counters (also shared by batch summaries):
+
+- `session_file_exclusions_requested`: distinct normalized paths requested.
+- `explicit_session_files_excluded`: discovered files excluded explicitly,
+  excluding any already counted in `current_session_files_excluded`.
+- `session_file_exclusions_unmatched`: requested paths absent from the discovered
+  file set. A file also excluded automatically as current is matched, not unmatched.
+
+These are file counts **before** header/project filtering, so an explicitly
+excluded file may belong to another project. They are not session-ID or task
+counts. Aggregate `files_discovered` still includes excluded files; recall does
+not add a general discovery count or expose paths. If every file is excluded,
+aggregate and `find` return successful empty results; `recall` retains
+`CANDIDATE_NOT_FOUND` because no candidate is available.
+
+Reuse the same exclusions for find, recall, and continuation. Continuation binds
+the normalized requested set, including unmatched paths. Changes are rejected
+before scanning; order, duplicates, and equivalent aliases do not matter.
+Relative paths must still resolve to the same targets on later invocations.
+Tokens created without explicit exclusions keep their previous scope digest.
+
 ## Batch summaries
 
 For several independent counts over the same scope, use repeated `--batch-filter`
@@ -157,8 +207,8 @@ Each object is limited to 4,096 characters, each array to 32 values, and each
 value to 256 characters. Unknown or duplicate keys and invalid types fail before
 session storage is accessed.
 
-Scope options (`--cwd` or `--all-projects`, `--days` or `--since`/`--until`, additional roots, and current
-session inclusion) apply to the whole batch. Every selected body is read and
+Scope options (`--cwd` or `--all-projects`, `--days` or `--since`/`--until`, additional
+roots, current session inclusion, and `--exclude-session-file`) apply to the whole batch. Every selected body is read and
 parsed once; filters are then evaluated separately. Batch output has `mode:
 "batch"`, shared scan counts in `summary`, and a `batches` array in input order.
 Each item has a one-based `filter_index` and a `summary` with the same counters
@@ -192,7 +242,7 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py recall \
   --term authentication --term cache --candidate-rank 1 --include-evidence
 ```
 
-Recall re-runs the deterministic candidate ranking rather than accepting a user-provided path or session ID. It validates discovered files against the selected session roots, applies the same cwd and current-session defaults as aggregate search, and reads only the selected candidate again for evidence. If the selected candidate changes during that second read, recall returns `CANDIDATE_NOT_FOUND` rather than mixing stale rank metadata with new evidence. A rank can still refer to a different candidate when files change between separate find and recall invocations, so run `find` again when the session store may have changed.
+Recall re-runs the deterministic candidate ranking rather than selecting a candidate by a user-provided path or session ID. It validates discovered files against the selected session roots, applies the same cwd and current-session defaults as aggregate search, and reads only the selected candidate again for evidence. If the selected candidate changes during that second read, recall returns `CANDIDATE_NOT_FOUND` rather than mixing stale rank metadata with new evidence. A rank can still refer to a different candidate when files change between separate find and recall invocations, so run `find` again when the session store may have changed.
 
 For v2 and v3 sessions, recall follows the parent chain from the last recorded entry and searches user and assistant text on that active branch. For v1 it uses the linear entry sequence. Compaction entries and `retainedTail` are not emitted as messages, so they do not duplicate original branch messages. Invalid or cyclic branch structures are skipped with path-free warning counts. Non-string message roles are ignored for matching and evidence without discarding their branch links. UTF-8 body failures produce a path-free warning once the header confirms the selected project; files with an unknown or different project remain undisclosed in the default scope. If no candidate can be returned and a read failure was disclosed within the selected scope, `find` and `recall` return `SESSION_STORAGE_UNAVAILABLE` (exit code 2), not a successful empty result. If candidates remain, results retain path-free read-failure warnings and may be incomplete. Explain reported read failures as an inability to verify the history, not as no prior discussion. Successful empty results also do not prove historical absence: failures whose project cannot be determined remain undisclosed by design.
 

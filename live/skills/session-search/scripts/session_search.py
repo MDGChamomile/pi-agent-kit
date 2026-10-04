@@ -457,6 +457,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="independent summary-only filter object; repeat up to 8 times; "
                              "keys: query, role, tool, skill (string arrays), error (boolean)")
     parser.add_argument("--include-current", action="store_true", help="include PI_SESSION_FILE (excluded by default)")
+    add_exclusion_argument(parser)
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help=f"maximum evidence results with --include-evidence (default: {DEFAULT_LIMIT})")
     evidence = parser.add_mutually_exclusive_group()
     evidence.add_argument(
@@ -480,6 +481,34 @@ def build_parser() -> argparse.ArgumentParser:
              "PI_CODING_AGENT_DIR/sessions, ~/.pi/agent/sessions",
     )
     return parser
+
+
+def add_exclusion_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--exclude-session-file", action="append", default=[], metavar="PATH",
+                        help="exclude an exact session file before opening; repeatable; paths resolve from process cwd; "
+                             "overrides --include-current; reports path-free requested/excluded/unmatched counts")
+
+
+def normalized_exclusions(values: Iterable[str]) -> frozenset[str]:
+    paths: set[str] = set()
+    for value in values:
+        # Validate before Path('') can silently become the current directory.
+        if not value or "\x00" in value:
+            raise ValueError("session exclusion is invalid")
+        try:
+            paths.add(normalized_path(value))
+        except (ValueError, OSError, RuntimeError) as error:
+            raise ValueError("session exclusion is invalid") from error
+    return frozenset(paths)
+
+
+def exclusion_summary(exclusions: frozenset[str], matched: set[str], excluded_count: int) -> dict[str, int]:
+    # A current-session overlap is matched, but counted only in the automatic counter.
+    return {
+        "session_file_exclusions_requested": len(exclusions),
+        "explicit_session_files_excluded": excluded_count,
+        "session_file_exclusions_unmatched": len(exclusions - matched),
+    }
 
 
 def discover_session_files(
@@ -729,6 +758,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     if args.limit < 0:
         raise ValueError("--limit must be non-negative")
     filters = aggregate_filters(args)
+    exclusions = normalized_exclusions(args.exclude_session_file)
     paths = discover_session_files([args.sessions_root, *args.additional_sessions_root])
     target_cwd = normalized_path(args.cwd)
     current = normalized_path(os.environ["PI_SESSION_FILE"]) if os.environ.get("PI_SESSION_FILE") else None
@@ -741,13 +771,21 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     scanned_entries = 0
     eligible_entries = 0
     excluded_current = 0
+    excluded_explicit = 0
+    matched_exclusions: set[str] = set()
     attempted_files = 0
     readable_headers = 0
 
     for path in paths:
         files_discovered += 1
-        if not args.include_current and current and normalized_path(path) == current:
+        path_key = normalized_path(path)
+        if path_key in exclusions:
+            matched_exclusions.add(path_key)
+        if not args.include_current and current and path_key == current:
             excluded_current += 1
+            continue
+        if path_key in exclusions:
+            excluded_explicit += 1
             continue
         attempted_files += 1
         try:
@@ -831,6 +869,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         "files_discovered": files_discovered,
         "files_selected": selected_files,
         "current_session_files_excluded": excluded_current,
+        **exclusion_summary(exclusions, matched_exclusions, excluded_explicit),
         "entries_scanned": scanned_entries,
         "entries_eligible": eligible_entries,
     }

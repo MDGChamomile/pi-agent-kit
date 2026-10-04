@@ -22,6 +22,12 @@ combine them with `--days` or invent a narrower period. Reuse the same time opti
 across find, recall, and continuation; fixed boundaries do not freeze file contents
 or candidate ranks. See the [time-range contract](README.md#time-ranges).
 
+For files the user explicitly asks to omit, repeat `--exclude-session-file PATH`.
+Do not infer discussion sessions to exclude. Paths are relative to the process cwd,
+not `--cwd`; explicit exclusions override `--include-current`. Reuse the same
+exclusions across find, recall, and continuation. Check the path-free unmatched
+count for possible mistakes; see [file exclusions](README.md#exclude-specific-session-files).
+
 ## Aggregate workflow
 
 1. Translate only the user's stated scope and filters into options shown by `session_search.py --help`. With no explicit scope, retain the current-working-directory default and path-free summary output. Add directories only when the user or local instructions specify them.
