@@ -25,6 +25,11 @@ requests from `updates` to `main` only when preparing a release. If you
 accidentally target `main`, the base can be changed to `updates`; the resulting
 diff and checks should then be reviewed again.
 
+Before merging, maintainers follow the configured branch requirements and check
+the latest PR head, applicable required checks, and code-review conversations.
+Findings should be fixed and verified or declined with a reason; unresolved
+issues must not be closed merely to unblock merging.
+
 ## Verification entry points
 
 Use the smallest relevant set of checks. For prose-only changes, review examples, relative links, and consistency with the source; do not make model calls just to validate wording. Run the skill metadata check for `SKILL.md` changes. For behavior changes, add a regression test and run the affected resource's offline suite. Pi Subagent and Pi Jev changes belong in their independent repositories; use the verification instructions there.
