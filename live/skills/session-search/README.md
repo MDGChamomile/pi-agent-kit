@@ -72,6 +72,36 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --days 7 --e
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --all-projects --skill deep-plan
 ```
 
+### Time ranges
+
+Aggregate, batch, `find`, and `recall` accept optional `--since` (inclusive) and
+`--until` (exclusive) boundaries. Use `YYYY-MM-DDTHH:MM:SS[.ffffff]Z` or replace
+`Z` with an explicit `±HH:MM` offset. Fractional seconds may have 1–6 digits;
+dates alone, timezone-free inputs, and greater precision are rejected rather
+than guessed or rounded. Values are normalized to UTC. One boundary may be
+omitted; if both are supplied, the start must precede the end.
+
+```bash
+python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
+  --since 2026-08-01T00:00:00Z --until 2026-09-01T00:00:00Z --query timeout
+```
+
+Do not combine either boundary with `--days`. Invalid time options fail with
+path-free `INVALID_ARGUMENT` before session discovery. `--days` retains its
+existing lower-bound-only behavior, including future records. `scope.since`
+and `scope.until` report the actual UTC boundaries (or null), including the
+computed lower bound for `--days`; the existing `scope.days` remains available.
+With any time bound, missing or invalid record timestamps are excluded. Without
+time options they retain their existing behavior. Historical records without a
+timezone still use the existing UTC interpretation; the stricter syntax applies
+only to CLI boundaries.
+
+Filtering uses entry timestamps, not session headers or filesystem dates. Full
+branch ancestry and earlier skill-identity/tool-call relationships are retained
+before filtering. Recall neighbors come only from time-eligible messages.
+Reuse the same time options for find and recall. Fixed boundaries stabilize the
+time range, not session contents or candidate ranks between separate invocations.
+
 ### Additional session directories
 
 The primary directory is selected in this order (empty environment values are ignored):
@@ -127,7 +157,7 @@ Each object is limited to 4,096 characters, each array to 32 values, and each
 value to 256 characters. Unknown or duplicate keys and invalid types fail before
 session storage is accessed.
 
-Scope options (`--cwd` or `--all-projects`, `--days`, additional roots, and current
+Scope options (`--cwd` or `--all-projects`, `--days` or `--since`/`--until`, additional roots, and current
 session inclusion) apply to the whole batch. Every selected body is read and
 parsed once; filters are then evaluated separately. Batch output has `mode:
 "batch"`, shared scan counts in `summary`, and a `batches` array in input order.
@@ -177,7 +207,7 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py recall \
   --term authentication --term cache --continuation '<next_continuation>' --include-evidence
 ```
 
-Do not combine `--continuation` with `--candidate-rank`. Initial recall still selects the current rank; continuation stays with the same active-branch conversation even if another session takes that rank. A changed, removed, or moved candidate returns `CANDIDATE_NOT_FOUND`, rather than silently switching sessions. Re-run `find` and start a new ranked recall if needed. Scope or term changes and malformed tokens return `INVALID_ARGUMENT`. With `--days`, the original time cutoff is retained across pages.
+Do not combine `--continuation` with `--candidate-rank`. Initial recall still selects the current rank; continuation stays with the same active-branch conversation even if another session takes that rank. A changed, removed, or moved candidate returns `CANDIDATE_NOT_FOUND`, rather than silently switching sessions. Re-run `find` and start a new ranked recall if needed. Scope or term changes and malformed tokens return `INVALID_ARGUMENT`. With `--days`, the original time cutoff is retained across pages. Absolute boundaries must also be reused: changing a boundary is rejected before scanning, while equivalent timezone offsets are accepted. Tokens created without absolute boundaries keep their existing scope contract.
 
 Each page keeps the same three-window, five-message-per-window, 300-character-per-message, and total evidence limits and masking. The summary counts describe that page; `matching_messages` still counts all eligible matches. `evidence_truncated` can remain true on the final page because other matches were returned on earlier pages. Use `next_continuation`, not that flag, to determine whether another page exists. Continuation exposes later matching windows, not the full text of shortened messages or arbitrary non-matching conversation tails.
 

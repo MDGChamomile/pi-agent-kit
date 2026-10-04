@@ -16,6 +16,12 @@ Use this skill for factual aggregation across multiple Pi sessions and for bound
 
 Resolve paths relative to this `SKILL.md`. Run the selected script with `--help` on its first use in the current session, and run subcommand help when using recall. Reuse that output unless the script changed, options are unclear, or the earlier output is no longer available. Treat help output as the source of truth; never invent aliases.
 
+Time options are optional: translate a user-specified fixed period into `--since`
+(inclusive) and/or `--until` (exclusive), with explicit timezone offsets. Do not
+combine them with `--days` or invent a narrower period. Reuse the same time options
+across find, recall, and continuation; fixed boundaries do not freeze file contents
+or candidate ranks. See the [time-range contract](README.md#time-ranges).
+
 ## Aggregate workflow
 
 1. Translate only the user's stated scope and filters into options shown by `session_search.py --help`. With no explicit scope, retain the current-working-directory default and path-free summary output. Add directories only when the user or local instructions specify them.
