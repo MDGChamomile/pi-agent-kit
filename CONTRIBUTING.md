@@ -28,8 +28,8 @@ to your fork and `upstream` has not yet been added:
 ```bash
 git remote add upstream https://github.com/MDGChamomile/pi-agent-kit.git
 git fetch upstream updates
-git switch -c my-change upstream/updates
-# Make your change and run the relevant checks below.
+git switch --no-track -c my-change upstream/updates
+# Make your change, run the relevant checks below, and commit only intended files.
 git push -u origin my-change
 ```
 
@@ -46,8 +46,8 @@ or perform releases; those are maintainer responsibilities.
 
 Both `main` and `updates` require PRs. Do not push directly to them, rewrite
 their history, or bypass protection. The current merge method is a merge commit;
-the [live GitHub rules](https://github.com/MDGChamomile/pi-agent-kit/rules) are
-authoritative if configuration changes.
+the [live GitHub rules](https://github.com/MDGChamomile/pi-agent-kit/rules) and
+repository merge settings are authoritative if configuration changes.
 
 The required checks for `updates` are currently `skills` and
 `pi-compaction-model`, defined in the
