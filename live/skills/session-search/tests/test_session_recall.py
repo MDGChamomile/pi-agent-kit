@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 import io
 import json
 import os
@@ -13,14 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-SCRIPTS = Path(__file__).parents[1] / "scripts"
-sys.path.insert(0, str(SCRIPTS))
-SCRIPT = SCRIPTS / "session_recall.py"
-SPEC = importlib.util.spec_from_file_location("session_recall", SCRIPT)
-assert SPEC and SPEC.loader
-session_recall = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = session_recall
-SPEC.loader.exec_module(session_recall)
+from support import RECALL_SCRIPT as SCRIPT, session_recall
 
 
 def header(session_id: str, cwd: Path, version: int = 3) -> dict:

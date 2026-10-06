@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 import io
 import json
 import os
@@ -13,12 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-SCRIPT = Path(__file__).parents[1] / "scripts" / "session_search.py"
-SPEC = importlib.util.spec_from_file_location("session_search", SCRIPT)
-assert SPEC and SPEC.loader
-session_search = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = session_search
-SPEC.loader.exec_module(session_search)
+from support import SEARCH_SCRIPT as SCRIPT, session_search
 
 
 def header(session_id: str, cwd: Path) -> dict:
