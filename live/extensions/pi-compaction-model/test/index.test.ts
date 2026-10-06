@@ -15,17 +15,9 @@ mock.module("@earendil-works/pi-coding-agent", () => ({
 }));
 
 mock.module("../src/config.js", () => ({
-  COMPACTION_REASONS: ["manual", "threshold", "overflow"],
-  THINKING_LEVELS: ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
   createSettings: () => settings,
   isInstallTelemetryEnabled: () => telemetryEnabled,
   loadConfig: () => config,
-  parseModelReference: (reference: string) => {
-    const separator = reference.indexOf("/");
-    if (separator <= 0 || separator === reference.length - 1) return null;
-    return { provider: reference.slice(0, separator), modelId: reference.slice(separator + 1) };
-  },
-  resolveConfig: () => null,
 }));
 
 let compactionModel: any;
@@ -79,7 +71,7 @@ function harness(options: {
     hasUI: options.hasUI ?? true,
     ui: { notify: mock((_message: string, _type?: "info" | "warning" | "error") => {}) },
     modelRegistry: {
-      find: () => options.findModel === false ? undefined : model,
+      find: mock((_provider: string, _modelId: string) => options.findModel === false ? undefined : model),
       getApiKeyAndHeaders: async () => options.auth ?? { ok: true, apiKey: "key" },
     },
   };
@@ -144,6 +136,40 @@ describe("session_before_compact", () => {
       } finally {
         consoleWarn.mockRestore();
       }
+    });
+  }
+
+  for (const [reference, provider, modelId] of [
+    ["provider/model", "provider", "model"],
+    [" provider / model ", "provider", "model"],
+    [" openrouter / vendor/model ", "openrouter", "vendor/model"],
+  ] as const) {
+    test(`passes the real parsed reference to model lookup: ${reference}`, async () => {
+      config = { model: reference, reasons: ["manual"] };
+      const state = harness({ model: { provider, id: modelId, baseUrl: "https://api.example.com" } });
+      let receivedModel: unknown;
+      compactImplementation = async (_preparation, model) => {
+        receivedModel = model;
+        return { summary: "dedicated" };
+      };
+
+      expect(await state.handler(state.event, state.ctx)).toEqual({ compaction: { summary: "dedicated" } });
+      expect(state.ctx.modelRegistry.find).toHaveBeenCalledTimes(1);
+      expect(state.ctx.modelRegistry.find).toHaveBeenCalledWith(provider, modelId);
+      expect(receivedModel).toBe(state.model);
+    });
+  }
+
+  for (const reference of ["invalid", "/model", "provider/", "provider/ ", " /model"]) {
+    test(`rejects malformed references before model lookup: ${reference}`, async () => {
+      config = { model: reference, reasons: ["manual"] };
+      const state = harness();
+      compactImplementation = mock(async () => ({ summary: "unexpected" }));
+
+      expect(await state.handler(state.event, state.ctx)).toBeUndefined();
+      expect(state.ctx.modelRegistry.find).not.toHaveBeenCalled();
+      expect(compactImplementation).not.toHaveBeenCalled();
+      expectRestored(state.preparation);
     });
   }
 
