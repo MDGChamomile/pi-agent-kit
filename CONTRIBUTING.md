@@ -83,10 +83,10 @@ this is an expected history difference, not missing development code. Identical
 `main` and `updates` SHAs are not a development requirement.
 
 With explicit authorization, maintainers can include that release history in
-the next task branch and its existing PR instead of creating a separate history
-PR. First verify that the main-only commits are completed `updates` -> `main`
-release merges in this repository and that `main` has the same file tree as the
-common ancestor. Merge the verified main SHA into the task branch normally and
+the next task branch and its PR instead of creating a separate history PR.
+First verify that the main-only commits are completed `updates` -> `main`
+release merges in this repository and that `origin/main` has the same file tree
+as the merge-base of `origin/main` and `origin/updates`. Merge the verified main SHA into the task branch normally and
 confirm its file tree is unchanged by that merge. Unexpected changes, conflicts,
 or unverified history require separate review and authorization; matching trees
 or commit messages alone do not establish provenance. Consider a separate
