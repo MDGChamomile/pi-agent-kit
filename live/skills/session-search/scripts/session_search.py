@@ -442,13 +442,29 @@ class SessionArgumentParser(argparse.ArgumentParser):
         raise InvalidArgumentError(message)
 
 
+def add_storage_scope_arguments(parser: argparse.ArgumentParser) -> None:
+    """Share storage/project selection without coupling search pipelines."""
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--all-projects", action="store_true", help="search sessions from every project")
+    scope.add_argument("--cwd", default=os.getcwd(), help="project cwd to match exactly (default: current cwd)")
+    parser.add_argument("--include-current", action="store_true", help="include PI_SESSION_FILE (excluded by default)")
+    parser.add_argument(
+        "--additional-sessions-root", type=Path, action="append", default=[], metavar="PATH",
+        help="also search this directory recursively; repeat for multiple directories; "
+             "additive to the selected sessions root; all directories must be readable",
+    )
+    parser.add_argument(
+        "--sessions-root", type=Path, default=default_sessions_root(), metavar="PATH",
+        help="replace the primary sessions directory; default precedence: PI_CODING_AGENT_SESSION_DIR, "
+             "PI_CODING_AGENT_DIR/sessions, ~/.pi/agent/sessions",
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = SessionArgumentParser(description="Aggregate local evidence across multiple Pi sessions; use /resume for a single session.")
     parser.add_argument("-q", "--query", action="append", default=[], help="case-insensitive literal filter; repeat to require every value (AND)")
     add_time_arguments(parser)
-    scope = parser.add_mutually_exclusive_group()
-    scope.add_argument("--all-projects", action="store_true", help="search sessions from every project")
-    scope.add_argument("--cwd", default=os.getcwd(), help="project cwd to match exactly (default: current cwd)")
+    add_storage_scope_arguments(parser)
     parser.add_argument("--role", action="append", default=[], help="message role filter; repeat for alternatives")
     parser.add_argument("--tool", action="append", default=[], help="tool-name filter; repeat for alternatives")
     parser.add_argument("--error", action="store_true", help="include only error events")
@@ -456,7 +472,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-filter", action="append", default=[], metavar="JSON",
                         help="independent summary-only filter object; repeat up to 8 times; "
                              "keys: query, role, tool, skill (string arrays), error (boolean)")
-    parser.add_argument("--include-current", action="store_true", help="include PI_SESSION_FILE (excluded by default)")
     add_exclusion_argument(parser)
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help=f"maximum evidence results with --include-evidence (default: {DEFAULT_LIMIT})")
     evidence = parser.add_mutually_exclusive_group()
@@ -469,16 +484,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--summary-only",
         action="store_true",
         help="explicitly select the path-free summary output (the default; retained for compatibility)",
-    )
-    parser.add_argument(
-        "--additional-sessions-root", type=Path, action="append", default=[], metavar="PATH",
-        help="also search this directory recursively; repeat for multiple directories; "
-             "additive to the selected sessions root; all directories must be readable",
-    )
-    parser.add_argument(
-        "--sessions-root", type=Path, default=default_sessions_root(), metavar="PATH",
-        help="replace the primary sessions directory; default precedence: PI_CODING_AGENT_SESSION_DIR, "
-             "PI_CODING_AGENT_DIR/sessions, ~/.pi/agent/sessions",
     )
     return parser
 

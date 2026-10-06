@@ -425,16 +425,8 @@ def add_scope_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--term", action="append", default=[], required=True,
                         help="case-insensitive literal recall term; repeat for alternatives (OR)")
     session_search.add_time_arguments(parser)
-    scope = parser.add_mutually_exclusive_group()
-    scope.add_argument("--all-projects", action="store_true", help="search sessions from every project")
-    scope.add_argument("--cwd", default=os.getcwd(), help="project cwd to match exactly (default: current cwd)")
-    parser.add_argument("--include-current", action="store_true", help="include PI_SESSION_FILE (excluded by default)")
+    session_search.add_storage_scope_arguments(parser)
     session_search.add_exclusion_argument(parser)
-    parser.add_argument("--additional-sessions-root", type=Path, action="append", default=[], metavar="PATH",
-                        help="also search this directory recursively; repeat for multiple directories")
-    parser.add_argument("--sessions-root", type=Path, default=session_search.default_sessions_root(), metavar="PATH",
-                        help="replace the primary sessions directory; default precedence: PI_CODING_AGENT_SESSION_DIR, "
-                             "PI_CODING_AGENT_DIR/sessions, ~/.pi/agent/sessions")
 
 
 def build_parser() -> argparse.ArgumentParser:
