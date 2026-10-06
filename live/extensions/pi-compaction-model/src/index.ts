@@ -5,8 +5,8 @@ import {
   createSettings,
   isInstallTelemetryEnabled,
   loadConfig,
-  parseModelReference,
 } from "./config.js";
+import { parseModelReference } from "./model-reference.js";
 import { compactWithOneRetry } from "./retry.js";
 
 import { warn } from "./warnings.js";
