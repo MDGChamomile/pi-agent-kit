@@ -889,6 +889,39 @@ class SessionSearchTests(unittest.TestCase):
             "unsupported_session_version": 1,
         })
 
+    def test_default_scope_does_not_report_foreign_or_unknown_project_files(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            root = base / "sessions"
+            project = base / "project"
+            foreign = base / "foreign"
+            project.mkdir()
+            foreign.mkdir()
+            write_session(root / "local.jsonl", header("local", project), [
+                message("m1", None, "2026-08-10T00:00:00Z", "user", "local match"),
+            ])
+            future = header("future", foreign)
+            future["version"] = 99
+            write_session(root / "foreign-future.jsonl", future, [])
+            legacy = header("legacy", foreign)
+            legacy.pop("version")
+            write_session(root / "foreign-legacy.jsonl", legacy, [])
+            (root / "broken.jsonl").write_text("not-json\n", encoding="utf-8")
+            (root / "undecodable.jsonl").write_bytes(b"\xff\n")
+            scoped = session_search.aggregate(self.args(root, project, "--include-evidence"), now=self.NOW)
+            all_projects = session_search.aggregate(session_search.build_parser().parse_args([
+                "--sessions-root", str(root), "--all-projects", "--include-evidence",
+            ]), now=self.NOW)
+        self.assertEqual(scoped["summary"]["files_selected"], 1)
+        self.assertEqual(scoped["warnings"]["count"], 0)
+        self.assertEqual(scoped["warnings"]["items"], [])
+        self.assertEqual(all_projects["warnings"]["by_kind"], {
+            "invalid_header": 1,
+            "missing_session_version": 1,
+            "unreadable_file": 1,
+            "unsupported_session_version": 1,
+        })
+
     def test_warning_details_are_deduplicated_and_capped(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
