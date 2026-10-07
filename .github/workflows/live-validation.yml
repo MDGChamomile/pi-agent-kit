@@ -8,6 +8,7 @@ on:
       - "MIGRATION.md"
       - "CONTRIBUTING.md"
       - "PRINCIPLE.md"
+      - ".github/PULLFROG.md"
       - "live/extensions/pi-compaction-model/**"
       - "live/skills/**"
       - ".github/workflows/live-validation.yml"
