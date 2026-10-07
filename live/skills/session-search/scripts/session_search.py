@@ -793,20 +793,25 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             excluded_explicit += 1
             continue
         attempted_files += 1
+        # Like recall, warn only about files within the selected scope: files
+        # whose project is unknown or different stay undisclosed by default.
+        scope_confirmed = args.all_projects
         try:
             with path.open("rb") as handle:
                 header = read_session_header(handle)
                 if header is None:
-                    warnings.add(path, "invalid_header")
+                    if scope_confirmed:
+                        warnings.add(path, "invalid_header")
                     continue
                 readable_headers += 1
-                version = session_version(header, path, warnings)
-                if version is None:
-                    continue
                 header_cwd = header.get("cwd")
                 if not args.all_projects and (
                     not isinstance(header_cwd, str) or normalized_path(header_cwd) != target_cwd
                 ):
+                    continue
+                scope_confirmed = True
+                version = session_version(header, path, warnings)
+                if version is None:
                     continue
 
                 selected_files += 1
@@ -862,7 +867,8 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                     for aggregation in aggregations:
                         aggregation.mark_branch(path, version, leaf_path)
         except (OSError, UnicodeError):
-            warnings.add(path, "unreadable_file")
+            if scope_confirmed:
+                warnings.add(path, "unreadable_file")
             # Keep already counted evidence, but never claim a complete branch scan.
             for aggregation in aggregations:
                 aggregation.mark_branch(path, 1, None)
