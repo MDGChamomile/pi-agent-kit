@@ -606,6 +606,22 @@ class SessionSearchTests(unittest.TestCase):
         self.assertIn("한글 Straße context", evidence)
         self.assertLessEqual(len(evidence), session_search.MAX_EVIDENCE_CHARS)
 
+    def test_tool_arguments_are_serialized_only_for_queries_or_evidence(self):
+        with fixture_tree() as (root, project_a, _, _, _, _):
+            with patch.object(session_search.json, "dumps", side_effect=AssertionError("serialized")):
+                counts = session_search.aggregate(self.args(root, project_a, "--tool", "bash"), now=self.NOW)
+            queried = session_search.aggregate(
+                self.args(root, project_a, "--query", "KEY_SHOULD_HIDE_123"), now=self.NOW,
+            )
+            batch = session_search.aggregate(self.args(
+                root, project_a, "--batch-filter", '{"tool": ["bash"]}',
+                "--batch-filter", '{"query": ["KEY_SHOULD_HIDE_123"]}',
+            ), now=self.NOW)
+        self.assertEqual(counts["summary"]["tool_calls"], {"bash": 1})
+        self.assertEqual(queried["summary"]["matched_events"], 1)
+        self.assertEqual([item["summary"]["matched_events"] for item in batch["batches"]],
+                         [counts["summary"]["matched_events"], 1])
+
     def test_evidence_falls_back_to_masked_prefix_without_visible_query(self):
         raw = "prefix " * 100 + " token=SYNTHETIC_HIDDEN_VALUE " + "tail " * 100
         prefix = session_search.mask_and_shorten(raw)

@@ -236,17 +236,20 @@ def candidate_for_messages(
     terms: tuple[str, ...],
     cutoff: datetime | None,
     until: datetime | None = None,
+    *,
+    fingerprint: bool = True,
 ) -> tuple[Candidate | None, list[RecallMessage]]:
+    """Find omits the fingerprint; recall needs it to detect a changed candidate."""
     time_range = session_search.TimeRange(cutoff, until)
-    eligible = [
-        message for message in messages
-        if time_range.contains(session_search.parse_timestamp(message.timestamp))
-    ]
+    eligible: list[RecallMessage] = []
     matched_terms: set[str] = set()
     matching_messages = 0
     latest_match = datetime.min.replace(tzinfo=timezone.utc)
-    for message in eligible:
+    for message in messages:
         timestamp = session_search.parse_timestamp(message.timestamp)
+        if not time_range.contains(timestamp):
+            continue
+        eligible.append(message)
         present = matching_terms(message.text, terms)
         if not present:
             continue
@@ -261,7 +264,7 @@ def candidate_for_messages(
         matching_messages,
         len(matched_terms),
         latest_match,
-        message_fingerprint(messages),
+        message_fingerprint(messages) if fingerprint else "",
     ), eligible
 
 
@@ -271,6 +274,7 @@ def scan_candidates(
     now: datetime | None = None,
     *, time_range: session_search.TimeRange | None = None,
     exclusions: frozenset[str] | None = None,
+    fingerprints: bool = True,
 ) -> tuple[list[Candidate], dict[str, int], session_search.WarningCollector]:
     if time_range is None:
         time_range = session_search.time_range_for_args(args, now)
@@ -310,7 +314,9 @@ def scan_candidates(
             continue
         files_selected += 1
         scanned_entries += scanned
-        candidate, _eligible = candidate_for_messages(path, messages, terms, time_range.since, time_range.until)
+        candidate, _eligible = candidate_for_messages(
+            path, messages, terms, time_range.since, time_range.until, fingerprint=fingerprints,
+        )
         if candidate is not None:
             candidates.append(candidate)
 
@@ -466,7 +472,7 @@ def find_output(args: argparse.Namespace, now: datetime | None = None) -> dict[s
     if args.limit < 1 or args.limit > MAX_CANDIDATE_LIMIT:
         raise ValueError("candidate limit is invalid")
     time_range = session_search.time_range_for_args(args, now)
-    candidates, summary, warnings = scan_candidates(args, terms, time_range=time_range)
+    candidates, summary, warnings = scan_candidates(args, terms, time_range=time_range, fingerprints=False)
     returned = candidates[:args.limit]
     summary.update({
         "candidates_returned": len(returned),
