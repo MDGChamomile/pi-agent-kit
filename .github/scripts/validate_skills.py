@@ -71,11 +71,21 @@ def validate_skills(root: Path) -> list[str]:
     return failures + validate_relative_links(skills)
 
 
+def resource_documents(live: Path) -> list[Path]:
+    """Markdown under live/ other than SKILL.md, which validate_skills checks."""
+    return sorted(
+        path for path in live.rglob("*.md")
+        if path.name != "SKILL.md" and "node_modules" not in path.parts
+    )
+
+
 if __name__ == "__main__":
     root = Path(".")
     failures = validate_skills(root / "live/skills")
     failures += validate_relative_links(
-        [root / name for name in ("README.md", "AGENTS.md", "MIGRATION.md", "CONTRIBUTING.md", "PRINCIPLE.md")]
+        [root / name for name in (
+            "README.md", "AGENTS.md", "MIGRATION.md", "CONTRIBUTING.md", "PRINCIPLE.md", ".github/PULLFROG.md",
+        )] + resource_documents(root / "live")
     )
     if failures:
         raise SystemExit("\n".join(failures))
