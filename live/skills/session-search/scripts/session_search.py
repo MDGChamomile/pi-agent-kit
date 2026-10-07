@@ -229,7 +229,10 @@ def events_for_entry(
     skill_reads_by_call_id: dict[str, str] | None = None,
     names_by_path: dict[str, str] | None = None,
     cwd: str = "",
+    *,
+    include_arguments: bool = True,
 ) -> list[dict[str, Any]]:
+    """Serialize tool-call arguments only when a query or evidence can use them."""
     if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
         return []
     message = entry["message"]
@@ -268,7 +271,9 @@ def events_for_entry(
                 continue
             tool_name = str(block.get("name", "unknown"))
             arguments = block.get("arguments", {})
-            arguments_text = json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str)
+            arguments_text = (
+                json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str) if include_arguments else ""
+            )
             read_skill = skill_read_name(tool_name, arguments, names_by_path, cwd)
             events.append({
                 **base,
@@ -313,7 +318,10 @@ def events_for_entry(
             seen.add(call_id)
             arguments = call.get("arguments")
             read_skill = skill_read_name(name, arguments, names_by_path, cwd)
-            arguments_text = json.dumps(arguments, ensure_ascii=False, sort_keys=True) if isinstance(arguments, dict) else ""
+            arguments_text = (
+                json.dumps(arguments, ensure_ascii=False, sort_keys=True)
+                if include_arguments and isinstance(arguments, dict) else ""
+            )
             nested_base = {
                 **base,
                 "tool_name": name,
@@ -771,6 +779,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     warnings = WarningCollector()
     result_limit = args.limit if args.include_evidence else 0
     aggregations = [EventAggregation(item, result_limit, args.include_evidence) for item in filters]
+    include_arguments = args.include_evidence or any(item.queries for item in filters)
     files_discovered = 0
     selected_files = 0
     scanned_entries = 0
@@ -858,7 +867,10 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                         continue
                     eligible_entries += 1
                     # Parse each entry into events once, then evaluate independent filters.
-                    events = events_for_entry(entry, session, None, skill_reads_by_call_id, names_by_path, recorded_cwd)
+                    events = events_for_entry(
+                        entry, session, None, skill_reads_by_call_id, names_by_path, recorded_cwd,
+                        include_arguments=include_arguments,
+                    )
                     for aggregation in aggregations:
                         aggregation.consume(events, timestamp)
 
