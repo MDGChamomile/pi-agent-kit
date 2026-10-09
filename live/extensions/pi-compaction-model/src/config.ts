@@ -121,5 +121,3 @@ export function isInstallTelemetryEnabled(
   if (telemetryEnv === undefined) return settings.getEnableInstallTelemetry();
   return ["1", "true", "yes"].includes(telemetryEnv.toLowerCase());
 }
-
-export { parseModelReference } from "./model-reference.js";
