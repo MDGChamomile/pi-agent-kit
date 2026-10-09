@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
   COMPACTION_REASONS,
   isInstallTelemetryEnabled,
-  parseModelReference,
   resolveConfig,
 } from "../src/config.js";
+import { parseModelReference } from "../src/model-reference.js";
 
 describe("resolveConfig", () => {
   test("returns null when unconfigured", () => {
