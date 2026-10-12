@@ -57,6 +57,11 @@ conversations. Findings must be fixed and verified or declined with a reason
 before their threads are resolved; unresolved issues must not be closed merely
 to unblock merging.
 
+The validation workflow tests PRs on GitHub's generated test-merge commit and
+runs on pushes to `main` and `updates`, without path filters. Other branch and
+tag pushes do not start it; open a PR for remote validation. Release PRs from
+`updates` to `main` still have both push and PR validation.
+
 Eligible PRs targeting `updates` receive automatic Pullfrog reviews, including
 external contributions. PR content is shared with that external review service;
 do not include credentials or private data. Pullfrog reviews only: it does not
@@ -109,7 +114,7 @@ The commands below match the relevant `live-validation` entry points. Python che
 
 For moved resources, contribute and verify in [Pi Subagent](https://github.com/MDGChamomile/pi-subagent/blob/main/CONTRIBUTING.md) or [Pi Jev](https://github.com/MDGChamomile/pi-jev/blob/main/CONTRIBUTING.md). Their runtime sources, companion skills, test dependencies, and release workflows are no longer maintained in this kit.
 
-The frontmatter check verifies opening/closing delimiters and non-empty required fields inside them. The same command checks relative Markdown links in every Markdown file under `live/` (excluding installed `node_modules`), in the maintained root documents (`README.md`, `AGENTS.md`, `MIGRATION.md`, `CONTRIBUTING.md`, and `PRINCIPLE.md`), and in `.github/PULLFROG.md`; it is not a complete YAML schema validator or a general Markdown linter.
+The frontmatter check verifies opening/closing delimiters and non-empty required fields inside them. The same command checks relative Markdown links in every Markdown file under `live/` (excluding installed `node_modules`), in the maintained root and GitHub documents selected by the [validator](.github/scripts/validate_skills.py); it is not a complete YAML schema validator or a general Markdown linter.
 
 See the [compaction guide](live/extensions/pi-compaction-model/README.md#development) for its pinned test environment. For deep-plan workflow changes, select relevant scenarios from its [behavior evaluations](live/skills/deep-plan/references/behavior-evals.md). Report any checks you could not run.
 
