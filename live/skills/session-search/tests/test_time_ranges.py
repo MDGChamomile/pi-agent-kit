@@ -94,6 +94,8 @@ class TimeRangeTests(unittest.TestCase):
                    "2026-02-30T00:00:00Z", "2026-08-10T24:00:00Z",
                    "2026-08-10T00:00:00+00:60", "0001-01-01T00:00:00+01:00"]
         cases = [[flag, value] for flag in ("--since", "--until") for value in invalid]
+        cases += [options for value in ("nan", "inf", "-inf", "-infinity", "-nan")
+                  for options in (["--days", value], [f"--days={value}"])]
         cases += [["--since", self.END, "--until", self.START],
                   ["--since", self.START, "--until", self.START],
                   ["--days", "0", "--since", self.START], ["--days", "1", "--until", self.END]]
