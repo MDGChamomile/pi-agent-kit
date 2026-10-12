@@ -992,11 +992,11 @@ class SessionSearchTests(unittest.TestCase):
     def test_non_finite_days_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            for value in ("nan", "inf", "-inf"):
+            for value in ("nan", "inf", "-inf", "-infinity", "-nan"):
                 with self.subTest(value=value), self.assertRaisesRegex(
                     ValueError, "^--days must be a finite non-negative number$"
                 ):
-                    session_search.aggregate(self.args(root, root, "--days", value), now=self.NOW)
+                    session_search.aggregate(self.args(root, root, f"--days={value}"), now=self.NOW)
 
     def assert_invalid_cli_argument(self, missing_root: Path, arguments: list[str]):
         completed = subprocess.run(
@@ -1027,9 +1027,10 @@ class SessionSearchTests(unittest.TestCase):
     def test_non_finite_days_cli_emits_one_json_error(self):
         with tempfile.TemporaryDirectory() as temp:
             missing_root = Path(temp) / "missing-sessions"
-            for value in ("nan", "inf", "-inf"):
-                with self.subTest(value=value):
-                    self.assert_invalid_cli_argument(missing_root, ["--days", value])
+            for value in ("nan", "inf", "-inf", "-infinity", "-nan"):
+                for options in (["--days", value], [f"--days={value}"]):
+                    with self.subTest(options=options):
+                        self.assert_invalid_cli_argument(missing_root, options)
 
     def test_parse_and_range_errors_emit_one_json_error(self):
         with tempfile.TemporaryDirectory() as temp:

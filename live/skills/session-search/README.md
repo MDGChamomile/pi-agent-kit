@@ -72,6 +72,11 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --days 7 --e
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --all-projects --skill deep-plan
 ```
 
+Use `--option=value` for dash-prefixed strings, for example `--query=-inf`,
+`--term=-nan`, or `--cwd=-infinity`. This applies to filters and path options;
+quoting a separate value does not change argument parsing. `--days` accepts
+only finite, non-negative numbers, including when supplied with `=`.
+
 ### Time ranges
 
 Aggregate, batch, `find`, and `recall` accept optional `--since` (inclusive) and

@@ -42,6 +42,23 @@ class ScopeArgumentTests(unittest.TestCase):
                 self.assertEqual(args.additional_sessions_root, [Path("extra-one"), Path("extra-two")])
                 self.assertTrue(self.parse(mode, "--all-projects").all_projects)
 
+    def test_dash_prefixed_strings_use_equals_across_modes(self):
+        for mode in ("aggregate", "find", "recall"):
+            options = ["--cwd", "--sessions-root", "--additional-sessions-root",
+                       "--exclude-session-file"]
+            options += (["--query", "--role", "--tool", "--skill"] if mode == "aggregate"
+                        else ["--term"])
+            for value in ("-inf", "-infinity", "-nan"):
+                for option in options:
+                    with self.subTest(mode=mode, option=option, value=value):
+                        args = self.parse(mode, f"{option}={value}")
+                        actual = getattr(args, option[2:].replace("-", "_"))
+                        if isinstance(actual, list):
+                            actual = actual[-1]
+                        self.assertEqual(str(actual), value)
+                        with self.assertRaises(session_search.InvalidArgumentError):
+                            self.parse(mode, option, value)
+
     def test_project_options_remain_mutually_exclusive(self):
         for mode in ["aggregate", "find", "recall"]:
             with self.subTest(mode=mode), self.assertRaises(session_search.InvalidArgumentError):

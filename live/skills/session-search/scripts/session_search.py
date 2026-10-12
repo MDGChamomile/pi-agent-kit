@@ -439,13 +439,6 @@ class InvalidArgumentError(Exception):
 
 
 class SessionArgumentParser(argparse.ArgumentParser):
-    def _parse_optional(self, arg_string: str):
-        # argparse recognizes ordinary negative numbers as values but treats
-        # -inf/-nan as options. Let the explicit finite-value check handle them.
-        if arg_string.lower() in {"-inf", "-infinity", "-nan"}:
-            return None
-        return super()._parse_optional(arg_string)
-
     def error(self, message: str) -> None:
         raise InvalidArgumentError(message)
 
