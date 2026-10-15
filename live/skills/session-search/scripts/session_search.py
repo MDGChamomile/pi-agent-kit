@@ -222,6 +222,24 @@ def event_matches(event: dict[str, Any], filters: EventFilters) -> bool:
     return True
 
 
+def _tool_event(
+    base: dict[str, Any], kind: str, tool_name: str, text: str, read_skill: str | None,
+    *, is_error: bool = False,
+) -> dict[str, Any]:
+    """Build shared tool fields; callers retain call/result interpretation."""
+    return {
+        **base,
+        "event": kind,
+        "tool_name": tool_name,
+        "is_error": is_error,
+        "skill_names": [read_skill] if read_skill else [],
+        "direct_skills": [],
+        "skill_file_read": read_skill,
+        "searchable": "\n".join(filter(None, [tool_name, text, read_skill])),
+        "evidence_raw": text,
+    }
+
+
 def events_for_entry(
     entry: dict[str, Any],
     session: dict[str, str],
@@ -275,17 +293,10 @@ def events_for_entry(
                 json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str) if include_arguments else ""
             )
             read_skill = skill_read_name(tool_name, arguments, names_by_path, cwd)
-            events.append({
-                **base,
-                "event": "skill_file_read" if read_skill else "tool_call",
-                "tool_name": tool_name,
-                "is_error": False,
-                "skill_names": [read_skill] if read_skill else [],
-                "direct_skills": [],
-                "skill_file_read": read_skill,
-                "searchable": "\n".join(filter(None, [tool_name, arguments_text, read_skill])),
-                "evidence_raw": arguments_text,
-            })
+            events.append(_tool_event(
+                base, "skill_file_read" if read_skill else "tool_call",
+                tool_name, arguments_text, read_skill,
+            ))
     if role == "toolResult":
         tool_name = str(message.get("toolName", "unknown"))
         tool_call_id = message.get("toolCallId")
@@ -294,17 +305,10 @@ def events_for_entry(
             if isinstance(tool_call_id, str) and skill_reads_by_call_id is not None
             else None
         )
-        events.append({
-            **base,
-            "event": "tool_error" if message.get("isError") else "tool_result",
-            "tool_name": tool_name,
-            "is_error": bool(message.get("isError", False)),
-            "skill_names": [read_skill] if read_skill else [],
-            "direct_skills": [],
-            "skill_file_read": read_skill,
-            "searchable": "\n".join(filter(None, [tool_name, text, read_skill])),
-            "evidence_raw": text,
-        })
+        events.append(_tool_event(
+            base, "tool_error" if message.get("isError") else "tool_result",
+            tool_name, text, read_skill, is_error=bool(message.get("isError", False)),
+        ))
         nested = message.get("nestedCalls")
         calls = nested.get("calls") if isinstance(nested, dict) else None
         seen: set[str] = set()
@@ -322,30 +326,17 @@ def events_for_entry(
                 json.dumps(arguments, ensure_ascii=False, sort_keys=True)
                 if include_arguments and isinstance(arguments, dict) else ""
             )
-            nested_base = {
-                **base,
-                "tool_name": name,
-                "skill_names": [read_skill] if read_skill else [],
-                "direct_skills": [],
-                "skill_file_read": read_skill,
-            }
-            events.append({
-                **nested_base,
-                "event": "skill_file_read" if read_skill else "tool_call",
-                "is_error": False,
-                "searchable": "\n".join(filter(None, [name, arguments_text, read_skill])),
-                "evidence_raw": arguments_text,
-            })
+            events.append(_tool_event(
+                base, "skill_file_read" if read_skill else "tool_call",
+                name, arguments_text, read_skill,
+            ))
             if status != "unfinished":
                 error = call.get("error")
                 error_text = error if isinstance(error, str) else ""
-                events.append({
-                    **nested_base,
-                    "event": "tool_error" if status == "error" else "tool_result",
-                    "is_error": status == "error",
-                    "searchable": "\n".join(filter(None, [name, error_text, read_skill])),
-                    "evidence_raw": error_text,
-                })
+                events.append(_tool_event(
+                    base, "tool_error" if status == "error" else "tool_result",
+                    name, error_text, read_skill, is_error=status == "error",
+                ))
     return events
 
 
