@@ -175,15 +175,7 @@ def read_active_messages(
 
             entries: list[dict[str, Any]] = []
             scanned = 0
-            for line in handle:
-                try:
-                    entry = json.loads(line.decode("utf-8"))
-                except (json.JSONDecodeError, TypeError):
-                    warnings.add(path, "invalid_json_line")
-                    continue
-                if not isinstance(entry, dict):
-                    warnings.add(path, "invalid_entry")
-                    continue
+            for entry in session_search.read_session_entries(handle, path, warnings):
                 scanned += 1
                 entries.append(retain_recall_entry(entry))
     except (OSError, UnicodeError):
@@ -284,27 +276,14 @@ def scan_candidates(
     warnings = session_search.WarningCollector()
     paths = permitted_files(roots, warnings)
     target_cwd = session_search.normalized_path(args.cwd)
-    current = (
-        session_search.normalized_path(os.environ["PI_SESSION_FILE"])
-        if os.environ.get("PI_SESSION_FILE")
-        else None
-    )
+    file_exclusions = session_search.SessionFileExclusions(exclusions, args.include_current)
     candidates: list[Candidate] = []
     files_selected = 0
     scanned_entries = 0
-    excluded_current = 0
-    excluded_explicit = 0
-    matched_exclusions: set[str] = set()
 
     for path in paths:
-        path_key = str(path)  # permitted_files already normalizes discovered paths.
-        if path_key in exclusions:
-            matched_exclusions.add(path_key)
-        if not args.include_current and current and path_key == current:
-            excluded_current += 1
-            continue
-        if path_key in exclusions:
-            excluded_explicit += 1
+        # permitted_files already normalizes discovered paths.
+        if file_exclusions.excludes(str(path)):
             continue
         loaded = read_active_messages(path, target_cwd, args.all_projects, warnings)
         if loaded is None:
@@ -328,8 +307,7 @@ def scan_candidates(
     candidates.sort(key=candidate_sort_key, reverse=True)
     summary = {
         "files_selected": files_selected,
-        "current_session_files_excluded": excluded_current,
-        **session_search.exclusion_summary(exclusions, matched_exclusions, excluded_explicit),
+        **file_exclusions.summary(),
         "entries_scanned": scanned_entries,
         "matched_sessions": len(candidates),
     }

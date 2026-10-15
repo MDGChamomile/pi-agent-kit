@@ -15,7 +15,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, BinaryIO, Callable, Iterable
+from typing import Any, BinaryIO, Callable, Iterable, Iterator
 
 DEFAULT_LIMIT = 20
 MAX_EVIDENCE_CHARS = 300
@@ -389,6 +389,22 @@ def read_session_header(handle: BinaryIO) -> dict[str, Any] | None:
     return header if isinstance(header, dict) and header.get("type") == "session" else None
 
 
+def read_session_entries(
+    handle: BinaryIO, path: Path, warnings: WarningCollector,
+) -> Iterator[dict[str, Any]]:
+    """Skip malformed JSON entries; leave I/O and decoding failures to callers."""
+    for line in handle:
+        try:
+            entry = json.loads(line.decode("utf-8"))
+        except (json.JSONDecodeError, TypeError):
+            warnings.add(path, "invalid_json_line")
+            continue
+        if not isinstance(entry, dict):
+            warnings.add(path, "invalid_entry")
+            continue
+        yield entry
+
+
 def session_version(header: dict[str, Any], path: Path, warnings: WarningCollector) -> int | None:
     value = header.get("version")
     if value is None:
@@ -515,6 +531,35 @@ def exclusion_summary(exclusions: frozenset[str], matched: set[str], excluded_co
         "explicit_session_files_excluded": excluded_count,
         "session_file_exclusions_unmatched": len(exclusions - matched),
     }
+
+
+class SessionFileExclusions:
+    """Count pre-read exclusions using each caller's normalized file identity."""
+
+    def __init__(self, exclusions: frozenset[str], include_current: bool) -> None:
+        self.exclusions = exclusions
+        self.include_current = include_current
+        self.current = normalized_path(os.environ["PI_SESSION_FILE"]) if os.environ.get("PI_SESSION_FILE") else None
+        self.matched: set[str] = set()
+        self.excluded_current = 0
+        self.excluded_explicit = 0
+
+    def excludes(self, path_key: str) -> bool:
+        if path_key in self.exclusions:
+            self.matched.add(path_key)
+        if not self.include_current and self.current and path_key == self.current:
+            self.excluded_current += 1
+            return True
+        if path_key in self.exclusions:
+            self.excluded_explicit += 1
+            return True
+        return False
+
+    def summary(self) -> dict[str, int]:
+        return {
+            "current_session_files_excluded": self.excluded_current,
+            **exclusion_summary(self.exclusions, self.matched, self.excluded_explicit),
+        }
 
 
 def discover_session_files(
@@ -767,7 +812,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     exclusions = normalized_exclusions(args.exclude_session_file)
     paths = discover_session_files([args.sessions_root, *args.additional_sessions_root])
     target_cwd = normalized_path(args.cwd)
-    current = normalized_path(os.environ["PI_SESSION_FILE"]) if os.environ.get("PI_SESSION_FILE") else None
+    file_exclusions = SessionFileExclusions(exclusions, args.include_current)
 
     warnings = WarningCollector()
     result_limit = args.limit if args.include_evidence else 0
@@ -777,22 +822,12 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     selected_files = 0
     scanned_entries = 0
     eligible_entries = 0
-    excluded_current = 0
-    excluded_explicit = 0
-    matched_exclusions: set[str] = set()
     attempted_files = 0
     readable_headers = 0
 
     for path in paths:
         files_discovered += 1
-        path_key = normalized_path(path)
-        if path_key in exclusions:
-            matched_exclusions.add(path_key)
-        if not args.include_current and current and path_key == current:
-            excluded_current += 1
-            continue
-        if path_key in exclusions:
-            excluded_explicit += 1
+        if file_exclusions.excludes(normalized_path(path)):
             continue
         attempted_files += 1
         # Like recall, warn only about files within the selected scope: files
@@ -827,15 +862,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                 identities_by_entry: dict[str, dict[str, str]] = {}
                 recorded_cwd = header_cwd if isinstance(header_cwd, str) else ""
 
-                for line in handle:
-                    try:
-                        entry = json.loads(line.decode("utf-8"))
-                    except (json.JSONDecodeError, TypeError):
-                        warnings.add(path, "invalid_json_line")
-                        continue
-                    if not isinstance(entry, dict):
-                        warnings.add(path, "invalid_entry")
-                        continue
+                for entry in read_session_entries(handle, path, warnings):
                     scanned_entries += 1
                     message = entry.get("message")
                     nested = message.get("nestedCalls") if isinstance(message, dict) else None
@@ -884,8 +911,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     scan = {
         "files_discovered": files_discovered,
         "files_selected": selected_files,
-        "current_session_files_excluded": excluded_current,
-        **exclusion_summary(exclusions, matched_exclusions, excluded_explicit),
+        **file_exclusions.summary(),
         "entries_scanned": scanned_entries,
         "entries_eligible": eligible_entries,
     }
