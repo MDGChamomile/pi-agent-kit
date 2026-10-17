@@ -795,6 +795,33 @@ class EventAggregation:
         }
 
 
+def _aggregate_output(
+    args: argparse.Namespace, time_range: TimeRange, target_cwd: str,
+    scan: dict[str, int], aggregations: list[EventAggregation], warnings: WarningCollector,
+) -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "evidence_included": args.include_evidence,
+        "scope": {
+            "cwd": target_cwd if args.include_evidence and not args.all_projects else None,
+            "all_projects": args.all_projects,
+            "days": args.days,
+            **time_range.view(),
+            "include_current": args.include_current,
+        },
+        **({
+            "mode": "batch",
+            "summary": {**scan, "filters_returned": len(aggregations)},
+            "batches": [
+                {"filter_index": index, "summary": aggregation.summary(scan)}
+                for index, aggregation in enumerate(aggregations, 1)
+            ],
+        } if args.batch_filter else {"summary": aggregations[0].summary(scan)}),
+        "results": aggregations[0].results(),
+        "warnings": warnings.output(args.include_evidence),
+    }
+
+
 def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str, Any]:
     time_range = time_range_for_args(args, now)
     if args.limit < 0:
@@ -906,27 +933,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         "entries_scanned": scanned_entries,
         "entries_eligible": eligible_entries,
     }
-    return {
-        "status": "ok",
-        "evidence_included": args.include_evidence,
-        "scope": {
-            "cwd": target_cwd if args.include_evidence and not args.all_projects else None,
-            "all_projects": args.all_projects,
-            "days": args.days,
-            **time_range.view(),
-            "include_current": args.include_current,
-        },
-        **({
-            "mode": "batch",
-            "summary": {**scan, "filters_returned": len(aggregations)},
-            "batches": [
-                {"filter_index": index, "summary": aggregation.summary(scan)}
-                for index, aggregation in enumerate(aggregations, 1)
-            ],
-        } if args.batch_filter else {"summary": aggregations[0].summary(scan)}),
-        "results": aggregations[0].results(),
-        "warnings": warnings.output(args.include_evidence),
-    }
+    return _aggregate_output(args, time_range, target_cwd, scan, aggregations, warnings)
 
 
 def emit_error(code: str, message: str) -> int:
