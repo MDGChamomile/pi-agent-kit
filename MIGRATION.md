@@ -1,5 +1,21 @@
 # Pi Agent Kit migration
 
+## v0.7.2
+
+This remains a source-only GitHub release, not an npm package or an automatic update of installed Pi resources. Review the changes, preserve local customizations, and update only the resources you adopt. Restart Pi or use `/reload` after updating auto-discovered resources. No data migration is required.
+
+### Session search
+
+Aggregate warnings now respect the selected project: files with an unreadable header or a different cwd no longer contribute warning counts or paths in the default scope. Use `--all-projects` when checking for damaged files across projects. Search and recall also skip unnecessary argument serialization and candidate fingerprinting without changing the intended result semantics.
+
+Argument parsing now follows standard argparse behavior. Pass dash-prefixed strings with `=`, for example `--query=-inf`, `--term=-nan`, or `--cwd=-infinity`; quoting a separate value does not change parsing. `--days` still accepts only finite, non-negative numbers. See the [session-search guide](live/skills/session-search/README.md).
+
+### Compaction extension and contributor workflow
+
+The compaction extension's runtime behavior and minimum Pi version are unchanged. Its model-reference tests now exercise the real lookup path; the unused build script and a test-only re-export were removed.
+
+Validation now checks maintained relative Markdown links and limits push-triggered runs to `main` and `updates`; every PR still receives validation. Contributor documentation clarifies task branches, review completion, and release-history handling.
+
 ## v0.7.1
 
 This remains a source-only GitHub release, not an npm package or an automatic update of installed Pi resources. Review the changes and update only the resources you adopt; preserve local customizations. Restart Pi or use `/reload` after updating auto-discovered resources.
