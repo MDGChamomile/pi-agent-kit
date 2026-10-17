@@ -837,6 +837,44 @@ class SessionSearchTests(unittest.TestCase):
                 for event in events.values():
                     self.assertIs(event["on_latest_leaf"], version == 1)
 
+    def test_unknown_scope_io_failure_does_not_inherit_previous_file_scope(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_session(root / "a-selected.jsonl", header("selected", root), [
+                message("entry", None, "2026-08-10T00:00:00Z", "user", "needle"),
+            ])
+            failing = root / "b-unknown.jsonl"
+            write_session(failing, header("unknown", root), [])
+            original_open = Path.open
+
+            class FailingHeader(io.BytesIO):
+                def readline(self, *args, **kwargs):
+                    raise OSError("synthetic header failure")
+
+            for failure in ("open", "header"):
+                for all_projects in (False, True):
+                    with self.subTest(failure=failure, all_projects=all_projects):
+                        def open_file(path, *args, **kwargs):
+                            if path == failing:
+                                if failure == "open":
+                                    raise OSError("synthetic open failure")
+                                return FailingHeader()
+                            return original_open(path, *args, **kwargs)
+
+                        scope = ["--all-projects"] if all_projects else ["--cwd", str(root)]
+                        args = session_search.build_parser().parse_args([
+                            "--sessions-root", str(root), "--include-evidence", *scope,
+                        ])
+                        with patch.object(Path, "open", new=open_file):
+                            result = session_search.aggregate(args, now=self.NOW)
+                        self.assertEqual(result["summary"]["files_discovered"], 2)
+                        self.assertEqual(result["summary"]["files_selected"], 1)
+                        self.assertEqual(result["summary"]["matched_events"], 1)
+                        self.assertTrue(result["results"][0]["on_latest_leaf"])
+                        self.assertEqual(result["warnings"]["by_kind"], {"unreadable_file": 1} if all_projects else {})
+                        self.assertEqual(result["warnings"]["items"],
+                                         [{"path": str(failing), "kind": "unreadable_file"}] if all_projects else [])
+
     def test_invalid_entry_ids_do_not_abort_aggregate(self):
         for version in (1, 2, 3):
             for bad_id in ([], {}, None, 42, True):
