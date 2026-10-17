@@ -802,6 +802,41 @@ class SessionSearchTests(unittest.TestCase):
             self.assertIsNone(result["results"][0]["on_latest_leaf"])
             self.assertEqual(result["warnings"]["by_kind"], {"unreadable_file": 1})
 
+    def test_file_boundaries_reset_skill_calls_identities_and_branches(self):
+        for version in (1, 2, 3):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                location = "/custom/folder/SKILL.md"
+                timestamp = "2026-08-10T00:00:00Z"
+                head = {**header("reused-session-id", root), "version": version}
+                call = [{"type": "toolCall", "id": "shared-call", "name": "read",
+                         "arguments": {"path": location}}]
+                write_session(root / "a-first.jsonl", head, [
+                    message("shared", None, timestamp, "user", "first root"),
+                    message("alias", "shared", timestamp, "user",
+                            f'<skill name="declared" location="{location}">\n'
+                            'References are relative to /custom/folder.\n\nbody\n</skill>'),
+                    message("call", "alias", timestamp, "assistant", call),
+                ])
+                second = root / "b-second.jsonl"
+                write_session(second, head, [
+                    message("shared", None, timestamp, "user", "second root"),
+                    message("orphan", "shared", timestamp, "toolResult", "body",
+                            toolName="read", toolCallId="shared-call", isError=False),
+                    message("call", "alias", timestamp, "assistant", call),
+                    {"type": "custom", "id": "end", "parentId": "alias"},
+                ])
+                result = session_search.aggregate(self.args(root, root, "--include-evidence"), now=self.NOW)
+                self.assertEqual(result["summary"]["matched_sessions"], 2)
+                self.assertEqual(result["summary"]["skill_file_read_attempts"], {"declared": 1, "folder": 1})
+                self.assertEqual(result["summary"]["skill_file_read_successes"], {})
+                events = {event["entry_id"]: event for event in result["results"] if event["file"] == str(second)}
+                self.assertEqual(set(events), {"shared", "orphan", "call"})
+                self.assertNotIn("skill_file_read", events["orphan"])
+                self.assertEqual(events["call"]["skill_file_read"], "folder")
+                for event in events.values():
+                    self.assertIs(event["on_latest_leaf"], version == 1)
+
     def test_invalid_entry_ids_do_not_abort_aggregate(self):
         for version in (1, 2, 3):
             for bad_id in ([], {}, None, 42, True):
