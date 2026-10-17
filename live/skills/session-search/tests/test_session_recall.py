@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 import io
 import json
 import os
@@ -13,14 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-SCRIPTS = Path(__file__).parents[1] / "scripts"
-sys.path.insert(0, str(SCRIPTS))
-SCRIPT = SCRIPTS / "session_recall.py"
-SPEC = importlib.util.spec_from_file_location("session_recall", SCRIPT)
-assert SPEC and SPEC.loader
-session_recall = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = session_recall
-SPEC.loader.exec_module(session_recall)
+from support import RECALL_SCRIPT as SCRIPT, session_recall
 
 
 def header(session_id: str, cwd: Path, version: int = 3) -> dict:
@@ -382,6 +374,18 @@ class SessionRecallTests(unittest.TestCase):
         self.assertEqual(result["summary"]["files_selected"], 1)
         self.assertNotIn("files_discovered", result["summary"])
         self.assertEqual(result["warnings"], {"count": 0, "by_kind": {}})
+
+    def test_find_skips_fingerprints_that_only_recall_uses(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_session(root / "local.jsonl", header("local", root), [
+                message("m1", None, "2026-08-10T00:00:00Z", "user", "인증 오류"),
+            ])
+            with patch.object(session_recall, "message_fingerprint", side_effect=AssertionError("fingerprinted")):
+                found = session_recall.find_output(self.args("find", root, root), self.NOW)
+            recalled = session_recall.recall_output(self.args("recall", root, root), self.NOW)
+        self.assertEqual(found["summary"]["matched_sessions"], 1)
+        self.assertEqual(recalled["summary"]["selected_candidate_rank"], 1)
 
     def test_selected_project_decode_failure_has_path_free_warning(self):
         with tempfile.TemporaryDirectory() as temp:

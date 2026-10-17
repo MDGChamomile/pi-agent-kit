@@ -15,7 +15,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, BinaryIO, Callable, Iterable
+from typing import Any, BinaryIO, Callable, Iterable, Iterator
 
 DEFAULT_LIMIT = 20
 MAX_EVIDENCE_CHARS = 300
@@ -222,6 +222,24 @@ def event_matches(event: dict[str, Any], filters: EventFilters) -> bool:
     return True
 
 
+def _tool_event(
+    base: dict[str, Any], kind: str, tool_name: str, text: str, read_skill: str | None,
+    *, is_error: bool = False,
+) -> dict[str, Any]:
+    """Build shared tool fields; callers retain call/result interpretation."""
+    return {
+        **base,
+        "event": kind,
+        "tool_name": tool_name,
+        "is_error": is_error,
+        "skill_names": [read_skill] if read_skill else [],
+        "direct_skills": [],
+        "skill_file_read": read_skill,
+        "searchable": "\n".join(filter(None, [tool_name, text, read_skill])),
+        "evidence_raw": text,
+    }
+
+
 def events_for_entry(
     entry: dict[str, Any],
     session: dict[str, str],
@@ -229,7 +247,10 @@ def events_for_entry(
     skill_reads_by_call_id: dict[str, str] | None = None,
     names_by_path: dict[str, str] | None = None,
     cwd: str = "",
+    *,
+    include_arguments: bool = True,
 ) -> list[dict[str, Any]]:
+    """Serialize tool-call arguments only when a query or evidence can use them."""
     if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
         return []
     message = entry["message"]
@@ -268,19 +289,14 @@ def events_for_entry(
                 continue
             tool_name = str(block.get("name", "unknown"))
             arguments = block.get("arguments", {})
-            arguments_text = json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str)
+            arguments_text = (
+                json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str) if include_arguments else ""
+            )
             read_skill = skill_read_name(tool_name, arguments, names_by_path, cwd)
-            events.append({
-                **base,
-                "event": "skill_file_read" if read_skill else "tool_call",
-                "tool_name": tool_name,
-                "is_error": False,
-                "skill_names": [read_skill] if read_skill else [],
-                "direct_skills": [],
-                "skill_file_read": read_skill,
-                "searchable": "\n".join(filter(None, [tool_name, arguments_text, read_skill])),
-                "evidence_raw": arguments_text,
-            })
+            events.append(_tool_event(
+                base, "skill_file_read" if read_skill else "tool_call",
+                tool_name, arguments_text, read_skill,
+            ))
     if role == "toolResult":
         tool_name = str(message.get("toolName", "unknown"))
         tool_call_id = message.get("toolCallId")
@@ -289,17 +305,10 @@ def events_for_entry(
             if isinstance(tool_call_id, str) and skill_reads_by_call_id is not None
             else None
         )
-        events.append({
-            **base,
-            "event": "tool_error" if message.get("isError") else "tool_result",
-            "tool_name": tool_name,
-            "is_error": bool(message.get("isError", False)),
-            "skill_names": [read_skill] if read_skill else [],
-            "direct_skills": [],
-            "skill_file_read": read_skill,
-            "searchable": "\n".join(filter(None, [tool_name, text, read_skill])),
-            "evidence_raw": text,
-        })
+        events.append(_tool_event(
+            base, "tool_error" if message.get("isError") else "tool_result",
+            tool_name, text, read_skill, is_error=bool(message.get("isError", False)),
+        ))
         nested = message.get("nestedCalls")
         calls = nested.get("calls") if isinstance(nested, dict) else None
         seen: set[str] = set()
@@ -313,31 +322,21 @@ def events_for_entry(
             seen.add(call_id)
             arguments = call.get("arguments")
             read_skill = skill_read_name(name, arguments, names_by_path, cwd)
-            arguments_text = json.dumps(arguments, ensure_ascii=False, sort_keys=True) if isinstance(arguments, dict) else ""
-            nested_base = {
-                **base,
-                "tool_name": name,
-                "skill_names": [read_skill] if read_skill else [],
-                "direct_skills": [],
-                "skill_file_read": read_skill,
-            }
-            events.append({
-                **nested_base,
-                "event": "skill_file_read" if read_skill else "tool_call",
-                "is_error": False,
-                "searchable": "\n".join(filter(None, [name, arguments_text, read_skill])),
-                "evidence_raw": arguments_text,
-            })
+            arguments_text = (
+                json.dumps(arguments, ensure_ascii=False, sort_keys=True)
+                if include_arguments and isinstance(arguments, dict) else ""
+            )
+            events.append(_tool_event(
+                base, "skill_file_read" if read_skill else "tool_call",
+                name, arguments_text, read_skill,
+            ))
             if status != "unfinished":
                 error = call.get("error")
                 error_text = error if isinstance(error, str) else ""
-                events.append({
-                    **nested_base,
-                    "event": "tool_error" if status == "error" else "tool_result",
-                    "is_error": status == "error",
-                    "searchable": "\n".join(filter(None, [name, error_text, read_skill])),
-                    "evidence_raw": error_text,
-                })
+                events.append(_tool_event(
+                    base, "tool_error" if status == "error" else "tool_result",
+                    name, error_text, read_skill, is_error=status == "error",
+                ))
     return events
 
 
@@ -379,6 +378,22 @@ def read_session_header(handle: BinaryIO) -> dict[str, Any] | None:
     except (json.JSONDecodeError, TypeError):
         return None
     return header if isinstance(header, dict) and header.get("type") == "session" else None
+
+
+def read_session_entries(
+    handle: BinaryIO, path: Path, warnings: WarningCollector,
+) -> Iterator[dict[str, Any]]:
+    """Skip malformed JSON entries; leave I/O and decoding failures to callers."""
+    for line in handle:
+        try:
+            entry = json.loads(line.decode("utf-8"))
+        except (json.JSONDecodeError, TypeError):
+            warnings.add(path, "invalid_json_line")
+            continue
+        if not isinstance(entry, dict):
+            warnings.add(path, "invalid_entry")
+            continue
+        yield entry
 
 
 def session_version(header: dict[str, Any], path: Path, warnings: WarningCollector) -> int | None:
@@ -431,24 +446,33 @@ class InvalidArgumentError(Exception):
 
 
 class SessionArgumentParser(argparse.ArgumentParser):
-    def _parse_optional(self, arg_string: str):
-        # argparse recognizes ordinary negative numbers as values but treats
-        # -inf/-nan as options. Let the explicit finite-value check handle them.
-        if arg_string.lower() in {"-inf", "-infinity", "-nan"}:
-            return None
-        return super()._parse_optional(arg_string)
-
     def error(self, message: str) -> None:
         raise InvalidArgumentError(message)
+
+
+def add_storage_scope_arguments(parser: argparse.ArgumentParser) -> None:
+    """Share storage/project selection without coupling search pipelines."""
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--all-projects", action="store_true", help="search sessions from every project")
+    scope.add_argument("--cwd", default=os.getcwd(), help="project cwd to match exactly (default: current cwd)")
+    parser.add_argument("--include-current", action="store_true", help="include PI_SESSION_FILE (excluded by default)")
+    parser.add_argument(
+        "--additional-sessions-root", type=Path, action="append", default=[], metavar="PATH",
+        help="also search this directory recursively; repeat for multiple directories; "
+             "additive to the selected sessions root; all directories must be readable",
+    )
+    parser.add_argument(
+        "--sessions-root", type=Path, default=default_sessions_root(), metavar="PATH",
+        help="replace the primary sessions directory; default precedence: PI_CODING_AGENT_SESSION_DIR, "
+             "PI_CODING_AGENT_DIR/sessions, ~/.pi/agent/sessions",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = SessionArgumentParser(description="Aggregate local evidence across multiple Pi sessions; use /resume for a single session.")
     parser.add_argument("-q", "--query", action="append", default=[], help="case-insensitive literal filter; repeat to require every value (AND)")
     add_time_arguments(parser)
-    scope = parser.add_mutually_exclusive_group()
-    scope.add_argument("--all-projects", action="store_true", help="search sessions from every project")
-    scope.add_argument("--cwd", default=os.getcwd(), help="project cwd to match exactly (default: current cwd)")
+    add_storage_scope_arguments(parser)
     parser.add_argument("--role", action="append", default=[], help="message role filter; repeat for alternatives")
     parser.add_argument("--tool", action="append", default=[], help="tool-name filter; repeat for alternatives")
     parser.add_argument("--error", action="store_true", help="include only error events")
@@ -456,7 +480,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-filter", action="append", default=[], metavar="JSON",
                         help="independent summary-only filter object; repeat up to 8 times; "
                              "keys: query, role, tool, skill (string arrays), error (boolean)")
-    parser.add_argument("--include-current", action="store_true", help="include PI_SESSION_FILE (excluded by default)")
     add_exclusion_argument(parser)
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help=f"maximum evidence results with --include-evidence (default: {DEFAULT_LIMIT})")
     evidence = parser.add_mutually_exclusive_group()
@@ -469,16 +492,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--summary-only",
         action="store_true",
         help="explicitly select the path-free summary output (the default; retained for compatibility)",
-    )
-    parser.add_argument(
-        "--additional-sessions-root", type=Path, action="append", default=[], metavar="PATH",
-        help="also search this directory recursively; repeat for multiple directories; "
-             "additive to the selected sessions root; all directories must be readable",
-    )
-    parser.add_argument(
-        "--sessions-root", type=Path, default=default_sessions_root(), metavar="PATH",
-        help="replace the primary sessions directory; default precedence: PI_CODING_AGENT_SESSION_DIR, "
-             "PI_CODING_AGENT_DIR/sessions, ~/.pi/agent/sessions",
     )
     return parser
 
@@ -509,6 +522,35 @@ def exclusion_summary(exclusions: frozenset[str], matched: set[str], excluded_co
         "explicit_session_files_excluded": excluded_count,
         "session_file_exclusions_unmatched": len(exclusions - matched),
     }
+
+
+class SessionFileExclusions:
+    """Count pre-read exclusions using each caller's normalized file identity."""
+
+    def __init__(self, exclusions: frozenset[str], include_current: bool) -> None:
+        self.exclusions = exclusions
+        self.include_current = include_current
+        self.current = normalized_path(os.environ["PI_SESSION_FILE"]) if os.environ.get("PI_SESSION_FILE") else None
+        self.matched: set[str] = set()
+        self.excluded_current = 0
+        self.excluded_explicit = 0
+
+    def excludes(self, path_key: str) -> bool:
+        if path_key in self.exclusions:
+            self.matched.add(path_key)
+        if not self.include_current and self.current and path_key == self.current:
+            self.excluded_current += 1
+            return True
+        if path_key in self.exclusions:
+            self.excluded_explicit += 1
+            return True
+        return False
+
+    def summary(self) -> dict[str, int]:
+        return {
+            "current_session_files_excluded": self.excluded_current,
+            **exclusion_summary(self.exclusions, self.matched, self.excluded_explicit),
+        }
 
 
 def discover_session_files(
@@ -761,47 +803,43 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     exclusions = normalized_exclusions(args.exclude_session_file)
     paths = discover_session_files([args.sessions_root, *args.additional_sessions_root])
     target_cwd = normalized_path(args.cwd)
-    current = normalized_path(os.environ["PI_SESSION_FILE"]) if os.environ.get("PI_SESSION_FILE") else None
+    file_exclusions = SessionFileExclusions(exclusions, args.include_current)
 
     warnings = WarningCollector()
     result_limit = args.limit if args.include_evidence else 0
     aggregations = [EventAggregation(item, result_limit, args.include_evidence) for item in filters]
+    include_arguments = args.include_evidence or any(item.queries for item in filters)
     files_discovered = 0
     selected_files = 0
     scanned_entries = 0
     eligible_entries = 0
-    excluded_current = 0
-    excluded_explicit = 0
-    matched_exclusions: set[str] = set()
     attempted_files = 0
     readable_headers = 0
 
     for path in paths:
         files_discovered += 1
-        path_key = normalized_path(path)
-        if path_key in exclusions:
-            matched_exclusions.add(path_key)
-        if not args.include_current and current and path_key == current:
-            excluded_current += 1
-            continue
-        if path_key in exclusions:
-            excluded_explicit += 1
+        if file_exclusions.excludes(normalized_path(path)):
             continue
         attempted_files += 1
+        # Like recall, warn only about files within the selected scope: files
+        # whose project is unknown or different stay undisclosed by default.
+        scope_confirmed = args.all_projects
         try:
             with path.open("rb") as handle:
                 header = read_session_header(handle)
                 if header is None:
-                    warnings.add(path, "invalid_header")
+                    if scope_confirmed:
+                        warnings.add(path, "invalid_header")
                     continue
                 readable_headers += 1
-                version = session_version(header, path, warnings)
-                if version is None:
-                    continue
                 header_cwd = header.get("cwd")
                 if not args.all_projects and (
                     not isinstance(header_cwd, str) or normalized_path(header_cwd) != target_cwd
                 ):
+                    continue
+                scope_confirmed = True
+                version = session_version(header, path, warnings)
+                if version is None:
                     continue
 
                 selected_files += 1
@@ -815,15 +853,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                 identities_by_entry: dict[str, dict[str, str]] = {}
                 recorded_cwd = header_cwd if isinstance(header_cwd, str) else ""
 
-                for line in handle:
-                    try:
-                        entry = json.loads(line.decode("utf-8"))
-                    except (json.JSONDecodeError, TypeError):
-                        warnings.add(path, "invalid_json_line")
-                        continue
-                    if not isinstance(entry, dict):
-                        warnings.add(path, "invalid_entry")
-                        continue
+                for entry in read_session_entries(handle, path, warnings):
                     scanned_entries += 1
                     message = entry.get("message")
                     nested = message.get("nestedCalls") if isinstance(message, dict) else None
@@ -848,7 +878,10 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                         continue
                     eligible_entries += 1
                     # Parse each entry into events once, then evaluate independent filters.
-                    events = events_for_entry(entry, session, None, skill_reads_by_call_id, names_by_path, recorded_cwd)
+                    events = events_for_entry(
+                        entry, session, None, skill_reads_by_call_id, names_by_path, recorded_cwd,
+                        include_arguments=include_arguments,
+                    )
                     for aggregation in aggregations:
                         aggregation.consume(events, timestamp)
 
@@ -857,7 +890,8 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                     for aggregation in aggregations:
                         aggregation.mark_branch(path, version, leaf_path)
         except (OSError, UnicodeError):
-            warnings.add(path, "unreadable_file")
+            if scope_confirmed:
+                warnings.add(path, "unreadable_file")
             # Keep already counted evidence, but never claim a complete branch scan.
             for aggregation in aggregations:
                 aggregation.mark_branch(path, 1, None)
@@ -868,8 +902,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     scan = {
         "files_discovered": files_discovered,
         "files_selected": selected_files,
-        "current_session_files_excluded": excluded_current,
-        **exclusion_summary(exclusions, matched_exclusions, excluded_explicit),
+        **file_exclusions.summary(),
         "entries_scanned": scanned_entries,
         "entries_eligible": eligible_entries,
     }

@@ -20,15 +20,83 @@ Create your contribution branch from the latest `updates` branch, and select
 `main` because it is the repository's default branch; please change the base
 to `updates` before submitting.
 
-Contributions are reviewed and merged into `updates`. Maintainers open pull
-requests from `updates` to `main` only when preparing a release. If you
-accidentally target `main`, the base can be changed to `updates`; the resulting
-diff and checks should then be reviewed again.
+### External contributions
 
-Before merging, maintainers follow the configured branch requirements and check
-the latest PR head, applicable required checks, and code-review conversations.
-Findings should be fixed and verified or declined with a reason; unresolved
-issues must not be closed merely to unblock merging.
+Fork the repository and clone your fork. In a fresh clone, where `origin` points
+to your fork and `upstream` has not yet been added:
+
+```bash
+git remote add upstream https://github.com/MDGChamomile/pi-agent-kit.git
+git fetch upstream updates
+git switch --no-track -c my-change upstream/updates
+# Make your change, run the relevant checks below, and commit only intended files.
+git push -u origin my-change
+```
+
+Open a PR from your fork's `my-change` branch to this repository's `updates`,
+not your fork's `updates` or this repository's default `main`. Use the
+[PR template](.github/pull_request_template.md) to explain the Summary,
+Verification, and Risk. If you accidentally target `main`, change the base to
+`updates` and review the resulting diff and checks again.
+
+External contributors do not need to merge `main`, synchronize release history,
+or perform releases; those are maintainer responsibilities.
+
+### Branch protection and review
+
+Both `main` and `updates` require PRs. Do not push directly to them, rewrite
+their history, or bypass protection. The current merge method is a merge commit;
+the [live GitHub rules](https://github.com/MDGChamomile/pi-agent-kit/rules) and
+repository merge settings are authoritative if configuration changes.
+
+The required checks for `updates` are currently `skills` and
+`pi-compaction-model`, defined in the
+[validation workflow](.github/workflows/live-validation.yml). Before merging,
+maintainers verify the latest PR head, applicable required checks, and review
+conversations. Findings must be fixed and verified or declined with a reason
+before their threads are resolved; unresolved issues must not be closed merely
+to unblock merging.
+
+The validation workflow tests PRs on GitHub's generated test-merge commit and
+runs on pushes to `main` and `updates`, without path filters. Other branch and
+tag pushes do not start it; open a PR for remote validation. Release PRs from
+`updates` to `main` still have both push and PR validation.
+
+Eligible PRs targeting `updates` receive automatic Pullfrog reviews, including
+external contributions. PR content is shared with that external review service;
+do not include credentials or private data. Pullfrog reviews only: it does not
+modify code, approve PRs, or merge them. A successful review-run check means the
+run completed, not that the PR was approved. Maintainers assess findings and
+perform any changes and merges. See the [review policy](.github/PULLFROG.md).
+
+### Maintainer development and release history
+
+Keep unmerged work on a task branch, not on local `updates`. The normal flow is:
+
+```text
+latest origin/updates -> local task branch -> remote task branch
+-> PR into updates -> merge -> fetch and fast-forward local updates
+```
+
+The final fast-forward makes local `updates` match `origin/updates` without
+creating another merge commit. GitHub merges do not update local branches
+automatically.
+
+Maintainers open `updates` -> `main` PRs only for explicitly authorized releases.
+A release merge can leave a main-only merge commit even when no files differ;
+this is an expected history difference, not missing development code. Identical
+`main` and `updates` SHAs are not a development requirement.
+
+With explicit authorization, maintainers can include that release history in
+the next task branch and its PR instead of creating a separate history PR.
+First verify that the main-only commits are completed `updates` -> `main`
+release merges in this repository and that `origin/main` has the same file tree
+as the merge-base of `origin/main` and `origin/updates`. Merge the verified main SHA into the task branch normally and
+confirm its file tree is unchanged by that merge. Unexpected changes, conflicts,
+or unverified history require separate review and authorization; matching trees
+or commit messages alone do not establish provenance. Consider a separate
+history-sync PR only when immediate synchronization is requested or combining it
+with an authorized task is not appropriate.
 
 ## Verification entry points
 
@@ -46,7 +114,7 @@ The commands below match the relevant `live-validation` entry points. Python che
 
 For moved resources, contribute and verify in [Pi Subagent](https://github.com/MDGChamomile/pi-subagent/blob/main/CONTRIBUTING.md) or [Pi Jev](https://github.com/MDGChamomile/pi-jev/blob/main/CONTRIBUTING.md). Their runtime sources, companion skills, test dependencies, and release workflows are no longer maintained in this kit.
 
-The frontmatter check verifies opening/closing delimiters and non-empty required fields inside them. The same command checks relative Markdown links in every `SKILL.md` and in the maintained root documents (`README.md`, `AGENTS.md`, `MIGRATION.md`, `CONTRIBUTING.md`, and `PRINCIPLE.md`); it is not a complete YAML schema validator or a general Markdown linter.
+The frontmatter check verifies opening/closing delimiters and non-empty required fields inside them. The same command checks relative Markdown links in every Markdown file under `live/` (excluding installed `node_modules`), in the maintained root and GitHub documents selected by the [validator](.github/scripts/validate_skills.py); it is not a complete YAML schema validator or a general Markdown linter.
 
 See the [compaction guide](live/extensions/pi-compaction-model/README.md#development) for its pinned test environment. For deep-plan workflow changes, select relevant scenarios from its [behavior evaluations](live/skills/deep-plan/references/behavior-evals.md). Report any checks you could not run.
 

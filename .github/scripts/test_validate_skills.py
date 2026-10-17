@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from validate_skills import has_required_frontmatter, validate_relative_links, validate_skills
+from validate_skills import has_required_frontmatter, resource_documents, validate_relative_links, validate_skills
 
 
 class SkillValidationTests(unittest.TestCase):
@@ -86,6 +86,25 @@ class SkillValidationTests(unittest.TestCase):
                 validate_relative_links([document]),
                 [f'broken link: {document} -> missing.md'],
             )
+
+    def test_resource_documents_skip_skill_files_and_installed_dependencies(self):
+        with tempfile.TemporaryDirectory() as temp:
+            live = Path(temp)
+            for relative in (
+                'skills/synthetic/SKILL.md',
+                'skills/synthetic/README.md',
+                'skills/synthetic/references/guide.md',
+                'extensions/synthetic/README.md',
+                'extensions/synthetic/node_modules/dependency/README.md',
+            ):
+                path = live / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('# Synthetic\n', encoding='utf-8')
+            self.assertEqual(resource_documents(live), [
+                live / 'extensions/synthetic/README.md',
+                live / 'skills/synthetic/README.md',
+                live / 'skills/synthetic/references/guide.md',
+            ])
 
 
 if __name__ == '__main__':

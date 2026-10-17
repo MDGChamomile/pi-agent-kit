@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 import io
 import json
 import os
@@ -13,12 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-SCRIPT = Path(__file__).parents[1] / "scripts" / "session_search.py"
-SPEC = importlib.util.spec_from_file_location("session_search", SCRIPT)
-assert SPEC and SPEC.loader
-session_search = importlib.util.module_from_spec(SPEC)
-sys.modules[SPEC.name] = session_search
-SPEC.loader.exec_module(session_search)
+from support import SEARCH_SCRIPT as SCRIPT, session_search
 
 
 def header(session_id: str, cwd: Path) -> dict:
@@ -612,6 +606,22 @@ class SessionSearchTests(unittest.TestCase):
         self.assertIn("한글 Straße context", evidence)
         self.assertLessEqual(len(evidence), session_search.MAX_EVIDENCE_CHARS)
 
+    def test_tool_arguments_are_serialized_only_for_queries_or_evidence(self):
+        with fixture_tree() as (root, project_a, _, _, _, _):
+            with patch.object(session_search.json, "dumps", side_effect=AssertionError("serialized")):
+                counts = session_search.aggregate(self.args(root, project_a, "--tool", "bash"), now=self.NOW)
+            queried = session_search.aggregate(
+                self.args(root, project_a, "--query", "KEY_SHOULD_HIDE_123"), now=self.NOW,
+            )
+            batch = session_search.aggregate(self.args(
+                root, project_a, "--batch-filter", '{"tool": ["bash"]}',
+                "--batch-filter", '{"query": ["KEY_SHOULD_HIDE_123"]}',
+            ), now=self.NOW)
+        self.assertEqual(counts["summary"]["tool_calls"], {"bash": 1})
+        self.assertEqual(queried["summary"]["matched_events"], 1)
+        self.assertEqual([item["summary"]["matched_events"] for item in batch["batches"]],
+                         [counts["summary"]["matched_events"], 1])
+
     def test_evidence_falls_back_to_masked_prefix_without_visible_query(self):
         raw = "prefix " * 100 + " token=SYNTHETIC_HIDDEN_VALUE " + "tail " * 100
         prefix = session_search.mask_and_shorten(raw)
@@ -895,6 +905,39 @@ class SessionSearchTests(unittest.TestCase):
             "unsupported_session_version": 1,
         })
 
+    def test_default_scope_does_not_report_foreign_or_unknown_project_files(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            root = base / "sessions"
+            project = base / "project"
+            foreign = base / "foreign"
+            project.mkdir()
+            foreign.mkdir()
+            write_session(root / "local.jsonl", header("local", project), [
+                message("m1", None, "2026-08-10T00:00:00Z", "user", "local match"),
+            ])
+            future = header("future", foreign)
+            future["version"] = 99
+            write_session(root / "foreign-future.jsonl", future, [])
+            legacy = header("legacy", foreign)
+            legacy.pop("version")
+            write_session(root / "foreign-legacy.jsonl", legacy, [])
+            (root / "broken.jsonl").write_text("not-json\n", encoding="utf-8")
+            (root / "undecodable.jsonl").write_bytes(b"\xff\n")
+            scoped = session_search.aggregate(self.args(root, project, "--include-evidence"), now=self.NOW)
+            all_projects = session_search.aggregate(session_search.build_parser().parse_args([
+                "--sessions-root", str(root), "--all-projects", "--include-evidence",
+            ]), now=self.NOW)
+        self.assertEqual(scoped["summary"]["files_selected"], 1)
+        self.assertEqual(scoped["warnings"]["count"], 0)
+        self.assertEqual(scoped["warnings"]["items"], [])
+        self.assertEqual(all_projects["warnings"]["by_kind"], {
+            "invalid_header": 1,
+            "missing_session_version": 1,
+            "unreadable_file": 1,
+            "unsupported_session_version": 1,
+        })
+
     def test_warning_details_are_deduplicated_and_capped(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
@@ -949,11 +992,11 @@ class SessionSearchTests(unittest.TestCase):
     def test_non_finite_days_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            for value in ("nan", "inf", "-inf"):
+            for value in ("nan", "inf", "-inf", "-infinity", "-nan"):
                 with self.subTest(value=value), self.assertRaisesRegex(
                     ValueError, "^--days must be a finite non-negative number$"
                 ):
-                    session_search.aggregate(self.args(root, root, "--days", value), now=self.NOW)
+                    session_search.aggregate(self.args(root, root, f"--days={value}"), now=self.NOW)
 
     def assert_invalid_cli_argument(self, missing_root: Path, arguments: list[str]):
         completed = subprocess.run(
@@ -984,9 +1027,10 @@ class SessionSearchTests(unittest.TestCase):
     def test_non_finite_days_cli_emits_one_json_error(self):
         with tempfile.TemporaryDirectory() as temp:
             missing_root = Path(temp) / "missing-sessions"
-            for value in ("nan", "inf", "-inf"):
-                with self.subTest(value=value):
-                    self.assert_invalid_cli_argument(missing_root, ["--days", value])
+            for value in ("nan", "inf", "-inf", "-infinity", "-nan"):
+                for options in (["--days", value], [f"--days={value}"]):
+                    with self.subTest(options=options):
+                        self.assert_invalid_cli_argument(missing_root, options)
 
     def test_parse_and_range_errors_emit_one_json_error(self):
         with tempfile.TemporaryDirectory() as temp:

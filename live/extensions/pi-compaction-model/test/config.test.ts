@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
   COMPACTION_REASONS,
   isInstallTelemetryEnabled,
-  parseModelReference,
   resolveConfig,
 } from "../src/config.js";
+import { parseModelReference } from "../src/model-reference.js";
 
 describe("resolveConfig", () => {
   test("returns null when unconfigured", () => {
@@ -106,9 +106,22 @@ describe("parseModelReference", () => {
     });
   });
 
+  test("trims provider and model ID without changing internal slashes", () => {
+    expect(parseModelReference(" provider / model ")).toEqual({
+      provider: "provider",
+      modelId: "model",
+    });
+    expect(parseModelReference(" openrouter / vendor/model ")).toEqual({
+      provider: "openrouter",
+      modelId: "vendor/model",
+    });
+  });
+
   test("rejects malformed references", () => {
     expect(parseModelReference("model-only")).toBeNull();
     expect(parseModelReference("/model")).toBeNull();
     expect(parseModelReference("provider/")).toBeNull();
+    expect(parseModelReference("provider/ ")).toBeNull();
+    expect(parseModelReference(" /model")).toBeNull();
   });
 });

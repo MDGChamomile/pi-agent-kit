@@ -72,6 +72,11 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --days 7 --e
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --all-projects --skill deep-plan
 ```
 
+Use `--option=value` for dash-prefixed strings, for example `--query=-inf`,
+`--term=-nan`, or `--cwd=-infinity`. This applies to filters and path options;
+quoting a separate value does not change argument parsing. `--days` accepts
+only finite, non-negative numbers, including when supplied with `=`.
+
 ### Time ranges
 
 Aggregate, batch, `find`, and `recall` accept optional `--since` (inclusive) and
@@ -281,6 +286,8 @@ The command emits one JSON object:
 | `warnings` | Deduplicated counts by kind | Up to 100 file-path details |
 
 In `summary`, `tool_errors` counts matching error events per tool; `tool_error_sessions` counts session files with at least one such event per tool, using the same filters and case-insensitive tool names. Repeated failures of one tool in one file count once in `tool_error_sessions`. Files with identical session IDs still count separately; branches, copies, and retries are not deduplicated into inferred bugs or tasks. `matched_sessions` remains the overall matching-file count, not a per-tool distribution.
+
+Without `--all-projects`, warnings cover only files whose header confirms the selected cwd. As in recall, files with an unreadable header or a different project are skipped without a warning count or path; use `--all-projects` to include their warnings, for example when checking for damaged session files.
 
 If an individual file fails during reading, aggregate search keeps the events already read, counts that matching file once, and reports `unreadable_file`. These are partial counts, not a complete-file result. Evidence from that file has `on_latest_leaf: null` (unknown), rather than a claim about the latest branch. Files that finish reading retain boolean branch membership for valid IDs. In v2/v3, non-string or missing entry IDs produce `invalid_entry_id`; their events remain searchable, but their branch membership is also `null`. Legacy v1 remains linear and does not require entry IDs.
 

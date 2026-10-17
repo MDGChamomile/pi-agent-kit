@@ -28,7 +28,6 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
     "test": "sh ./scripts/test.sh",
     "typecheck": "tsc --noEmit",
     "check": "bun run typecheck && bun run test"
