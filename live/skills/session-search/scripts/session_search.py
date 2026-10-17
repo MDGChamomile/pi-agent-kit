@@ -843,11 +843,9 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     attempted_files = 0
     readable_headers = 0
 
-    for path in paths:
-        files_discovered += 1
-        if file_exclusions.excludes(normalized_path(path)):
-            continue
-        attempted_files += 1
+    def scan_file(path: Path) -> None:
+        # Shared counters preserve progress even when a file fails partway through.
+        nonlocal readable_headers, selected_files, scanned_entries, eligible_entries
         # Like recall, warn only about files within the selected scope: files
         # whose project is unknown or different stay undisclosed by default.
         scope_confirmed = args.all_projects
@@ -857,17 +855,17 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                 if header is None:
                     if scope_confirmed:
                         warnings.add(path, "invalid_header")
-                    continue
+                    return
                 readable_headers += 1
                 header_cwd = header.get("cwd")
                 if not args.all_projects and (
                     not isinstance(header_cwd, str) or normalized_path(header_cwd) != target_cwd
                 ):
-                    continue
+                    return
                 scope_confirmed = True
                 version = session_version(header, path, warnings)
                 if version is None:
-                    continue
+                    return
 
                 selected_files += 1
                 session = {"session_id": str(header.get("id", "")), "file": str(path)}
@@ -922,6 +920,13 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             # Keep already counted evidence, but never claim a complete branch scan.
             for aggregation in aggregations:
                 aggregation.mark_branch(path, 1, None)
+
+    for path in paths:
+        files_discovered += 1
+        if file_exclusions.excludes(normalized_path(path)):
+            continue
+        attempted_files += 1
+        scan_file(path)
 
     if attempted_files and not readable_headers:
         raise RuntimeError("all candidate session files were unreadable or invalid")
