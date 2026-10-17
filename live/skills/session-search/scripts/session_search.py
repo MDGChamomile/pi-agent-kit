@@ -795,6 +795,33 @@ class EventAggregation:
         }
 
 
+def _aggregate_output(
+    args: argparse.Namespace, time_range: TimeRange, target_cwd: str,
+    scan: dict[str, int], aggregations: list[EventAggregation], warnings: WarningCollector,
+) -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "evidence_included": args.include_evidence,
+        "scope": {
+            "cwd": target_cwd if args.include_evidence and not args.all_projects else None,
+            "all_projects": args.all_projects,
+            "days": args.days,
+            **time_range.view(),
+            "include_current": args.include_current,
+        },
+        **({
+            "mode": "batch",
+            "summary": {**scan, "filters_returned": len(aggregations)},
+            "batches": [
+                {"filter_index": index, "summary": aggregation.summary(scan)}
+                for index, aggregation in enumerate(aggregations, 1)
+            ],
+        } if args.batch_filter else {"summary": aggregations[0].summary(scan)}),
+        "results": aggregations[0].results(),
+        "warnings": warnings.output(args.include_evidence),
+    }
+
+
 def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str, Any]:
     time_range = time_range_for_args(args, now)
     if args.limit < 0:
@@ -816,11 +843,9 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     attempted_files = 0
     readable_headers = 0
 
-    for path in paths:
-        files_discovered += 1
-        if file_exclusions.excludes(normalized_path(path)):
-            continue
-        attempted_files += 1
+    def scan_file(path: Path) -> None:
+        # Shared counters preserve progress even when a file fails partway through.
+        nonlocal readable_headers, selected_files, scanned_entries, eligible_entries
         # Like recall, warn only about files within the selected scope: files
         # whose project is unknown or different stay undisclosed by default.
         scope_confirmed = args.all_projects
@@ -830,17 +855,17 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                 if header is None:
                     if scope_confirmed:
                         warnings.add(path, "invalid_header")
-                    continue
+                    return
                 readable_headers += 1
                 header_cwd = header.get("cwd")
                 if not args.all_projects and (
                     not isinstance(header_cwd, str) or normalized_path(header_cwd) != target_cwd
                 ):
-                    continue
+                    return
                 scope_confirmed = True
                 version = session_version(header, path, warnings)
                 if version is None:
-                    continue
+                    return
 
                 selected_files += 1
                 session = {"session_id": str(header.get("id", "")), "file": str(path)}
@@ -896,6 +921,13 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             for aggregation in aggregations:
                 aggregation.mark_branch(path, 1, None)
 
+    for path in paths:
+        files_discovered += 1
+        if file_exclusions.excludes(normalized_path(path)):
+            continue
+        attempted_files += 1
+        scan_file(path)
+
     if attempted_files and not readable_headers:
         raise RuntimeError("all candidate session files were unreadable or invalid")
 
@@ -906,27 +938,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         "entries_scanned": scanned_entries,
         "entries_eligible": eligible_entries,
     }
-    return {
-        "status": "ok",
-        "evidence_included": args.include_evidence,
-        "scope": {
-            "cwd": target_cwd if args.include_evidence and not args.all_projects else None,
-            "all_projects": args.all_projects,
-            "days": args.days,
-            **time_range.view(),
-            "include_current": args.include_current,
-        },
-        **({
-            "mode": "batch",
-            "summary": {**scan, "filters_returned": len(aggregations)},
-            "batches": [
-                {"filter_index": index, "summary": aggregation.summary(scan)}
-                for index, aggregation in enumerate(aggregations, 1)
-            ],
-        } if args.batch_filter else {"summary": aggregations[0].summary(scan)}),
-        "results": aggregations[0].results(),
-        "warnings": warnings.output(args.include_evidence),
-    }
+    return _aggregate_output(args, time_range, target_cwd, scan, aggregations, warnings)
 
 
 def emit_error(code: str, message: str) -> int:
