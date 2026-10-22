@@ -210,13 +210,14 @@ def candidate_sort_key(candidate: Candidate) -> tuple[int, int, datetime, str]:
 
 
 def message_fingerprint(messages: Iterable[RecallMessage]) -> str:
+    # Preserve existing UTF-8 hashes while distinguishing JSON's lone surrogates.
     digest = hashlib.sha256()
     for message in messages:
         encoded = json.dumps(
             [message.entry_id, message.timestamp, message.role, message.text],
             ensure_ascii=False,
             separators=(",", ":"),
-        ).encode("utf-8")
+        ).encode("utf-8", "surrogatepass")
         digest.update(len(encoded).to_bytes(8, "big"))
         digest.update(encoded)
     return digest.hexdigest()
@@ -477,7 +478,9 @@ def find_output(args: argparse.Namespace, now: datetime | None = None) -> dict[s
 
 
 def continuation_digest(value: Any) -> str:
-    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8", "surrogatepass",
+    )
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -621,7 +624,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         )
     except (OSError, RuntimeError):
         return session_search.emit_error("SESSION_STORAGE_UNAVAILABLE", "Session storage could not be read.")
-    print(json.dumps(output, ensure_ascii=False, sort_keys=True))
+    session_search.emit_json(output)
     return 0
 
 
