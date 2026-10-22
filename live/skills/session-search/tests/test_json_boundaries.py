@@ -19,6 +19,14 @@ STAMP = "2026-08-14T00:00:00Z"
 DEEP_JSON_VALUE = "[" * 10000 + "]" * 10000
 
 
+def json_depth_is_limited():
+    try:
+        json.loads('{"value":' + DEEP_JSON_VALUE + '}')
+    except RecursionError:
+        return True
+    return False
+
+
 class JsonBoundaryTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -117,7 +125,7 @@ class JsonBoundaryTests(unittest.TestCase):
         expected = hashlib.sha256(json.dumps(text, ensure_ascii=False).encode("utf-8")).hexdigest()
         self.assertEqual(session_recall.continuation_digest(text), expected)
 
-    def assert_invalid_body_value_is_isolated(self, value):
+    def assert_body_value_is_isolated(self, value, *, rejected=True):
         self.write([message("0", None, STAMP, "user", "needle valid")])
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write('{"type":"custom","id":"oversized","parentId":"0","value":' + value + '}\n')
@@ -126,9 +134,9 @@ class JsonBoundaryTests(unittest.TestCase):
                 output, _ = self.run_cli(mode)
                 self.assertEqual(output["status"], "ok")
                 self.assertEqual(output["summary"]["matched_sessions"], 1)
-                self.assertEqual(output["warnings"]["by_kind"], {"invalid_json_line": 1})
+                self.assertEqual(output["warnings"]["by_kind"], {"invalid_json_line": 1} if rejected else {})
 
-    def assert_invalid_header_value_is_isolated(self, value):
+    def assert_header_value_is_isolated(self, value, *, rejected=True):
         self.write([message("0", None, STAMP, "user", "needle valid")])
         broken = json.dumps(header("broken", self.project))[:-1] + ',"value":' + value + '}\n'
         (self.root / "broken.jsonl").write_text(broken, encoding="utf-8")
@@ -138,28 +146,35 @@ class JsonBoundaryTests(unittest.TestCase):
                     output, _ = self.run_cli(mode, *(["--all-projects"] if all_projects else []))
                     self.assertEqual(output["status"], "ok")
                     self.assertEqual(output["summary"]["matched_sessions"], 1)
-                    self.assertEqual(output["warnings"]["by_kind"], {"invalid_header": 1} if all_projects else {})
+                    self.assertEqual(output["warnings"]["by_kind"],
+                                     {"invalid_header": 1} if all_projects and rejected else {})
 
     @unittest.skipUnless(hasattr(sys, "get_int_max_str_digits"), "Python has no integer-conversion limit")
     def test_oversized_body_integer_is_a_row_warning_in_every_mode(self):
-        self.assert_invalid_body_value_is_isolated("9" * 5000)
+        self.assert_body_value_is_isolated("9" * 5000)
 
     @unittest.skipUnless(hasattr(sys, "get_int_max_str_digits"), "Python has no integer-conversion limit")
     def test_oversized_header_integer_is_skipped_without_disclosing_unknown_scope(self):
-        self.assert_invalid_header_value_is_isolated("9" * 5000)
+        self.assert_header_value_is_isolated("9" * 5000)
 
-    def test_excessively_nested_body_is_a_row_warning_in_every_mode(self):
-        self.assert_invalid_body_value_is_isolated(DEEP_JSON_VALUE)
+    def test_deeply_nested_body_follows_decoder_limits(self):
+        self.assert_body_value_is_isolated(DEEP_JSON_VALUE, rejected=json_depth_is_limited())
 
-    def test_excessively_nested_header_is_skipped_without_disclosing_unknown_scope(self):
-        self.assert_invalid_header_value_is_isolated(DEEP_JSON_VALUE)
+    def test_deeply_nested_header_follows_decoder_limits(self):
+        self.assert_header_value_is_isolated(DEEP_JSON_VALUE, rejected=json_depth_is_limited())
 
-    def test_parser_value_errors_are_local_but_utf8_decode_errors_propagate(self):
-        warnings = session_search.WarningCollector()
-        with patch.object(session_search.json, "loads", side_effect=ValueError("synthetic parse limit")):
-            self.assertIsNone(session_search.read_session_header(io.BytesIO(b"{}\n")))
-            self.assertEqual(list(session_search.read_session_entries(io.BytesIO(b"{}\n"), self.path, warnings)), [])
-        self.assertEqual(warnings.output(False)["by_kind"], {"invalid_json_line": 1})
+    def test_accepted_nested_values_are_not_reported_as_invalid(self):
+        self.assert_body_value_is_isolated("[[0]]", rejected=False)
+        self.assert_header_value_is_isolated("[[0]]", rejected=False)
+
+    def test_parser_limits_are_local_but_utf8_decode_errors_propagate(self):
+        for error_type in (ValueError, RecursionError):
+            with self.subTest(error_type=error_type):
+                warnings = session_search.WarningCollector()
+                with patch.object(session_search.json, "loads", side_effect=error_type("synthetic parse limit")):
+                    self.assertIsNone(session_search.read_session_header(io.BytesIO(b"{}\n")))
+                    self.assertEqual(list(session_search.read_session_entries(io.BytesIO(b"{}\n"), self.path, warnings)), [])
+                self.assertEqual(warnings.output(False)["by_kind"], {"invalid_json_line": 1})
         with self.assertRaises(UnicodeDecodeError):
             session_search.read_session_header(io.BytesIO(b"\xff\n"))
         with self.assertRaises(UnicodeDecodeError):
