@@ -105,7 +105,8 @@ export default function compactionModel(pi: ExtensionAPI): void {
         : undefined;
       const requestModel = authBaseUrl ? { ...model, baseUrl: authBaseUrl } : model;
 
-      // Match Pi's native compaction bridge: null marks a deleted header.
+      // compact() accepts string headers; the registry stream re-resolves auth
+      // and restores null deletion markers before provider dispatch.
       const authHeaders = auth.headers
         ? Object.fromEntries(
             Object.entries(auth.headers).filter((entry): entry is [string, string] => entry[1] !== null),
@@ -125,7 +126,7 @@ export default function compactionModel(pi: ExtensionAPI): void {
         event.customInstructions,
         event.signal,
         config.thinkingLevel,
-        undefined,
+        (streamModel, context, options) => ctx.modelRegistry.streamSimple(streamModel, context, options),
         auth.env,
       );
 
