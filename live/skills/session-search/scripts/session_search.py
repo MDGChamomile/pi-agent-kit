@@ -83,6 +83,12 @@ def normalized_path(value: str | Path) -> str:
     return str(Path(value).expanduser().resolve(strict=False))
 
 
+def _mask_secrets(value: str) -> str:
+    for pattern, replacement in MASK_PATTERNS:
+        value = pattern.sub(replacement, value)
+    return value
+
+
 def mask_and_shorten(
     value: str, limit: int = MAX_EVIDENCE_CHARS, queries: Iterable[str] = (),
 ) -> str:
@@ -93,10 +99,7 @@ def mask_and_shorten_with_metadata(
     value: str, limit: int = MAX_EVIDENCE_CHARS, queries: Iterable[str] = (),
 ) -> tuple[str, bool]:
     """Return masked evidence and whether normalized masked text was shortened."""
-    masked = value
-    for pattern, replacement in MASK_PATTERNS:
-        masked = pattern.sub(replacement, masked)
-    masked = re.sub(r"\s+", " ", masked).strip()
+    masked = re.sub(r"\s+", " ", _mask_secrets(value)).strip()
     if limit <= 0:
         return "", bool(masked)
     if len(masked) <= limit:
@@ -437,7 +440,16 @@ def result_view(event: dict[str, Any], queries: Iterable[str] = ()) -> dict[str,
         result["direct_skills"] = event["direct_skills"]
     if event.get("skill_file_read"):
         result["skill_file_read"] = event["skill_file_read"]
-    result["evidence"] = mask_and_shorten(event.get("evidence_raw", ""), queries=queries)
+    evidence = event.get("evidence_raw", "")
+    if event.get("event") in ("tool_call", "skill_file_read"):
+        # Call evidence is JSON. Mask each decoded string before escaping it
+        # again, including strings inside nested arguments. Keep search raw.
+        evidence = re.sub(
+            r'"(?:\\.|[^"\\])*"',
+            lambda match: json.dumps(_mask_secrets(json.loads(match[0])), ensure_ascii=False),
+            evidence,
+        )
+    result["evidence"] = mask_and_shorten(evidence, queries=queries)
     return result
 
 
