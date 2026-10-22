@@ -20,7 +20,7 @@ This is an independently maintained derivative of [JMHSV/pi-compaction-model](ht
 
 Imported from revision `283f0de4fe56d4cc35931e1255e0d3888761426b`, including [upstream PR #1](https://github.com/JMHSV/pi-compaction-model/pull/1): restore cumulative file-operation lists before falling back to Pi's active model. This concerns file lists in compaction summaries, not loss of files on disk.
 
-Kit-specific changes: source-install documentation and private package metadata; aligning the lockfile's peer range with the inherited manifest; and omitting deleted (`null`) authentication headers before calling `compact()`, matching Pi 0.85.1's native bridge, with a regression test. A root `index.ts` re-exports the implementation so Pi's compact extension list shows the containing directory name rather than `src`. The original compaction routing, file-list restoration, tests, and `compactionModel` configuration are retained. This directory is not separately published to npm; `npm:pi-compaction-model` installs the upstream package, not this derivative.
+Kit-specific changes: source-install documentation and private package metadata; aligning the lockfile's peer range with the inherited manifest; and routing summarization through Pi's model registry so custom providers and authentication-header deletions are honored, with offline regression tests. A root `index.ts` re-exports the implementation so Pi's compact extension list shows the containing directory name rather than `src`. The original compaction routing, file-list restoration, tests, and `compactionModel` configuration are retained. This directory is not separately published to npm; `npm:pi-compaction-model` installs the upstream package, not this derivative.
 
 ## Install from source
 
@@ -53,7 +53,7 @@ Add `compactionModel` to `~/.pi/agent/settings.json`:
 }
 ```
 
-`model` must be a model known to Pi in `provider/model` form.
+`model` must be a model known to Pi in `provider/model` form. Summarization uses Pi's model-registry stream path, including extension-registered providers and provider-specific authentication.
 
 Supported thinking levels are:
 
@@ -61,7 +61,7 @@ Supported thinking levels are:
 off, minimal, low, medium, high, xhigh, max
 ```
 
-Omit `thinkingLevel` to use the provider default.
+Omitting `thinkingLevel` leaves it unset; it does not inherit the active conversation's thinking level. Pi's provider adapters may interpret an unset level as off or the model's off mapping. Set it explicitly when a particular level is required.
 
 ### Select which compactions to route
 
@@ -147,10 +147,10 @@ Configuration fields recover independently:
 | Configured section has a missing or empty `model`, or `model` is not in `provider/model` form | Warns, does not use a dedicated model, and returns control to Pi's native handling path |
 | Model not found | Warns and returns control to Pi's native handling path |
 | Authentication unavailable | Warns and returns control to Pi's native handling path |
-| Invalid `thinkingLevel` | Keeps the dedicated model, warns, and omits the thinking setting so the provider default applies |
+| Invalid `thinkingLevel` | Keeps the dedicated model, warns, and omits the thinking setting |
 | Invalid `reasons` | Keeps the dedicated model, warns, and handles `manual`, `threshold`, and `overflow` |
 
-An empty valid `reasons` array is not an error; it disables dedicated-model routing. Pi currently resolves authentication for the active conversation model before firing the compaction extension hook. Consequently, the active model must also have valid authentication even when a dedicated compaction model is configured.
+An empty valid `reasons` array is not an error; it disables dedicated-model routing. The dedicated model needs its own valid authentication. If Pi falls back to native compaction, the active conversation model's normal authentication requirements apply.
 
 ### Request failures and cancellation
 
@@ -173,7 +173,7 @@ bun install --frozen-lockfile
 bun run check
 ```
 
-The `live-validation` workflow runs these checks against the pinned minimum, Pi 1.0.0, and `pi-latest-compatibility` runs them weekly against Pi's latest release. Offline checks make no model requests; live compaction sends session content to the configured provider and can incur usage charges.
+The `live-validation` workflow runs these checks against the pinned minimum, Pi 1.0.0, and `pi-latest-compatibility` runs them weekly against Pi's latest release. Offline checks use synthetic data and make no live model requests. The provider-routing tests exercise real Pi compaction, model-registry dispatch and authentication with an in-memory credential store and stubbed transport, including a custom API and Cloudflare Gateway header deletions. Live compaction sends session content to the configured provider and can incur usage charges.
 
 ## License
 

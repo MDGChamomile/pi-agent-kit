@@ -73,6 +73,7 @@ function harness(options: {
     modelRegistry: {
       find: mock((_provider: string, _modelId: string) => options.findModel === false ? undefined : model),
       getApiKeyAndHeaders: async () => options.auth ?? { ok: true, apiKey: "key" },
+      streamSimple: mock((_model: unknown, _context: unknown, _options?: unknown) => ({ synthetic: true })),
     },
   };
   compactionModel({ on: (_name: string, registered: any) => { handler = registered; } });
@@ -229,9 +230,14 @@ describe("session_before_compact", () => {
     expect(await state.handler(state.event, state.ctx)).toEqual({ compaction: { summary: "dedicated" } });
     expect(received).toEqual([
       state.preparation, state.model, "test-key", { "x-test": "retained" },
-      state.event.customInstructions, state.event.signal, "low", undefined,
+      state.event.customInstructions, state.event.signal, "low", expect.any(Function),
       { TEST_ENV: "test-value" },
     ]);
+    const context = { messages: [] };
+    const options = { signal: state.event.signal, headers: { "x-test": "retained" } };
+    const stream = (received[7] as (...args: unknown[]) => unknown)(state.model, context, options);
+    expect(state.ctx.modelRegistry.streamSimple).toHaveBeenCalledWith(state.model, context, options);
+    expect(stream).toBe(state.ctx.modelRegistry.streamSimple.mock.results[0]?.value);
     await expect(state.ctx.modelRegistry.getApiKeyAndHeaders()).resolves.toEqual({
       ok: true,
       apiKey: "test-key",
