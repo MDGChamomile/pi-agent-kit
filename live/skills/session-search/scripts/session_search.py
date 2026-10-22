@@ -247,7 +247,7 @@ def events_for_entry(
     entry: dict[str, Any],
     session: dict[str, str],
     on_leaf: bool | None,
-    skill_reads_by_call_id: dict[str, str] | None = None,
+    skill_reads_by_call_id: dict[str, str | None] | None = None,
     names_by_path: dict[str, str] | None = None,
     cwd: str = "",
     *,
@@ -414,7 +414,7 @@ def session_version(header: dict[str, Any], path: Path, warnings: WarningCollect
 
 
 def record_skill_read_calls(
-    entry: dict[str, Any], skill_reads_by_call_id: dict[str, str],
+    entry: dict[str, Any], skill_reads_by_call_id: dict[str, str | None],
     names_by_path: dict[str, str] | None = None, cwd: str = "",
 ) -> None:
     if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
@@ -427,8 +427,32 @@ def record_skill_read_calls(
             continue
         call_id = block.get("id")
         read_skill = skill_read_name(str(block.get("name", "unknown")), block.get("arguments", {}), names_by_path, cwd)
-        if isinstance(call_id, str) and read_skill:
+        if isinstance(call_id, str):
+            # A non-skill call must shadow an older skill call with the same ID.
             skill_reads_by_call_id[call_id] = read_skill
+
+
+def skill_read_calls_for_result(
+    entry: dict[str, Any], calls_by_id: dict[str, dict[str, str | None]],
+    parent_by_id: dict[str, Any],
+) -> dict[str, str | None]:
+    message = entry.get("message")
+    if not isinstance(message, dict) or message.get("role") != "toolResult":
+        return {}
+    call_id = message.get("toolCallId")
+    if not isinstance(call_id, str):
+        return {}
+    candidates = calls_by_id.get(call_id)
+    if not candidates:
+        return {}
+    parent = entry.get("parentId")
+    seen: set[str] = set()
+    while isinstance(parent, str) and parent not in seen:
+        seen.add(parent)
+        if parent in candidates:
+            return {call_id: candidates[parent]}
+        parent = parent_by_id.get(parent)
+    return {}
 
 
 def result_view(event: dict[str, Any], queries: Iterable[str] = ()) -> dict[str, Any]:
@@ -885,7 +909,8 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                     aggregation.start_session()
                 parent_by_id: dict[str, Any] = {}
                 leaf_id: str | None = None
-                skill_reads_by_call_id: dict[str, str] = {}
+                skill_reads_by_call_id: dict[str, str | None] = {}
+                calls_by_id: dict[str, dict[str, str | None]] = {}
                 names_by_path: dict[str, str] = {}
                 identities_by_entry: dict[str, dict[str, str]] = {}
                 recorded_cwd = header_cwd if isinstance(header_cwd, str) else ""
@@ -899,7 +924,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                     entry_id = entry.get("id")
                     if version >= 2 and not isinstance(entry_id, str):
                         warnings.add(path, "invalid_entry_id")
-                    if result_limit and version >= 2 and isinstance(entry_id, str):
+                    if version >= 2 and isinstance(entry_id, str):
                         parent_by_id[entry_id] = entry.get("parentId")
                         leaf_id = entry_id
                     if version >= 2:
@@ -908,7 +933,15 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                     names_by_path = record_skill_identity(entry, names_by_path, recorded_cwd)
                     if version >= 2 and isinstance(entry_id, str):
                         identities_by_entry[entry_id] = names_by_path
-                    record_skill_read_calls(entry, skill_reads_by_call_id, names_by_path, recorded_cwd)
+                    if version >= 2:
+                        entry_calls: dict[str, str | None] = {}
+                        record_skill_read_calls(entry, entry_calls, names_by_path, recorded_cwd)
+                        if isinstance(entry_id, str):
+                            for call_id, skill in entry_calls.items():
+                                calls_by_id.setdefault(call_id, {})[entry_id] = skill
+                        skill_reads_by_call_id = skill_read_calls_for_result(entry, calls_by_id, parent_by_id)
+                    else:
+                        record_skill_read_calls(entry, skill_reads_by_call_id, names_by_path, recorded_cwd)
 
                     timestamp = parse_timestamp(entry.get("timestamp"))
                     if not time_range.contains(timestamp):
