@@ -15,6 +15,8 @@ from support import RECALL_SCRIPT, SEARCH_SCRIPT, session_recall, session_search
 from test_session_recall import header, message, write_session
 
 STAMP = "2026-08-14T00:00:00Z"
+# The C JSON decoder can accept depths above Python's recursion limit.
+DEEP_JSON_VALUE = "[" * 10000 + "]" * 10000
 
 
 class JsonBoundaryTests(unittest.TestCase):
@@ -115,11 +117,10 @@ class JsonBoundaryTests(unittest.TestCase):
         expected = hashlib.sha256(json.dumps(text, ensure_ascii=False).encode("utf-8")).hexdigest()
         self.assertEqual(session_recall.continuation_digest(text), expected)
 
-    @unittest.skipUnless(hasattr(sys, "get_int_max_str_digits"), "Python has no integer-conversion limit")
-    def test_oversized_body_integer_is_a_row_warning_in_every_mode(self):
+    def assert_invalid_body_value_is_isolated(self, value):
         self.write([message("0", None, STAMP, "user", "needle valid")])
         with self.path.open("a", encoding="utf-8") as handle:
-            handle.write('{"type":"custom","id":"oversized","parentId":"0","number":' + "9" * 5000 + '}\n')
+            handle.write('{"type":"custom","id":"oversized","parentId":"0","value":' + value + '}\n')
         for mode in ("aggregate", "find", "recall"):
             with self.subTest(mode=mode):
                 output, _ = self.run_cli(mode)
@@ -127,10 +128,9 @@ class JsonBoundaryTests(unittest.TestCase):
                 self.assertEqual(output["summary"]["matched_sessions"], 1)
                 self.assertEqual(output["warnings"]["by_kind"], {"invalid_json_line": 1})
 
-    @unittest.skipUnless(hasattr(sys, "get_int_max_str_digits"), "Python has no integer-conversion limit")
-    def test_oversized_header_integer_is_skipped_without_disclosing_unknown_scope(self):
+    def assert_invalid_header_value_is_isolated(self, value):
         self.write([message("0", None, STAMP, "user", "needle valid")])
-        broken = json.dumps(header("broken", self.project))[:-1] + ',"number":' + "9" * 5000 + '}\n'
+        broken = json.dumps(header("broken", self.project))[:-1] + ',"value":' + value + '}\n'
         (self.root / "broken.jsonl").write_text(broken, encoding="utf-8")
         for mode in ("aggregate", "find", "recall"):
             for all_projects in (False, True):
@@ -139,6 +139,20 @@ class JsonBoundaryTests(unittest.TestCase):
                     self.assertEqual(output["status"], "ok")
                     self.assertEqual(output["summary"]["matched_sessions"], 1)
                     self.assertEqual(output["warnings"]["by_kind"], {"invalid_header": 1} if all_projects else {})
+
+    @unittest.skipUnless(hasattr(sys, "get_int_max_str_digits"), "Python has no integer-conversion limit")
+    def test_oversized_body_integer_is_a_row_warning_in_every_mode(self):
+        self.assert_invalid_body_value_is_isolated("9" * 5000)
+
+    @unittest.skipUnless(hasattr(sys, "get_int_max_str_digits"), "Python has no integer-conversion limit")
+    def test_oversized_header_integer_is_skipped_without_disclosing_unknown_scope(self):
+        self.assert_invalid_header_value_is_isolated("9" * 5000)
+
+    def test_excessively_nested_body_is_a_row_warning_in_every_mode(self):
+        self.assert_invalid_body_value_is_isolated(DEEP_JSON_VALUE)
+
+    def test_excessively_nested_header_is_skipped_without_disclosing_unknown_scope(self):
+        self.assert_invalid_header_value_is_isolated(DEEP_JSON_VALUE)
 
     def test_parser_value_errors_are_local_but_utf8_decode_errors_propagate(self):
         warnings = session_search.WarningCollector()

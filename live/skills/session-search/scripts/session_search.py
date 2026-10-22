@@ -379,7 +379,7 @@ def read_session_header(handle: BinaryIO) -> dict[str, Any] | None:
     text = handle.readline().decode("utf-8")
     try:
         header = json.loads(text)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):
         return None
     return header if isinstance(header, dict) and header.get("type") == "session" else None
 
@@ -392,7 +392,7 @@ def read_session_entries(
         text = line.decode("utf-8")
         try:
             entry = json.loads(text)
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, RecursionError):
             warnings.add(path, "invalid_json_line")
             continue
         if not isinstance(entry, dict):
