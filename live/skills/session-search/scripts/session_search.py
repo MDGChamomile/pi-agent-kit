@@ -376,9 +376,10 @@ class WarningCollector:
 
 def read_session_header(handle: BinaryIO) -> dict[str, Any] | None:
     """Decode only the header; callers retain their own scope and warning policy."""
+    text = handle.readline().decode("utf-8")
     try:
-        header = json.loads(handle.readline().decode("utf-8"))
-    except (json.JSONDecodeError, TypeError):
+        header = json.loads(text)
+    except (ValueError, TypeError):
         return None
     return header if isinstance(header, dict) and header.get("type") == "session" else None
 
@@ -388,9 +389,10 @@ def read_session_entries(
 ) -> Iterator[dict[str, Any]]:
     """Skip malformed JSON entries; leave I/O and decoding failures to callers."""
     for line in handle:
+        text = line.decode("utf-8")
         try:
-            entry = json.loads(line.decode("utf-8"))
-        except (json.JSONDecodeError, TypeError):
+            entry = json.loads(text)
+        except (ValueError, TypeError):
             warnings.add(path, "invalid_json_line")
             continue
         if not isinstance(entry, dict):
@@ -986,13 +988,20 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     return _aggregate_output(args, time_range, target_cwd, scan, aggregations, warnings)
 
 
+def emit_json(value: Any) -> None:
+    serialized = json.dumps(value, ensure_ascii=False, sort_keys=True)
+    # JSON accepts lone surrogates, but UTF-8 cannot encode them. Keep ordinary
+    # Unicode readable while emitting these code points as valid JSON escapes.
+    print(serialized.encode("utf-8", "backslashreplace").decode("utf-8"))
+
+
 def emit_error(code: str, message: str) -> int:
     output = {
         "status": "error",
         "error": {"code": code, "message": message},
         "results": [],
     }
-    print(json.dumps(output, ensure_ascii=False, sort_keys=True))
+    emit_json(output)
     return 2
 
 
@@ -1005,7 +1014,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         return emit_error("INVALID_ARGUMENT", "Arguments are invalid.")
     except (OSError, RuntimeError):
         return emit_error("SESSION_STORAGE_UNAVAILABLE", "Session storage could not be read.")
-    print(json.dumps(output, ensure_ascii=False, sort_keys=True))
+    emit_json(output)
     return 0
 
 
