@@ -253,6 +253,12 @@ For v2 and v3 sessions, recall follows the parent chain from the last recorded e
 
 A recall window contains a matching message and at most one neighboring text message on each side. Overlapping windows are merged up to five messages. Output is capped at three windows, 300 characters per message, and 6,000 evidence characters overall. Omitted-message counts make gaps visible. Each returned message has a `text_truncated` boolean indicating whether its masked, whitespace-normalized text was shortened for the excerpt; masking alone does not set this flag. The summary's `evidence_truncated` still reports omitted windows or unrepresented matching messages, not shortening within a returned message. Thinking blocks, tool calls, tool results, compaction summaries, and unrelated first or last messages are excluded. First or last messages can still appear when they are naturally adjacent to a match.
 
+### Interpret recalled experience
+
+For troubleshooting questions, the agent should briefly separate the recorded situation, attempts and revised hypotheses, reported outcome, and verification limits where relevant. Missing evidence stays unknown. A past assistant's claim that tests passed is not direct inspection of the tool output: recall deliberately excludes tool results. Historical conclusions do not establish current project facts, justify automatic promotion into persistent rules, or authorize a new action. Checking present-day assumptions is appropriate when asked to apply the experience to current work, not mandatory for a recall-only question.
+
+If a conclusion is missing, newly discovered cause, component, or fix terms can support a fresh find-then-recall within the same project, time, exclusions, and approved disclosure scope. Changed terms cannot use an existing continuation token. A message marked `text_truncated` may omit the outcome even on the final page; report that uncertainty rather than infer success. These interpretation guidelines do not add storage, indexing, or automatic knowledge consolidation.
+
 ### Read more matching windows
 
 Recall returns `next_continuation` when more matching windows remain, or `null` when there are no further windows. If the first page does not answer the question, pass that opaque token to another recall using the same terms and scope:
