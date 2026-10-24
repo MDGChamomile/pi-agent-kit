@@ -337,6 +337,13 @@ From this directory:
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
 ```
 
+The suite includes hand-authored troubleshooting histories for revised hypotheses,
+claimed verification, distant outcomes, and shortened messages. These check helper
+output, not model judgment. See the [behavior evaluation guide](references/behavior-evals.md)
+for the shared fixtures, expected interpretation and consent boundaries, and
+separately authorized baseline comparisons. No live model evaluation is implied
+by an offline pass.
+
 ## License
 
 [MIT](LICENSE). Keep the bundled license notice when copying or redistributing this skill.
