@@ -74,7 +74,8 @@ class RecallExperienceTests(unittest.TestCase):
     def test_final_page_can_hide_outcome_inside_a_shortened_message(self):
         case = CASES["truncated-outcome"]
         initial = self.recall(case["terms"])
-        self.assertNotIn("Confirmed queue binding issue", self.evidence(initial))
+        for term in case["followup_terms"]:
+            self.assertNotIn(term, self.evidence(initial))
         assistant = next(item for window in initial["results"]
                          for item in window["messages"] if item["role"] == "assistant")
         self.assertTrue(assistant["text_truncated"])
