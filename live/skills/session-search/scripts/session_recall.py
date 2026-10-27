@@ -210,7 +210,8 @@ def candidate_sort_key(candidate: Candidate) -> tuple[int, int, datetime, str]:
 
 
 def message_fingerprint(messages: Iterable[RecallMessage]) -> str:
-    # Preserve existing UTF-8 hashes while distinguishing JSON's lone surrogates.
+    # surrogatepass encodes valid text exactly as UTF-8 and JSON's lone surrogates
+    # distinctly instead of raising.
     digest = hashlib.sha256()
     for message in messages:
         encoded = json.dumps(
@@ -300,8 +301,8 @@ def scan_candidates(
         if candidate is not None:
             candidates.append(candidate)
 
-    # Only disclosed, in-scope failures can invalidate an empty result. Unknown
-    # or foreign-project files retain their existing private warning policy.
+    # Only disclosed, in-scope failures can invalidate an empty result. In
+    # current-project searches, failures in unknown or foreign-project files stay private.
     if not candidates and warnings.output(False)["by_kind"].get("unreadable_file", 0):
         raise RecallReadError("read failures prevent verifying an empty recall")
 
@@ -489,7 +490,8 @@ def continuation_scope(
     time_range: session_search.TimeRange, exclusions: frozenset[str],
 ) -> str:
     current = os.environ.get("PI_SESSION_FILE")
-    # Preserve legacy digests when neither new option is used.
+    # Add absolute bounds only for --since/--until, so other scopes keep digests
+    # compatible with earlier continuation tokens.
     absolute_bounds = time_range.view() if args.since is not None or args.until is not None else {}
     return continuation_digest({
         **absolute_bounds,
