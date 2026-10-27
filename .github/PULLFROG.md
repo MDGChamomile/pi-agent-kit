@@ -28,9 +28,9 @@ settings; verify the console and workflow state directly.
   the owner's explicit request; automated replies must not trigger a run merely
   by tagging Pullfrog. Keep mentions from non-collaborators disabled. Code pushes
   stay disabled, so a mention cannot make Pullfrog change the branch. The run uses
-  the console-selected model; a `--model=` flag in the comment was not applied in
-  practice, so check the model named in the review footer before treating a
-  run as another model's opinion.
+  the console-selected model, and a `--model=` flag in the comment may not apply;
+  check the model named in the review footer before treating a run as another
+  model's opinion.
 - Put the instructions below into the console's Review instructions field if
   the owner authorizes console configuration.
 
