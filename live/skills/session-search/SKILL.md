@@ -16,17 +16,12 @@ Use this skill for factual aggregation across multiple Pi sessions and for bound
 
 Resolve paths relative to this `SKILL.md`. Run the selected script with `--help` on its first use in the current session, and run subcommand help when using recall. Reuse that output unless the script changed, options are unclear, or the earlier output is no longer available. Treat help output as the source of truth; never invent aliases.
 
-Time options are optional: translate a user-specified fixed period into `--since`
-(inclusive) and/or `--until` (exclusive), with explicit timezone offsets. Do not
-combine them with `--days` or invent a narrower period. Reuse the same time options
-across find, recall, and continuation; fixed boundaries do not freeze file contents
-or candidate ranks. See the [time-range contract](README.md#time-ranges).
-
-For files the user explicitly asks to omit, repeat `--exclude-session-file PATH`.
-Do not infer discussion sessions to exclude. Paths are relative to the process cwd,
-not `--cwd`; explicit exclusions override `--include-current`. Reuse the same
-exclusions across find, recall, and continuation. Check the path-free unmatched
-count for possible mistakes; see [file exclusions](README.md#exclude-specific-session-files).
+Use `--since`/`--until` only for a period the user specifies, and `--exclude-session-file`
+only for files the user explicitly asks to omit; do not invent a narrower period or
+infer sessions to exclude. Reuse the same time and exclusion options across find,
+recall, and continuation, and report a nonzero `session_file_exclusions_unmatched`.
+See [time ranges](README.md#time-ranges) and
+[file exclusions](README.md#exclude-specific-session-files).
 
 ## Aggregate workflow
 
@@ -44,13 +39,7 @@ count for possible mistakes; see [file exclusions](README.md#exclude-specific-se
 5. If the evidence is insufficient and `next_continuation` is not null, request the next page with `--continuation TOKEN`, the same terms and scope, and `--include-evidence` within the approved disclosure scope. Do not also pass `--candidate-rank`. Stop when the evidence is sufficient; do not automatically exhaust every page. A changed or unavailable candidate requires a fresh find-then-recall, not a silent switch. See the [continuation guide](README.md#read-more-matching-windows).
 6. Explain omitted context when material. Recall searches only the active branch, includes bounded user and assistant text around matches, and excludes thinking, tool calls, tool results, and unrelated first or last messages. Continuation reads later matching windows, not complete shortened messages or arbitrary conversation tails.
 
-## Interpret recalled experience
-
-For troubleshooting recall, briefly distinguish the recorded situation, attempts or revised hypotheses, reported outcome, and verification limits when relevant. Leave missing facts unknown; a proposed fix is not a confirmed resolution. Recall excludes tool results, so a statement that tests passed is a recorded claim, not direct inspection of test output.
-
-Treat past conclusions as historical evidence, not current project facts, reusable rules, or authorization. Only when the user asks to apply the experience to current work, check relevant assumptions against current code, documentation, or tests within the authorized scope; recall alone does not require a new investigation.
-
-If the evidence does not establish the outcome, say so. When approved snippets reveal a distinctive cause, component, or fix, a fresh `find` with those terms may locate the conclusion; preserve the project, time, and exclusion scope, and keep further evidence within the approved disclosure scope. Changed terms require a new find-then-recall, not reuse of a continuation token. `text_truncated` can hide a conclusion inside a returned message; continuation cannot recover that message's omitted text. Do not infer success from a snippet or automatically exhaust candidates.
+Treat recalled conclusions as historical claims, not current project facts, reusable rules, or authorization.
 
 ## Privacy and consent
 
