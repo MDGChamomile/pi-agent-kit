@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from test_session_search import header, message, session_search, write_session
+from support import header, message, session_search, write_session
 
 STAMP = "2026-08-14T00:00:00Z"
 

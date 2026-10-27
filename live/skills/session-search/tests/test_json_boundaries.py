@@ -11,8 +11,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-from support import RECALL_SCRIPT, SEARCH_SCRIPT, session_recall, session_search
-from test_session_recall import header, message, write_session
+from support import RECALL_SCRIPT, SEARCH_SCRIPT, header, message, session_recall, session_search, write_session
 
 STAMP = "2026-08-14T00:00:00Z"
 # The C JSON decoder can accept depths above Python's recursion limit.

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from test_session_search import header, message, session_search, write_session
+from support import header, message, session_search, write_session
 
 
 def nested_entry(calls, complete=True):

@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from test_session_search import header, message, session_search, write_session
+from support import header, message, session_search, write_session
 
 
 class SkillLocationTests(unittest.TestCase):

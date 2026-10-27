@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from test_session_recall import header, message, session_recall, write_session
+from support import header, message, session_recall, write_session
 
 session_search = session_recall.session_search
 

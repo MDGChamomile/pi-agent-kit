@@ -12,27 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import RECALL_SCRIPT as SCRIPT, session_recall
-
-
-def header(session_id: str, cwd: Path, version: int = 3) -> dict:
-    return {
-        "type": "session",
-        "version": version,
-        "id": session_id,
-        "timestamp": "2026-08-01T00:00:00Z",
-        "cwd": str(cwd),
-    }
-
-
-def message(entry_id: str, parent_id: str | None, timestamp: str, role: str, content, **extra) -> dict:
-    return {
-        "type": "message",
-        "id": entry_id,
-        "parentId": parent_id,
-        "timestamp": timestamp,
-        "message": {"role": role, "content": content, **extra},
-    }
+from support import RECALL_SCRIPT as SCRIPT, header, message, session_recall, write_session
 
 
 def entry(entry_type: str, entry_id: str, parent_id: str | None, **extra) -> dict:
@@ -45,12 +25,6 @@ def entry(entry_type: str, entry_id: str, parent_id: str | None, **extra) -> dic
     }
 
 
-def write_session(path: Path, head: dict, entries: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        handle.write(json.dumps(head) + "\n")
-        for item in entries:
-            handle.write(json.dumps(item) + "\n")
 
 
 class SessionRecallTests(unittest.TestCase):

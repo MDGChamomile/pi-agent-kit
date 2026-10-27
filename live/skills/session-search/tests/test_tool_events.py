@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from test_nested_calls import nested_entry
-from test_session_search import header, message, session_search, write_session
+from support import header, message, session_search, write_session
 
 
 class ToolEventTests(unittest.TestCase):

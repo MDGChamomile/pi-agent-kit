@@ -11,7 +11,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import test_session_search as fixtures
-from test_session_search import SCRIPT, fixture_tree, header, message, session_search, write_session
+from support import SEARCH_SCRIPT as SCRIPT, header, message, session_search, write_session
+from test_session_search import fixture_tree
 
 
 class SessionBatchTests(unittest.TestCase):
