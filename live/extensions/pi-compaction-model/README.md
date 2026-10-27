@@ -20,7 +20,7 @@ This is an independently maintained derivative of [JMHSV/pi-compaction-model](ht
 
 Imported from revision `283f0de4fe56d4cc35931e1255e0d3888761426b`, including [upstream PR #1](https://github.com/JMHSV/pi-compaction-model/pull/1): restore cumulative file-operation lists before falling back to Pi's active model. This concerns file lists in compaction summaries, not loss of files on disk.
 
-Kit-specific changes: source-install documentation and private package metadata; aligning the lockfile's peer range with the inherited manifest; and routing summarization through Pi's model registry so custom providers and authentication-header deletions are honored, with offline regression tests. A root `index.ts` re-exports the implementation so Pi's compact extension list shows the containing directory name rather than `src`. The original compaction routing, file-list restoration, tests, and `compactionModel` configuration are retained. This directory is not separately published to npm; `npm:pi-compaction-model` installs the upstream package, not this derivative.
+Kit-specific changes since that revision, such as source-install documentation, private package metadata, and summarization through Pi's model registry, are recorded in this repository's history. A root `index.ts` re-exports the implementation so Pi's compact extension list shows the containing directory name rather than `src`. The `compactionModel` configuration format and file-list restoration are retained. This directory is not separately published to npm; `npm:pi-compaction-model` installs the upstream package, not this derivative.
 
 ## Install from source
 
