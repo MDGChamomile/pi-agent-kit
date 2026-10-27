@@ -162,7 +162,7 @@ Cancellation during a request or retry wait returns `{ cancel: true }` without a
 
 ## Development
 
-From this directory, with Bun 1.3.14:
+From this directory, with the Bun version pinned by `packageManager` in `package.json`:
 
 ```bash
 bun install --frozen-lockfile
