@@ -1,4 +1,5 @@
 import {
+  compact,
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -7,7 +8,6 @@ import {
   loadConfig,
 } from "./config.js";
 import { parseModelReference } from "./model-reference.js";
-import { compactWithOneRetry } from "./retry.js";
 
 import { warn } from "./warnings.js";
 
@@ -118,7 +118,7 @@ export default function compactionModel(pi: ExtensionAPI): void {
         authHeaders,
       );
 
-      const result = await compactWithOneRetry(
+      const result = await compact(
         event.preparation,
         requestModel,
         auth.apiKey,
@@ -128,6 +128,7 @@ export default function compactionModel(pi: ExtensionAPI): void {
         config.thinkingLevel,
         (streamModel, context, options) => ctx.modelRegistry.streamSimple(streamModel, context, options),
         auth.env,
+        settings.getRetrySettings(),
       );
 
       return { compaction: result };
