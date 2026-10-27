@@ -255,9 +255,7 @@ A recall window contains a matching message and at most one neighboring text mes
 
 ### Interpret recalled experience
 
-For troubleshooting questions, the agent should briefly separate the recorded situation, attempts and revised hypotheses, reported outcome, and verification limits where relevant. Missing evidence stays unknown. A past assistant's claim that tests passed is not direct inspection of the tool output: recall deliberately excludes tool results. Historical conclusions do not establish current project facts, justify automatic promotion into persistent rules, or authorize a new action. Checking present-day assumptions is appropriate when asked to apply the experience to current work, not mandatory for a recall-only question.
-
-If a conclusion is missing, newly discovered cause, component, or fix terms can support a fresh find-then-recall within the same project, time, exclusions, and approved disclosure scope. Changed terms cannot use an existing continuation token. A message marked `text_truncated` may omit the outcome even on the final page; report that uncertainty rather than infer success. These interpretation guidelines do not add storage, indexing, or automatic knowledge consolidation.
+Recalled conclusions are historical claims, not current project facts, reusable rules, or authorization for a new action. Because recall excludes tool results, a past assistant's claim that tests passed is not direct inspection of the test output. A message marked `text_truncated` may omit the outcome even on the final page. When a conclusion is missing, terms from the approved evidence can support a fresh find-then-recall within the same project, time, exclusions, and disclosure scope; changed terms cannot use an existing continuation token.
 
 ### Read more matching windows
 

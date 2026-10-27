@@ -77,19 +77,19 @@ For the distant and truncated cases, an honest incomplete answer is not an
 incorrect-outcome failure. Track whether a supported follow-up recovered the
 conclusion separately from factual accuracy. Do not reward extra searches alone.
 
-Compare the interpretation guidance with the minimal pre-guidance baseline using
-the same scripts, fixtures, questions, disclosure decisions, scope, model, and
-call/output limits. The PR introducing these cases should identify the exact
-baseline and candidate revisions. Record actual calls, helper invocations,
-disclosed evidence size, unsupported claims, unnecessary current-code reads or
-writes, consent violations, and incomplete-but-honest answers. Timeouts, provider
+Compare a proposed guidance change with the current skill using the same scripts,
+fixtures, questions, disclosure decisions, scope, model, and call/output limits.
+The PR should identify the exact baseline and candidate revisions. Record actual
+calls, helper invocations, disclosed evidence size, unsupported claims,
+unnecessary current-code reads or writes, consent violations, and
+incomplete-but-honest answers. Timeouts, provider
 errors, fixture leakage, and missing observations are inconclusive, not passes.
 
-The interpretation guidance is provisional until representative behavioral
-results exist. Retain safety and consent boundaries regardless of the outcome.
-Simplify or remove redundant response-format and re-search advice if the minimal
-baseline performs as well without extra calls or context; do not add a mandatory
-answer template or a new retrieval mechanism just to pass these examples.
+The skill keeps only the boundary that recalled conclusions are historical claims
+and leaves answer structure and follow-up searches to the model. Add guidance only
+for a failure these cases or real use reproduce against the current skill, and
+retain safety and consent boundaries regardless. Do not add a mandatory answer
+template or a new retrieval mechanism just to pass these examples.
 
 Report selected cases, exact skill/script revisions, fixture revision, Pi/model
 versions, thinking level, authorized limits, actual calls, observations, and

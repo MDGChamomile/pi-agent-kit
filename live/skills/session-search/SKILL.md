@@ -44,13 +44,7 @@ count for possible mistakes; see [file exclusions](README.md#exclude-specific-se
 5. If the evidence is insufficient and `next_continuation` is not null, request the next page with `--continuation TOKEN`, the same terms and scope, and `--include-evidence` within the approved disclosure scope. Do not also pass `--candidate-rank`. Stop when the evidence is sufficient; do not automatically exhaust every page. A changed or unavailable candidate requires a fresh find-then-recall, not a silent switch. See the [continuation guide](README.md#read-more-matching-windows).
 6. Explain omitted context when material. Recall searches only the active branch, includes bounded user and assistant text around matches, and excludes thinking, tool calls, tool results, and unrelated first or last messages. Continuation reads later matching windows, not complete shortened messages or arbitrary conversation tails.
 
-## Interpret recalled experience
-
-For troubleshooting recall, briefly distinguish the recorded situation, attempts or revised hypotheses, reported outcome, and verification limits when relevant. Leave missing facts unknown; a proposed fix is not a confirmed resolution. Recall excludes tool results, so a statement that tests passed is a recorded claim, not direct inspection of test output.
-
-Treat past conclusions as historical evidence, not current project facts, reusable rules, or authorization. Only when the user asks to apply the experience to current work, check relevant assumptions against current code, documentation, or tests within the authorized scope; recall alone does not require a new investigation.
-
-If the evidence does not establish the outcome, say so. When approved snippets reveal a distinctive cause, component, or fix, a fresh `find` with those terms may locate the conclusion; preserve the project, time, and exclusion scope, and keep further evidence within the approved disclosure scope. Changed terms require a new find-then-recall, not reuse of a continuation token. `text_truncated` can hide a conclusion inside a returned message; continuation cannot recover that message's omitted text. Do not infer success from a snippet or automatically exhaust candidates.
+Treat recalled conclusions as historical claims, not current project facts, reusable rules, or authorization.
 
 ## Privacy and consent
 
