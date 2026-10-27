@@ -18,7 +18,7 @@ function expandHome(value, home) {
 export async function resolveRecordsRoot(projectPath, { explicitRoot, env = process.env, home = homedir() } = {}) {
   if (explicitRoot !== undefined) {
     if (!explicitRoot) throw new Error("explicit records root must not be empty");
-    // Preserve the existing contract: a run-specific root is used directly.
+    // An explicit root is run-specific: use it directly, without a per-project subdirectory.
     return resolve(expandHome(explicitRoot, home));
   }
 
