@@ -18,7 +18,7 @@ The GIF replays actual terminal output with typing and waits accelerated; model 
 - Searches only sessions whose recorded working directory exactly matches the current directory by default.
 - Excludes the active session by default when `PI_SESSION_FILE` is set.
 - Returns a path-free aggregate summary or path-free recall candidate list by default.
-- Searches only the active branch for recall; existing aggregate semantics remain unchanged.
+- Searches only the active branch for recall; aggregate search scans every recorded branch.
 - Returns bounded, best-effort-masked evidence only with `--include-evidence`.
 - Excludes thinking, tool calls, tool results, and unrelated session bookends from recall evidence.
 - Uses only the Python standard library and makes no network requests.
@@ -92,14 +92,13 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
 ```
 
 Do not combine either boundary with `--days`. Invalid time options fail with
-path-free `INVALID_ARGUMENT` before session discovery. `--days` retains its
-existing lower-bound-only behavior, including future records. `scope.since`
-and `scope.until` report the actual UTC boundaries (or null), including the
-computed lower bound for `--days`; the existing `scope.days` remains available.
-With any time bound, missing or invalid record timestamps are excluded. Without
-time options they retain their existing behavior. Historical records without a
-timezone still use the existing UTC interpretation; the stricter syntax applies
-only to CLI boundaries.
+path-free `INVALID_ARGUMENT` before session discovery. `--days` sets only a
+lower bound, so future records are included. `scope.since` and `scope.until`
+report the actual UTC boundaries (or null), including the computed lower bound
+for `--days`; `scope.days` reports the `--days` value. With any time bound,
+missing or invalid record timestamps are excluded; without time options they
+are included. Record timestamps without a timezone are read as UTC; the strict
+syntax applies only to CLI boundaries.
 
 Filtering uses entry timestamps, not session headers or filesystem dates. Full
 branch ancestry and earlier skill-identity/tool-call relationships are retained
@@ -152,7 +151,7 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py find \
   --exclude-session-file /path/to/session-store/duplicate.jsonl
 ```
 
-Paths are expanded and resolved with the existing `normalized_path` rules
+Paths are expanded and resolved with the helpers' `normalized_path` rules
 (`Path.expanduser().resolve(strict=False)`), including `~` and known `~user`
 homes. Relative paths use the process working directory, **not** `--cwd`.
 Duplicates and symlink aliases share one normalized exclusion. Matching uses
@@ -160,8 +159,8 @@ exact normalized path strings, not session IDs, inode identity, directory
 prefixes, globs, or additional case folding. Separate copies and hard links
 remain eligible unless their own paths are excluded.
 
-Automatic current-session exclusion is unchanged. `--include-current` disables
-only that automatic exclusion; explicit exclusions still apply. Empty paths,
+`--include-current` disables only the automatic current-session exclusion;
+explicit exclusions still apply. Empty paths,
 NUL-containing paths, and normalization failures return path-free
 `INVALID_ARGUMENT` before discovery. Missing paths, directories, and targets
 not discovered within the selected roots are unmatched, not storage errors.
@@ -226,8 +225,8 @@ Do not combine batch filters with `--include-evidence` or the individual
 `--query`, `--role`, `--tool`, `--skill`, or `--error` flags. `--summary-only` is
 accepted, while `--limit` has no effect on summary output. For evidence, obtain
 the normal disclosure approval and run a bounded single-filter search. Batch
-summaries do not expand the evidence-consent boundary or the existing aggregate
-branch semantics.
+summaries keep the same evidence-consent boundary and aggregate branch semantics
+as a single search.
 
 ## Prior-session recall
 
@@ -266,7 +265,7 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py recall \
   --term authentication --term cache --continuation '<next_continuation>' --include-evidence
 ```
 
-Do not combine `--continuation` with `--candidate-rank`. Initial recall still selects the current rank; continuation stays with the same active-branch conversation even if another session takes that rank. A changed, removed, or moved candidate returns `CANDIDATE_NOT_FOUND`, rather than silently switching sessions. Re-run `find` and start a new ranked recall if needed. Scope or term changes and malformed tokens return `INVALID_ARGUMENT`. With `--days`, the original time cutoff is retained across pages. Absolute boundaries must also be reused: changing a boundary is rejected before scanning, while equivalent timezone offsets are accepted. Tokens created without absolute boundaries keep their existing scope contract.
+Do not combine `--continuation` with `--candidate-rank`. Initial recall still selects the current rank; continuation stays with the same active-branch conversation even if another session takes that rank. A changed, removed, or moved candidate returns `CANDIDATE_NOT_FOUND`, rather than silently switching sessions. Re-run `find` and start a new ranked recall if needed. Scope or term changes and malformed tokens return `INVALID_ARGUMENT`. With `--days`, the original time cutoff is retained across pages. Absolute boundaries must also be reused: changing a boundary is rejected before scanning, while equivalent timezone offsets are accepted.
 
 Each page keeps the same three-window, five-message-per-window, 300-character-per-message, and total evidence limits and masking. The summary counts describe that page; `matching_messages` still counts all eligible matches. `evidence_truncated` can remain true on the final page because other matches were returned on earlier pages. Use `next_continuation`, not that flag, to determine whether another page exists. Continuation exposes later matching windows, not the full text of shortened messages or arbitrary non-matching conversation tails.
 
@@ -293,13 +292,13 @@ In `summary`, `tool_errors` counts matching error events per tool; `tool_error_s
 
 Without `--all-projects`, warnings cover only files whose header confirms the selected cwd. As in recall, files with an unreadable header or a different project are skipped without a warning count or path; use `--all-projects` to include their warnings, for example when checking for damaged session files.
 
-Malformed JSON rows, including Python integer-conversion and nesting-depth limit failures, are skipped with `invalid_json_line`; an unparseable header is skipped under the scope policy above. These stored-data failures do not become `INVALID_ARGUMENT`. Recall still validates the surviving branch. Escaped lone surrogates remain searchable and are emitted as JSON `\uXXXX` escapes, while ordinary Unicode stays readable. Valid-Unicode recall fingerprints and continuation digests are unchanged. Actual UTF-8 decoding failures retain the existing unreadable-file behavior.
+Malformed JSON rows, including Python integer-conversion and nesting-depth limit failures, are skipped with `invalid_json_line`; an unparseable header is skipped under the scope policy above. These stored-data failures do not become `INVALID_ARGUMENT`. Recall still validates the surviving branch. Escaped lone surrogates remain searchable and are emitted as JSON `\uXXXX` escapes, while ordinary Unicode stays readable. Actual UTF-8 decoding failures are reported as `unreadable_file`.
 
 If an individual file fails during reading, aggregate search keeps the events already read, counts that matching file once, and reports `unreadable_file`. These are partial counts, not a complete-file result. Evidence from that file has `on_latest_leaf: null` (unknown), rather than a claim about the latest branch. Files that finish reading retain boolean branch membership for valid IDs. In v2/v3, non-string or missing entry IDs produce `invalid_entry_id`; their events remain searchable, but their branch membership is also `null`. Legacy v1 remains linear and does not require entry IDs.
 
-In `summary`, `evidence_omitted` distinguishes the safe default from `evidence_truncated`; `truncated` remains a compatibility alias for evidence truncation.
+In `summary`, `evidence_omitted` distinguishes the safe default from `evidence_truncated`; `truncated` is an alias of `evidence_truncated`.
 
-`--summary-only` remains as an explicit alias for the safe default. `--include-evidence` is mutually exclusive with it. A direct skill invocation is counted only for a user message matching Pi's complete skill envelope; this means the recorded message matches Pi's invocation envelope, not that provenance can be distinguished from identical XML pasted manually. Direct calls are reported separately from `SKILL.md` read attempts, successes, and errors. Reads of `SKILL.md` are recognized at any installation location, not only below a directory named `skills`. Relative read paths use the session's recorded cwd; both slash styles are recognized. The containing directory supplies the fallback name. When a prior complete user skill envelope records a name and location in the read's ancestry (v2/v3), that name is used for the read, even if it differs from the directory name. Sibling branches do not share identity observations. Legacy v1 uses prior envelopes in linear file order; missing parent history in v2/v3 supplies no identity. Identity observations before a time filter still apply to later matching reads; tool results retain the identity assigned to their original call. Results use the nearest matching call on their parent chain in v2/v3, or the latest matching call in linear v1 records. Reused IDs on sibling branches stay separate, and a non-skill call with the same ID shadows an earlier skill read.
+`--summary-only` explicitly selects the safe default. `--include-evidence` is mutually exclusive with it. A direct skill invocation is counted only for a user message matching Pi's complete skill envelope; this means the recorded message matches Pi's invocation envelope, not that provenance can be distinguished from identical XML pasted manually. Direct calls are reported separately from `SKILL.md` read attempts, successes, and errors. Reads of `SKILL.md` are recognized at any installation location, not only below a directory named `skills`. Relative read paths use the session's recorded cwd; both slash styles are recognized. The containing directory supplies the fallback name. When a prior complete user skill envelope records a name and location in the read's ancestry (v2/v3), that name is used for the read, even if it differs from the directory name. Sibling branches do not share identity observations. Legacy v1 uses prior envelopes in linear file order; missing parent history in v2/v3 supplies no identity. Identity observations before a time filter still apply to later matching reads; tool results retain the identity assigned to their original call. Results use the nearest matching call on their parent chain in v2/v3, or the latest matching call in linear v1 records. Reused IDs on sibling branches stay separate, and a non-skill call with the same ID shadows an earlier skill read.
 
 The helper never opens today's skill files to infer historical names. It does not resolve historical symlinks, renamed paths, `~` home aliases, or retroactively rename earlier reads. Without a prior recorded envelope, a declared frontmatter name that differs from the directory cannot be inferred; the fallback name is a path-based read classification, not proof that Pi loaded a valid skill. A bare `SKILL.md` without a recorded cwd or known envelope cannot be named. The legacy `skill_file_reads` counter remains an alias for attempts. Reading instructions, quoting partial XML, or mentioning a skill is not evidence that the skill was invoked.
 
@@ -315,7 +314,7 @@ calling tool remains a separate event, not another copy of the inner call.
 Pi bounds these records and does not store inner results. Missing arguments
 cannot identify a skill read, and omitted calls cannot be recovered. Records
 with `complete: false` produce an `incomplete_nested_calls` warning, so their
-counts must not be treated as complete. Inner error text follows the existing
+counts must not be treated as complete. Inner error text follows the same
 opt-in evidence and masking rules. Recall still excludes tool results.
 
 ## Known limitations

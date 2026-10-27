@@ -529,7 +529,7 @@ def build_parser() -> argparse.ArgumentParser:
     evidence.add_argument(
         "--summary-only",
         action="store_true",
-        help="explicitly select the path-free summary output (the default; retained for compatibility)",
+        help="explicitly select the path-free summary output (the default)",
     )
     return parser
 
