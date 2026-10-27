@@ -8,7 +8,7 @@ Read [`SKILL.md`](SKILL.md) for the executable agent workflow. Use Pi's built-in
 
 A real Pi run recalls a retry diagnosis from three hand-authored synthetic sessions: find path-free candidates, approve disclosure of bounded snippets, then explain the recorded decision and its limits. No personal session history is used.
 
-![Session-search showing candidate metadata, requesting evidence-disclosure approval, and explaining a prior retry decision](https://raw.githubusercontent.com/MDGChamomile/pi-agent-kit/updates/docs/assets/session-search-demo.gif)
+![Session-search showing candidate metadata, requesting evidence-disclosure approval, and explaining a prior retry decision](https://raw.githubusercontent.com/MDGChamomile/pi-agent-kit/4d061492b34caa5ead7fc7b32d144b0b1052e9f5/docs/assets/session-search-demo.gif)
 
 The GIF replays actual terminal output with typing and waits accelerated; model responses and helper results are not scripted. The demonstration uses `pi-ask-user` for the consent prompt and an isolated session directory. It shows the recall workflow, not a search-quality or latency benchmark.
 

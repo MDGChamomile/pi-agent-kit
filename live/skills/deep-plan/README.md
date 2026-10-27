@@ -6,7 +6,7 @@ An explicitly invoked [Pi](https://github.com/earendil-works/pi) skill for turni
 
 A real Pi run on **Parcel Dashboard**, a synthetic shipping dashboard: clarify CSV export scope, resolve the missing UI boundary, confirm the shared understanding, then create `PLAN.md` without implementing the feature.
 
-![Deep-plan asking about CSV export scope, confirming the plan-only boundary, and creating an execution record](https://raw.githubusercontent.com/MDGChamomile/pi-agent-kit/updates/docs/assets/deep-plan-demo.gif)
+![Deep-plan asking about CSV export scope, confirming the plan-only boundary, and creating an execution record](https://raw.githubusercontent.com/MDGChamomile/pi-agent-kit/4d061492b34caa5ead7fc7b32d144b0b1052e9f5/docs/assets/deep-plan-demo.gif)
 
 The GIF replays actual terminal output with typing and waits accelerated; model responses and tool results are not scripted. The fixture is not a Git repository, so its Git-status check fails visibly; the agent records that limitation and completes the plan. This is a workflow demonstration, not a measure of planning quality or latency.
 
