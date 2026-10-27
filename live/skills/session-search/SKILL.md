@@ -19,7 +19,8 @@ Resolve paths relative to this `SKILL.md`. Run the selected script with `--help`
 Use `--since`/`--until` only for a period the user specifies, and `--exclude-session-file`
 only for files the user explicitly asks to omit; do not invent a narrower period or
 infer sessions to exclude. Reuse the same time and exclusion options across find,
-recall, and continuation. See [time ranges](README.md#time-ranges) and
+recall, and continuation, and report a nonzero `session_file_exclusions_unmatched`.
+See [time ranges](README.md#time-ranges) and
 [file exclusions](README.md#exclude-specific-session-files).
 
 ## Aggregate workflow
