@@ -490,12 +490,9 @@ def continuation_scope(
     time_range: session_search.TimeRange, exclusions: frozenset[str],
 ) -> str:
     current = os.environ.get("PI_SESSION_FILE")
-    # Add absolute bounds only for --since/--until, so other scopes keep digests
-    # compatible with earlier continuation tokens.
-    absolute_bounds = time_range.view() if args.since is not None or args.until is not None else {}
     return continuation_digest({
-        **absolute_bounds,
-        **({"excluded_session_files": sorted(exclusions)} if exclusions else {}),
+        **time_range.view(),
+        "excluded_session_files": sorted(exclusions),
         "roots": sorted({session_search.normalized_path(root) for root in
                          [args.sessions_root, *args.additional_sessions_root]}),
         "cwd": None if args.all_projects else session_search.normalized_path(args.cwd),
