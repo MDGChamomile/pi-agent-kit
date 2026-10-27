@@ -102,7 +102,7 @@ with an authorized task is not appropriate.
 
 Use the smallest relevant set of checks. For prose-only changes, review examples, relative links, and consistency with the source; do not make model calls just to validate wording. Run the skill metadata check for `SKILL.md` changes. For behavior changes, add a regression test and run the affected resource's offline suite. Pi Subagent and Pi Jev changes belong in their independent repositories; use the verification instructions there.
 
-The commands below match the relevant `live-validation` entry points. Python checks need Python 3.10+. JavaScript checks use Node.js 22.22+ unless noted. Install development dependencies only when needed; those installation commands may access package registries.
+The commands below match the relevant `live-validation` entry points. Python checks need Python 3.10+; CI also runs the session-search suite on the latest stable Python. JavaScript checks use Node.js 22.22+ unless noted. Install development dependencies only when needed; those installation commands may access package registries.
 
 | Changed area | Working directory | Setup | Offline verification |
 | --- | --- | --- | --- |

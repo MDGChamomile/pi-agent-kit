@@ -650,7 +650,7 @@ def add_time_arguments(parser: argparse.ArgumentParser) -> None:
 def parse_time_boundary(value: str) -> datetime:
     # Keep CLI validation separate from the permissive historical-record parser.
     match = re.fullmatch(
-        r"([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})"
+        r"([0-9]{4}-[0-9]{2}-[0-9]{2}T(?:[01][0-9]|2[0-3]):[0-9]{2}:[0-9]{2})"
         r"(?:\.([0-9]{1,6}))?(Z|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])", value,
     )
     if match is None:

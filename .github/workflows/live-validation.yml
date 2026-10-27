@@ -23,6 +23,14 @@ jobs:
       - name: Validate session-search
         working-directory: live/skills/session-search
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
+      - id: latest-python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+          update-environment: false
+      - name: Validate session-search on the latest stable Python
+        working-directory: live/skills/session-search
+        run: PYTHONDONTWRITEBYTECODE=1 "${{ steps.latest-python.outputs.python-path }}" -m unittest discover -s tests -v
       - name: Validate deep-plan publication
         run: set -- live/skills/deep-plan/scripts/*.test.mjs; test -f "$1" && node --test "$@"
       - name: Validate skill frontmatter and maintained Markdown links
