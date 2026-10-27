@@ -47,13 +47,13 @@ Add `compactionModel` to `~/.pi/agent/settings.json`:
 ```json
 {
   "compactionModel": {
-    "model": "openai-codex/gpt-5.6-terra",
+    "model": "provider/summary-model",
     "thinkingLevel": "medium"
   }
 }
 ```
 
-`model` must be a model known to Pi in `provider/model` form. Summarization uses Pi's model-registry stream path, including extension-registered providers and provider-specific authentication.
+`model` must be a model known to Pi in `provider/model` form; `pi --list-models` shows the available IDs. Summarization uses Pi's model-registry stream path, including extension-registered providers and provider-specific authentication.
 
 Supported thinking levels are:
 
@@ -76,7 +76,7 @@ Use `reasons` to handle only a subset:
 ```json
 {
   "compactionModel": {
-    "model": "google/gemini-2.5-flash",
+    "model": "provider/fast-model",
     "thinkingLevel": "low",
     "reasons": ["threshold", "overflow"]
   }
@@ -92,7 +92,7 @@ A trusted project's `.pi/settings.json` can override individual global fields:
 ```json
 {
   "compactionModel": {
-    "model": "anthropic/claude-sonnet-4-5"
+    "model": "provider/project-model"
   }
 }
 ```
@@ -111,7 +111,7 @@ For example, to use Smart Compact manually and this extension only for automatic
     "autoTrigger": false
   },
   "compactionModel": {
-    "model": "openai-codex/gpt-5.6-terra",
+    "model": "provider/summary-model",
     "thinkingLevel": "medium",
     "reasons": ["threshold", "overflow"]
   }
