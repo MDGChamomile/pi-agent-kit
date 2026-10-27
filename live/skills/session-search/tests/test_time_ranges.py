@@ -1,7 +1,6 @@
 """Absolute time bounds share one UTC range across search and recall."""
 from __future__ import annotations
 
-import base64
 import io
 import json
 import os
@@ -12,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from test_session_recall import header, message, session_recall, write_session
+from support import header, message, session_recall, write_session
 
 session_search = session_recall.session_search
 
@@ -185,18 +184,11 @@ class TimeRangeTests(unittest.TestCase):
                     self.output("recall", *options, "--continuation", first["next_continuation"])
                 scan.assert_not_called()
 
-    def test_legacy_digest_and_days_reference_remain_compatible(self):
+    def test_continuation_keeps_the_original_days_reference(self):
         self.paged()
-        for options, days in (([], None), (["--days", "6"], 6.0)):
+        for options in ([], ["--days", "6"]):
             first = self.output("recall", *options)
             token = first["next_continuation"]
-            cursor = json.loads(base64.urlsafe_b64decode(token))
-            old_scope = session_recall.continuation_digest({
-                "roots": [str(self.root.resolve())], "cwd": str(self.root.resolve()), "all_projects": False,
-                "include_current": False, "excluded_current": None, "days": days, "terms": ["needle"],
-                "reference_time": self.NOW.isoformat(),
-            })
-            self.assertEqual(cursor[2], old_scope)
             second = self.output("recall", *options, "--continuation", token, now=self.NOW + timedelta(days=30))
             self.assertEqual(first["scope"], second["scope"])
 

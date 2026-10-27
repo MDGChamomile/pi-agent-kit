@@ -187,7 +187,6 @@ Reuse the same exclusions for find, recall, and continuation. Continuation binds
 the normalized requested set, including unmatched paths. Changes are rejected
 before scanning; order, duplicates, and equivalent aliases do not matter.
 Relative paths must still resolve to the same targets on later invocations.
-Tokens created without explicit exclusions keep their previous scope digest.
 
 ## Batch summaries
 
@@ -268,7 +267,7 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py recall \
   --term authentication --term cache --continuation '<next_continuation>' --include-evidence
 ```
 
-Do not combine `--continuation` with `--candidate-rank`. Initial recall still selects the current rank; continuation stays with the same active-branch conversation even if another session takes that rank. A changed, removed, or moved candidate returns `CANDIDATE_NOT_FOUND`, rather than silently switching sessions. Re-run `find` and start a new ranked recall if needed. Scope or term changes and malformed tokens return `INVALID_ARGUMENT`. With `--days`, the original time cutoff is retained across pages. Absolute boundaries must also be reused: changing a boundary is rejected before scanning, while equivalent timezone offsets are accepted. Tokens created without absolute boundaries keep their existing scope contract.
+Do not combine `--continuation` with `--candidate-rank`. Initial recall still selects the current rank; continuation stays with the same active-branch conversation even if another session takes that rank. A changed, removed, or moved candidate returns `CANDIDATE_NOT_FOUND`, rather than silently switching sessions. Re-run `find` and start a new ranked recall if needed. Scope or term changes and malformed tokens return `INVALID_ARGUMENT`. With `--days`, the original time cutoff is retained across pages. Absolute boundaries must also be reused: changing a boundary is rejected before scanning, while equivalent timezone offsets are accepted.
 
 Each page keeps the same three-window, five-message-per-window, 300-character-per-message, and total evidence limits and masking. The summary counts describe that page; `matching_messages` still counts all eligible matches. `evidence_truncated` can remain true on the final page because other matches were returned on earlier pages. Use `next_continuation`, not that flag, to determine whether another page exists. Continuation exposes later matching windows, not the full text of shortened messages or arbitrary non-matching conversation tails.
 
