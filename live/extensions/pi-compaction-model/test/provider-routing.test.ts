@@ -1,12 +1,15 @@
 import { afterEach, beforeAll, beforeEach, expect, mock, test } from "bun:test";
 import { ModelRegistry, ModelRuntime, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { createAssistantMessageEventStream, type AssistantMessage, type CredentialStore } from "@earendil-works/pi-ai";
+import {
+  createAssistantMessageEventStream, type AssistantMessage, type CredentialStore, type RetryPolicy,
+} from "@earendil-works/pi-ai";
 
 // Keep compact(), authentication resolution and provider dispatch real. Only
 // settings and the final transport are synthetic; no credentials are read.
 let reference: string;
+let retry: RetryPolicy;
 mock.module("../src/config.js", () => ({
-  createSettings: () => ({}),
+  createSettings: () => ({ getRetrySettings: () => retry }),
   isInstallTelemetryEnabled: () => false,
   loadConfig: () => ({ model: reference, reasons: ["manual"] }),
 }));
@@ -20,6 +23,7 @@ let requests: Array<{ url: string; headers: Headers }>;
 beforeEach(() => {
   originalEnv = envNames.map(name => process.env[name]);
   for (const name of envNames) delete process.env[name];
+  retry = { enabled: true, maxRetries: 3, baseDelayMs: 1 };
   requests = [];
   globalThis.fetch = Object.assign(mock(async (input: string | URL | Request, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : String(input);
@@ -70,7 +74,8 @@ async function runHook(registry: ModelRegistry, model: string) {
   return { result, notify, signal };
 }
 
-test("real compaction dispatches to an extension-registered custom API", async () => {
+/** Register a custom API whose responses fail with `failures` error messages before succeeding. */
+async function syntheticSummaryProvider(failures: string[] = []) {
   const models = await runtime();
   const signals: Array<AbortSignal | undefined> = [];
   models.registerProvider("synthetic-compaction", {
@@ -78,24 +83,58 @@ test("real compaction dispatches to an extension-registered custom API", async (
     models: [{ id: "summary", name: "Synthetic summary", reasoning: false, input: ["text"],
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 100000, maxTokens: 1000 }],
     streamSimple(model, _context, options) {
+      const errorMessage = failures[signals.length];
       signals.push(options?.signal);
       const stream = createAssistantMessageEventStream();
       const message: AssistantMessage = {
-        role: "assistant", content: [{ type: "text", text: "Synthetic summary" }],
-        model: model.id, provider: model.provider, api: model.api, stopReason: "stop", timestamp: 0,
+        role: "assistant", content: errorMessage ? [] : [{ type: "text", text: "Synthetic summary" }],
+        model: model.id, provider: model.provider, api: model.api, timestamp: 0,
+        stopReason: errorMessage ? "error" : "stop", errorMessage,
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
       };
-      stream.push({ type: "done", reason: "stop", message });
+      stream.push(errorMessage
+        ? { type: "error", reason: "error", error: message }
+        : { type: "done", reason: "stop", message });
       stream.end(message);
       return stream;
     },
   });
-  const { result, notify, signal } = await runHook(new ModelRegistry(models), "synthetic-compaction/summary");
+  return { registry: new ModelRegistry(models), signals };
+}
+
+test("real compaction dispatches to an extension-registered custom API", async () => {
+  const { registry, signals } = await syntheticSummaryProvider();
+  const { result, notify, signal } = await runHook(registry, "synthetic-compaction/summary");
   expect(result?.compaction.summary).toContain("Synthetic summary");
   expect(signals).toEqual([signal]);
   expect(notify).not.toHaveBeenCalled();
   expect(requests).toHaveLength(0);
+});
+
+for (const enabled of [true, false]) {
+  test(`real compaction follows Pi retry settings for a transient failure: enabled=${enabled}`, async () => {
+    retry = { enabled, maxRetries: 1, baseDelayMs: 1 };
+    const { registry, signals } = await syntheticSummaryProvider(["503 Service Unavailable"]);
+    const { result, notify } = await runHook(registry, "synthetic-compaction/summary");
+    if (enabled) {
+      expect(result?.compaction.summary).toContain("Synthetic summary");
+      expect(notify).not.toHaveBeenCalled();
+    } else {
+      expect(result).toBeUndefined();
+      expect(notify).toHaveBeenCalledTimes(1);
+    }
+    expect(signals).toHaveLength(enabled ? 2 : 1);
+  });
+}
+
+test("real compaction falls back after Pi's retry budget is exhausted", async () => {
+  retry = { enabled: true, maxRetries: 1, baseDelayMs: 1 };
+  const { registry, signals } = await syntheticSummaryProvider(["503 Service Unavailable", "503 Service Unavailable"]);
+  const { result, notify } = await runHook(registry, "synthetic-compaction/summary");
+  expect(result).toBeUndefined();
+  expect(notify).toHaveBeenCalledTimes(1);
+  expect(signals).toHaveLength(2);
 });
 
 for (const [source, api] of [
