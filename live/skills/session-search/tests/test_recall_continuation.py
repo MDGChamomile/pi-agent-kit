@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import header, message, session_recall, write_session
+from support import header, message, session_common, session_recall, write_session
 
 
 class RecallContinuationTests(unittest.TestCase):
@@ -229,7 +229,7 @@ class RecallContinuationTests(unittest.TestCase):
         token = self.token()
         for options in (["--continuation", token],
                         ["--continuation", token, "--candidate-rank", "2", "--include-evidence"]):
-            with self.subTest(options=options), self.assertRaises(session_recall.session_search.InvalidArgumentError):
+            with self.subTest(options=options), self.assertRaises(session_common.InvalidArgumentError):
                 session_recall.build_parser().parse_args(["recall", "--term", "needle", *options])
 
     def test_continuation_works_across_processes_without_writing_state(self):

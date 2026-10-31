@@ -11,9 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import header, message, session_recall, write_session
-
-session_search = session_recall.session_search
+from support import header, message, session_common, session_recall, session_search, write_session
 
 
 class FileExclusionTests(unittest.TestCase):
@@ -176,7 +174,7 @@ class FileExclusionTests(unittest.TestCase):
             for mode in ("aggregate", "find", "recall"):
                 stdout = io.StringIO()
                 main = session_search.main if mode == "aggregate" else session_recall.main
-                with patch.object(session_search, "discover_session_files") as discover, redirect_stdout(stdout):
+                with patch.object(session_common, "discover_session_files") as discover, redirect_stdout(stdout):
                     code = main(self.argv(mode, *self.exclusions(value)))
                 self.assertEqual(code, 2)
                 self.assertEqual(json.loads(stdout.getvalue())["error"]["code"], "INVALID_ARGUMENT")
@@ -188,8 +186,8 @@ class FileExclusionTests(unittest.TestCase):
             for mode in ("aggregate", "find", "recall"):
                 stdout = io.StringIO()
                 main = session_search.main if mode == "aggregate" else session_recall.main
-                with patch.object(session_search, "normalized_path", side_effect=failure("private-secret")), \
-                     patch.object(session_search, "discover_session_files") as discover, redirect_stdout(stdout):
+                with patch.object(session_common, "normalized_path", side_effect=failure("private-secret")), \
+                     patch.object(session_common, "discover_session_files") as discover, redirect_stdout(stdout):
                     code = main(self.argv(mode, *self.exclusions("private-secret.jsonl")))
                 self.assertEqual(code, 2)
                 self.assertEqual(json.loads(stdout.getvalue())["error"]["code"], "INVALID_ARGUMENT")
@@ -205,7 +203,7 @@ class FileExclusionTests(unittest.TestCase):
         options = self.exclusions(other, missing)
         first = self.output("recall", *options)
         token = first["next_continuation"]
-        with patch.object(session_search, "normalized_exclusions", wraps=session_search.normalized_exclusions) as normalize:
+        with patch.object(session_common, "normalized_exclusions", wraps=session_common.normalized_exclusions) as normalize:
             second = self.output("recall", *self.exclusions(missing, alias, other), "--continuation", token)
         normalize.assert_called_once()
         self.assert_counts(second, 2, 1, 1)
@@ -223,7 +221,7 @@ class FileExclusionTests(unittest.TestCase):
 
     def test_tilde_expansion_uses_existing_normalized_path_contract(self):
         with patch.dict(os.environ, {"HOME": str(self.base)}):
-            self.assertEqual(session_search.normalized_exclusions(["~/sessions/original.jsonl"]),
+            self.assertEqual(session_common.normalized_exclusions(["~/sessions/original.jsonl"]),
                              frozenset({str(self.path.resolve())}))
 
 

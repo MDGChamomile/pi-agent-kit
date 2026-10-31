@@ -11,9 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import header, message, session_recall, write_session
-
-session_search = session_recall.session_search
+from support import header, message, session_common, session_recall, session_search, write_session
 
 
 class TimeRangeTests(unittest.TestCase):
@@ -106,7 +104,7 @@ class TimeRangeTests(unittest.TestCase):
                         argv.append("--include-evidence")
                     stdout = io.StringIO()
                     main = session_search.main if mode == "aggregate" else session_recall.main
-                    with patch.object(session_search, "discover_session_files") as discover, redirect_stdout(stdout):
+                    with patch.object(session_common, "discover_session_files") as discover, redirect_stdout(stdout):
                         self.assertEqual(main([*argv, *options]), 2)
                     discover.assert_not_called()
                     result = json.loads(stdout.getvalue())
@@ -165,7 +163,7 @@ class TimeRangeTests(unittest.TestCase):
 
     def test_range_computed_once_and_reused_for_candidate_reread(self):
         self.paged()
-        with patch.object(session_search, "time_range_for_args", wraps=session_search.time_range_for_args) as bounds:
+        with patch.object(session_common, "time_range_for_args", wraps=session_common.time_range_for_args) as bounds:
             result = self.output("recall", "--since", self.START, "--until", self.END)
         bounds.assert_called_once()
         self.assertEqual(result["summary"]["matching_messages"], 40)

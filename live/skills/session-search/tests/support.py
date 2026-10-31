@@ -8,6 +8,7 @@ SEARCH_SCRIPT = SCRIPTS / "session_search.py"
 RECALL_SCRIPT = SCRIPTS / "session_recall.py"
 sys.path.insert(0, str(SCRIPTS))
 
+import session_common
 import session_search
 import session_recall
 
