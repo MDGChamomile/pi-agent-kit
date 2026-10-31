@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-import { link, lstat, realpath, unlink } from "node:fs/promises";
+import { link, lstat, unlink } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { runIfEntrypoint } from "./entrypoint.mjs";
 
 export async function publishPlan(pendingPath, finalPath, { createFinal = link, removePending = unlink } = {}) {
   const pending = resolve(pendingPath);
@@ -60,11 +60,4 @@ async function main() {
   }
 }
 
-const invokedPath = process.argv[1] ? resolve(process.argv[1]) : undefined;
-if (invokedPath) {
-  const [invokedRealPath, moduleRealPath] = await Promise.all([
-    realpath(invokedPath).catch(() => invokedPath),
-    realpath(fileURLToPath(import.meta.url)),
-  ]);
-  if (invokedRealPath === moduleRealPath) await main();
-}
+await runIfEntrypoint(import.meta.url, main);

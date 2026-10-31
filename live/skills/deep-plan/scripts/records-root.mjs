@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { runIfEntrypoint } from "./entrypoint.mjs";
 
 function expandHome(value, home) {
   if (value === "~") return home;
@@ -47,11 +47,4 @@ async function main() {
   }
 }
 
-const invokedPath = process.argv[1] ? resolve(process.argv[1]) : undefined;
-if (invokedPath) {
-  const [invokedRealPath, moduleRealPath] = await Promise.all([
-    realpath(invokedPath).catch(() => invokedPath),
-    realpath(fileURLToPath(import.meta.url)),
-  ]);
-  if (invokedRealPath === moduleRealPath) await main();
-}
+await runIfEntrypoint(import.meta.url, main);
