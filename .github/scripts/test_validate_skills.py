@@ -77,7 +77,8 @@ class SkillValidationTests(unittest.TestCase):
             linked.write_text('# Migration\n', encoding='utf-8')
             document.write_text(
                 '[migration](MIGRATION.md#migration) [local](#start) '
-                '[remote](https://example.test/reference)\n',
+                '[remote](https://example.test/reference) [mail](mailto:help@example.test) '
+                '[protocol](//example.test/reference)\n',
                 encoding='utf-8',
             )
             self.assertEqual(validate_relative_links([document]), [])
@@ -89,7 +90,7 @@ class SkillValidationTests(unittest.TestCase):
 
     def test_resource_documents_skip_skill_files_and_installed_dependencies(self):
         with tempfile.TemporaryDirectory() as temp:
-            live = Path(temp)
+            root = Path(temp)
             for relative in (
                 'skills/synthetic/SKILL.md',
                 'skills/synthetic/README.md',
@@ -97,13 +98,13 @@ class SkillValidationTests(unittest.TestCase):
                 'extensions/synthetic/README.md',
                 'extensions/synthetic/node_modules/dependency/README.md',
             ):
-                path = live / relative
+                path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text('# Synthetic\n', encoding='utf-8')
-            self.assertEqual(resource_documents(live), [
-                live / 'extensions/synthetic/README.md',
-                live / 'skills/synthetic/README.md',
-                live / 'skills/synthetic/references/guide.md',
+            self.assertEqual(resource_documents(root), [
+                root / 'extensions/synthetic/README.md',
+                root / 'skills/synthetic/README.md',
+                root / 'skills/synthetic/references/guide.md',
             ])
 
 
