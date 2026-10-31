@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from support import header, message, session_search, write_session
+from support import cli_args, header, message, session_search, write_session
 
 STAMP = "2026-08-14T00:00:00Z"
 
@@ -25,10 +25,7 @@ class CallCorrelationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             write_session(root / "record.jsonl", {**header("synthetic", root), "version": version}, entries)
-            args = session_search.build_parser().parse_args([
-                "--sessions-root", temp, "--cwd", temp, *flags,
-            ])
-            return session_search.aggregate(args)
+            return session_search.aggregate(cli_args("aggregate", root, root, *flags))
 
     def test_non_skill_call_shadows_a_reused_skill_call_id(self):
         for version in (1, 2, 3):

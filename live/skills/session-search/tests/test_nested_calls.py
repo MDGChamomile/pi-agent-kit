@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from support import header, message, session_search, write_session
+from support import cli_args, header, message, session_search, write_session
 
 
 def nested_entry(calls, complete=True):
@@ -56,8 +56,7 @@ class NestedCallTests(unittest.TestCase):
                 {"id": "pending", "name": "write", "status": "unfinished"},
             ], False)]
             write_session(root / "test.jsonl", header("private-session", root), entries)
-            args = session_search.build_parser().parse_args(["--sessions-root", temp, "--cwd", temp])
-            result = session_search.aggregate(args)
+            result = session_search.aggregate(cli_args("aggregate", temp, temp))
             summary = result["summary"]
             self.assertEqual(summary["tool_calls"], {"bash": 1, "codemode": 1, "read": 1, "write": 1})
             self.assertEqual(summary["tool_errors"], {"bash": 1})

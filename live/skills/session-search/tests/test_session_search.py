@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import SEARCH_SCRIPT as SCRIPT, header, message, session_common, session_search, write_session
+from support import SEARCH_SCRIPT as SCRIPT, cli_args, header, message, session_common, session_search, write_session
 
 
 @contextmanager
@@ -100,9 +100,7 @@ class SessionSearchTests(unittest.TestCase):
     NOW = datetime(2026, 8, 15, tzinfo=timezone.utc)
 
     def args(self, root: Path, cwd: Path, *extra: str):
-        return session_search.build_parser().parse_args([
-            "--sessions-root", str(root), "--cwd", str(cwd), *extra
-        ])
+        return cli_args("aggregate", root, cwd, *extra)
 
     def test_additional_roots_are_opt_in_repeatable_and_keep_project_filter(self):
         with fixture_tree() as (root, project, other_project, _, _, current):

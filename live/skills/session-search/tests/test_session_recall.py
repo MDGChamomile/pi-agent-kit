@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import RECALL_SCRIPT as SCRIPT, header, message, session_common, session_recall, write_session
+from support import RECALL_SCRIPT as SCRIPT, cli_args, header, message, session_common, session_recall, write_session
 
 
 def entry(entry_type: str, entry_id: str, parent_id: str | None, **extra) -> dict:
@@ -31,12 +31,7 @@ class SessionRecallTests(unittest.TestCase):
     NOW = datetime(2026, 8, 15, tzinfo=timezone.utc)
 
     def args(self, mode: str, root: Path, cwd: Path, *extra: str):
-        required = ["--term", "인증 오류"]
-        if mode == "recall":
-            required += ["--include-evidence"]
-        return session_recall.build_parser().parse_args([
-            mode, "--sessions-root", str(root), "--cwd", str(cwd), *required, *extra
-        ])
+        return cli_args(mode, root, cwd, *extra, terms=["인증 오류"])
 
     def test_text_truncation_is_distinct_from_missing_matching_messages(self):
         for text, truncated in [("needle … original ellipsis", False),

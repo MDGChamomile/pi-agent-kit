@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import header, message, session_common, session_recall, session_search, write_session
+from support import cli_args, cli_argv, header, message, run_mode, session_common, session_recall, session_search, write_session
 
 
 class FileExclusionTests(unittest.TestCase):
@@ -33,18 +33,10 @@ class FileExclusionTests(unittest.TestCase):
         self.addCleanup(environment.stop)
 
     def argv(self, mode, *extra):
-        scope = ["--sessions-root", str(self.root), "--cwd", str(self.project)]
-        if mode == "aggregate":
-            return [*scope, *extra]
-        return [mode, *scope, "--term", "needle",
-                *(["--include-evidence"] if mode == "recall" else []), *extra]
+        return cli_argv(mode, self.root, self.project, *extra)
 
     def output(self, mode, *extra):
-        module = session_search if mode == "aggregate" else session_recall
-        args = module.build_parser().parse_args(self.argv(mode, *extra))
-        function = {"aggregate": session_search.aggregate, "find": session_recall.find_output,
-                    "recall": session_recall.recall_output}[mode]
-        return function(args, self.NOW)
+        return run_mode(mode, cli_args(mode, self.root, self.project, *extra), self.NOW)
 
     def exclusions(self, *paths):
         return [item for path in paths for item in ("--exclude-session-file", str(path))]

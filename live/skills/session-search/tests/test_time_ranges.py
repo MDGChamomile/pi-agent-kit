@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import header, message, session_common, session_recall, session_search, write_session
+from support import cli_args, header, message, run_mode, session_common, session_recall, session_search, write_session
 
 
 class TimeRangeTests(unittest.TestCase):
@@ -29,19 +29,10 @@ class TimeRangeTests(unittest.TestCase):
         self.addCleanup(self.environment.stop)
 
     def args(self, mode, *extra):
-        common = ["--sessions-root", str(self.root), "--cwd", str(self.root)]
-        if mode == "aggregate":
-            return session_search.build_parser().parse_args([*common, *extra])
-        return session_recall.build_parser().parse_args([
-            mode, *common, "--term", "needle",
-            *(["--include-evidence"] if mode == "recall" else []), *extra,
-        ])
+        return cli_args(mode, self.root, self.root, *extra)
 
     def output(self, mode, *extra, now=None):
-        args = self.args(mode, *extra)
-        function = {"aggregate": session_search.aggregate, "find": session_recall.find_output,
-                    "recall": session_recall.recall_output}[mode]
-        return function(args, now or self.NOW)
+        return run_mode(mode, self.args(mode, *extra), now or self.NOW)
 
     def write(self, timestamps):
         write_session(self.path, header("synthetic", self.root), [
