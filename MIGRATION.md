@@ -1,5 +1,25 @@
 # Pi Agent Kit migration
 
+## v0.8.0
+
+This remains a source-only GitHub release, not an npm package or an automatic update of installed Pi resources. Review the changes, preserve local customizations, and update only the resources you adopt. Restart Pi or use `/reload` after updating auto-discovered resources. No stored-session or execution-record migration is required.
+
+### Compaction retry policy and provider routing
+
+The compaction extension now follows Pi's `retry` settings instead of retrying the entire compaction once after one second. Review `retry.enabled`, `retry.maxRetries`, `retry.baseDelayMs`, and `retry.maxAgentDelayMs` before updating: request counts, waiting time, and provider usage can change. Setting `retry.enabled: false` now disables these retries. Split-turn compaction retries only the failed summarization request, rather than repeating a completed part. Exhausted retries still return control to Pi's native handling path.
+
+Summarization now uses Pi's model-registry stream path, including extension-registered providers and provider-specific authentication. The `compactionModel` configuration format and minimum Pi version (`>=1.0.0`) are unchanged. See the [compaction guide](live/extensions/pi-compaction-model/README.md).
+
+### Session search
+
+Update the whole skill directory, including the new shared `scripts/session_common.py` module, rather than copying only a CLI script. Tool results are correlated with ancestral calls, decoded tool-argument evidence is masked, and malformed JSON, decoder depth failures, and Unicode edge cases are isolated. Time boundaries consistently reject hour 24, including on Python 3.14.
+
+Continuation scope digests now always include time boundaries and file exclusions. Tokens from older helper versions may fail with `INVALID_ARGUMENT`; rerun `find` and start a new recall instead of reusing an old token. Recalled conclusions remain historical claims, not current project facts or authorization. See the [session-search guide](live/skills/session-search/README.md).
+
+### Deep-plan and maintenance
+
+Deep-plan shares CLI entrypoint detection through `scripts/entrypoint.mjs`; copy the complete skill directory when updating. Record locations and publication behavior are unchanged. Tests, maintained-link validation, and contributor/review documentation have also been consolidated.
+
 ## v0.7.2
 
 This remains a source-only GitHub release, not an npm package or an automatic update of installed Pi resources. Review the changes, preserve local customizations, and update only the resources you adopt. Restart Pi or use `/reload` after updating auto-discovered resources. No data migration is required.
