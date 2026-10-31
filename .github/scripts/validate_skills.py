@@ -53,9 +53,12 @@ def validate_relative_links(documents: list[Path]) -> list[str]:
     for document in documents:
         text = document.read_text(encoding="utf-8")
         for target in re.findall(r"\[[^]]*\]\(([^)]+)\)", text):
-            if "://" in target or target.startswith("#"):
+            destination = target.strip()
+            if destination.startswith("<") and destination.endswith(">"):
+                destination = destination[1:-1]
+            if re.match(r"(?:[a-z][a-z\d+.-]*:|//|#)", destination, re.IGNORECASE):
                 continue
-            path = (document.parent / target.split("#", 1)[0]).resolve()
+            path = (document.parent / destination.split("#", 1)[0]).resolve()
             if not path.exists():
                 failures.append(f"broken link: {document} -> {target}")
     return failures
@@ -71,10 +74,10 @@ def validate_skills(root: Path) -> list[str]:
     return failures + validate_relative_links(skills)
 
 
-def resource_documents(live: Path) -> list[Path]:
-    """Markdown under live/ other than SKILL.md, which validate_skills checks."""
+def resource_documents(root: Path) -> list[Path]:
+    """Markdown under root other than SKILL.md, which validate_skills checks."""
     return sorted(
-        path for path in live.rglob("*.md")
+        path for path in root.rglob("*.md")
         if path.name != "SKILL.md" and "node_modules" not in path.parts
     )
 
