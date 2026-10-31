@@ -13,7 +13,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 import session_common
 
@@ -152,43 +152,20 @@ def read_active_messages(
     all_projects: bool,
     warnings: session_common.WarningCollector,
 ) -> tuple[list[RecallMessage], int] | None:
-    scope_confirmed = False
-    try:
-        # Decode only the header line before deciding scope. TextIOWrapper can
-        # decode body bytes ahead of readline() and hide an in-scope failure.
-        with path.open("rb") as handle:
-            header = session_common.read_session_header(handle)
-            if header is None:
-                if all_projects:
-                    warnings.add(path, "invalid_header")
-                return None
-            header_cwd = header.get("cwd")
-            if not all_projects and (
-                not isinstance(header_cwd, str)
-                or session_common.normalized_path(header_cwd) != target_cwd
-            ):
-                return ([], -1)
-            scope_confirmed = True
-            version = session_common.session_version(header, path, warnings)
-            if version is None:
-                return None
+    entries: list[dict[str, Any]] = []
 
-            entries: list[dict[str, Any]] = []
-            scanned = 0
-            for entry in session_common.read_session_entries(handle, path, warnings):
-                scanned += 1
-                entries.append(retain_recall_entry(entry))
-    except (OSError, UnicodeError):
-        if all_projects or scope_confirmed:
-            warnings.add(path, "unreadable_file")
+    def retain(_path: Path, _header: dict[str, Any], _version: int, records: Iterator[dict[str, Any]]) -> None:
+        entries.extend(retain_recall_entry(entry) for entry in records)
+
+    scan = session_common.scan_session(path, None if all_projects else target_cwd, warnings, retain)
+    if not scan.complete:
         return None
-
-    branch = active_entries(entries, version)
+    branch = active_entries(entries, scan.version)
     if branch is None:
         warnings.add(path, "invalid_branch_structure")
         return None
     messages = [message for entry in branch if (message := recall_text(entry)) is not None]
-    return messages, scanned
+    return messages, len(entries)
 
 
 def permitted_files(
@@ -291,8 +268,6 @@ def scan_candidates(
         if loaded is None:
             continue
         messages, scanned = loaded
-        if scanned < 0:
-            continue
         files_selected += 1
         scanned_entries += scanned
         candidate, _eligible = candidate_for_messages(
@@ -571,7 +546,7 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
         args.all_projects,
         warnings,
     )
-    if loaded is None or loaded[1] < 0:
+    if loaded is None:
         raise CandidateNotFoundError
     messages, _scanned = loaded
     refreshed, eligible = candidate_for_messages(

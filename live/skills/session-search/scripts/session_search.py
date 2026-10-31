@@ -13,7 +13,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 import session_common
 
@@ -514,99 +514,82 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     attempted_files = 0
     readable_headers = 0
 
-    def scan_file(path: Path) -> None:
+    def read_entries(
+        path: Path, header: dict[str, Any], version: int, entries: Iterator[dict[str, Any]],
+    ) -> None:
         # Shared counters preserve progress even when a file fails partway through.
-        nonlocal readable_headers, selected_files, scanned_entries, eligible_entries
-        # Like recall, warn only about files within the selected scope: files
-        # whose project is unknown or different stay undisclosed by default.
-        scope_confirmed = args.all_projects
-        try:
-            with path.open("rb") as handle:
-                header = session_common.read_session_header(handle)
-                if header is None:
-                    if scope_confirmed:
-                        warnings.add(path, "invalid_header")
-                    return
-                readable_headers += 1
-                header_cwd = header.get("cwd")
-                if not args.all_projects and (
-                    not isinstance(header_cwd, str) or session_common.normalized_path(header_cwd) != target_cwd
-                ):
-                    return
-                scope_confirmed = True
-                version = session_common.session_version(header, path, warnings)
-                if version is None:
-                    return
+        nonlocal selected_files, scanned_entries, eligible_entries
+        selected_files += 1
+        session = {"session_id": str(header.get("id", "")), "file": str(path)}
+        for aggregation in aggregations:
+            aggregation.start_session()
+        parent_by_id: dict[str, Any] = {}
+        leaf_id: str | None = None
+        skill_reads_by_call_id: dict[str, str | None] = {}
+        calls_by_id: dict[str, dict[str, str | None]] = {}
+        names_by_path: dict[str, str] = {}
+        identities_by_entry: dict[str, dict[str, str]] = {}
+        header_cwd = header.get("cwd")
+        recorded_cwd = header_cwd if isinstance(header_cwd, str) else ""
 
-                selected_files += 1
-                session = {"session_id": str(header.get("id", "")), "file": str(path)}
-                for aggregation in aggregations:
-                    aggregation.start_session()
-                parent_by_id: dict[str, Any] = {}
-                leaf_id: str | None = None
-                skill_reads_by_call_id: dict[str, str | None] = {}
-                calls_by_id: dict[str, dict[str, str | None]] = {}
-                names_by_path: dict[str, str] = {}
-                identities_by_entry: dict[str, dict[str, str]] = {}
-                recorded_cwd = header_cwd if isinstance(header_cwd, str) else ""
+        for entry in entries:
+            scanned_entries += 1
+            message = entry.get("message")
+            nested = message.get("nestedCalls") if isinstance(message, dict) else None
+            if isinstance(nested, dict) and nested.get("complete") is not True:
+                warnings.add(path, "incomplete_nested_calls")
+            entry_id = entry.get("id")
+            if version >= 2 and not isinstance(entry_id, str):
+                warnings.add(path, "invalid_entry_id")
+            if version >= 2 and isinstance(entry_id, str):
+                parent_by_id[entry_id] = entry.get("parentId")
+                leaf_id = entry_id
+            if version >= 2:
+                parent_id = entry.get("parentId")
+                names_by_path = identities_by_entry.get(parent_id, {}) if isinstance(parent_id, str) else {}
+            names_by_path = record_skill_identity(entry, names_by_path, recorded_cwd)
+            if version >= 2 and isinstance(entry_id, str):
+                identities_by_entry[entry_id] = names_by_path
+            if version >= 2:
+                entry_calls: dict[str, str | None] = {}
+                record_skill_read_calls(entry, entry_calls, names_by_path, recorded_cwd)
+                if isinstance(entry_id, str):
+                    for call_id, skill in entry_calls.items():
+                        calls_by_id.setdefault(call_id, {})[entry_id] = skill
+                skill_reads_by_call_id = skill_read_calls_for_result(entry, calls_by_id, parent_by_id)
+            else:
+                record_skill_read_calls(entry, skill_reads_by_call_id, names_by_path, recorded_cwd)
 
-                for entry in session_common.read_session_entries(handle, path, warnings):
-                    scanned_entries += 1
-                    message = entry.get("message")
-                    nested = message.get("nestedCalls") if isinstance(message, dict) else None
-                    if isinstance(nested, dict) and nested.get("complete") is not True:
-                        warnings.add(path, "incomplete_nested_calls")
-                    entry_id = entry.get("id")
-                    if version >= 2 and not isinstance(entry_id, str):
-                        warnings.add(path, "invalid_entry_id")
-                    if version >= 2 and isinstance(entry_id, str):
-                        parent_by_id[entry_id] = entry.get("parentId")
-                        leaf_id = entry_id
-                    if version >= 2:
-                        parent_id = entry.get("parentId")
-                        names_by_path = identities_by_entry.get(parent_id, {}) if isinstance(parent_id, str) else {}
-                    names_by_path = record_skill_identity(entry, names_by_path, recorded_cwd)
-                    if version >= 2 and isinstance(entry_id, str):
-                        identities_by_entry[entry_id] = names_by_path
-                    if version >= 2:
-                        entry_calls: dict[str, str | None] = {}
-                        record_skill_read_calls(entry, entry_calls, names_by_path, recorded_cwd)
-                        if isinstance(entry_id, str):
-                            for call_id, skill in entry_calls.items():
-                                calls_by_id.setdefault(call_id, {})[entry_id] = skill
-                        skill_reads_by_call_id = skill_read_calls_for_result(entry, calls_by_id, parent_by_id)
-                    else:
-                        record_skill_read_calls(entry, skill_reads_by_call_id, names_by_path, recorded_cwd)
-
-                    timestamp = session_common.parse_timestamp(entry.get("timestamp"))
-                    if not time_range.contains(timestamp):
-                        continue
-                    eligible_entries += 1
-                    # Parse each entry into events once, then evaluate independent filters.
-                    events = events_for_entry(
-                        entry, session, None, skill_reads_by_call_id, names_by_path, recorded_cwd,
-                        include_arguments=include_arguments,
-                    )
-                    for aggregation in aggregations:
-                        aggregation.consume(events, timestamp)
-
-                if result_limit:
-                    leaf_path = latest_leaf_path(parent_by_id, leaf_id) if version >= 2 else set()
-                    for aggregation in aggregations:
-                        aggregation.mark_branch(path, version, leaf_path)
-        except (OSError, UnicodeError):
-            if scope_confirmed:
-                warnings.add(path, "unreadable_file")
-            # Keep already counted evidence, but never claim a complete branch scan.
+            timestamp = session_common.parse_timestamp(entry.get("timestamp"))
+            if not time_range.contains(timestamp):
+                continue
+            eligible_entries += 1
+            # Parse each entry into events once, then evaluate independent filters.
+            events = events_for_entry(
+                entry, session, None, skill_reads_by_call_id, names_by_path, recorded_cwd,
+                include_arguments=include_arguments,
+            )
             for aggregation in aggregations:
-                aggregation.mark_branch(path, 1, None)
+                aggregation.consume(events, timestamp)
 
+        if result_limit:
+            leaf_path = latest_leaf_path(parent_by_id, leaf_id) if version >= 2 else set()
+            for aggregation in aggregations:
+                aggregation.mark_branch(path, version, leaf_path)
+
+    scope_cwd = None if args.all_projects else target_cwd
     for path in paths:
         files_discovered += 1
         if file_exclusions.excludes(session_common.normalized_path(path)):
             continue
         attempted_files += 1
-        scan_file(path)
+        file_scan = session_common.scan_session(path, scope_cwd, warnings, read_entries)
+        if file_scan.header_valid:
+            readable_headers += 1
+        if file_scan.version is not None and not file_scan.complete:
+            # Keep already counted evidence, but never claim a complete branch scan.
+            for aggregation in aggregations:
+                aggregation.mark_branch(path, 1, None)
 
     if attempted_files and not readable_headers:
         raise RuntimeError("all candidate session files were unreadable or invalid")

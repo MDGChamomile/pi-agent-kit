@@ -199,6 +199,52 @@ def session_version(header: dict[str, Any], path: Path, warnings: WarningCollect
     return value
 
 
+@dataclass
+class SessionScan:
+    header_valid: bool = False
+    version: int | None = None
+    complete: bool = False
+
+
+def scan_session(
+    path: Path, target_cwd: str | None, warnings: WarningCollector,
+    read_entries: Callable[[Path, dict[str, Any], int, Iterator[dict[str, Any]]], None],
+) -> SessionScan:
+    """Pass a selected file's entries to read_entries under the shared warning policy.
+
+    A None target_cwd selects every project. Otherwise only files whose header
+    confirms target_cwd may add warnings; files with an unreadable header or a
+    different project stay undisclosed. version is set once the file is selected.
+    """
+    scan = SessionScan()
+    in_scope = target_cwd is None
+    try:
+        # Decode only the header line before deciding scope. TextIOWrapper can
+        # decode body bytes ahead of readline() and hide an in-scope failure.
+        with path.open("rb") as handle:
+            header = read_session_header(handle)
+            if header is None:
+                if in_scope:
+                    warnings.add(path, "invalid_header")
+                return scan
+            scan.header_valid = True
+            header_cwd = header.get("cwd")
+            if target_cwd is not None and (
+                not isinstance(header_cwd, str) or normalized_path(header_cwd) != target_cwd
+            ):
+                return scan
+            in_scope = True
+            scan.version = session_version(header, path, warnings)
+            if scan.version is None:
+                return scan
+            read_entries(path, header, scan.version, read_session_entries(handle, path, warnings))
+        scan.complete = True
+    except (OSError, UnicodeError):
+        if in_scope:
+            warnings.add(path, "unreadable_file")
+    return scan
+
+
 class InvalidArgumentError(Exception):
     pass
 
