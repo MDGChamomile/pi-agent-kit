@@ -273,6 +273,55 @@ def skill_read_calls_for_result(
     return {}
 
 
+class LinearSkillState:
+    """Version 1 entries form one history, so later records shadow earlier ones."""
+
+    def __init__(self, cwd: str) -> None:
+        self.cwd = cwd
+        self.names_by_path: dict[str, str] = {}
+        self.skill_reads_by_call_id: dict[str, str | None] = {}
+
+    def advance(self, entry: dict[str, Any]) -> None:
+        self.names_by_path = record_skill_identity(entry, self.names_by_path, self.cwd)
+        record_skill_read_calls(entry, self.skill_reads_by_call_id, self.names_by_path, self.cwd)
+
+    def leaf_path(self) -> set[str]:
+        return set()
+
+
+class BranchSkillState:
+    """Version 2+ entries form a tree, so each entry sees only records on its parent chain."""
+
+    def __init__(self, cwd: str) -> None:
+        self.cwd = cwd
+        self.names_by_path: dict[str, str] = {}
+        self.skill_reads_by_call_id: dict[str, str | None] = {}
+        self.parent_by_id: dict[str, Any] = {}
+        self.leaf_id: str | None = None
+        self.identities_by_entry: dict[str, dict[str, str]] = {}
+        self.calls_by_id: dict[str, dict[str, str | None]] = {}
+
+    def advance(self, entry: dict[str, Any]) -> None:
+        entry_id = entry.get("id")
+        parent_id = entry.get("parentId")
+        if isinstance(entry_id, str):
+            self.parent_by_id[entry_id] = parent_id
+            self.leaf_id = entry_id
+        names_by_path = self.identities_by_entry.get(parent_id, {}) if isinstance(parent_id, str) else {}
+        self.names_by_path = record_skill_identity(entry, names_by_path, self.cwd)
+        if isinstance(entry_id, str):
+            self.identities_by_entry[entry_id] = self.names_by_path
+        entry_calls: dict[str, str | None] = {}
+        record_skill_read_calls(entry, entry_calls, self.names_by_path, self.cwd)
+        if isinstance(entry_id, str):
+            for call_id, skill in entry_calls.items():
+                self.calls_by_id.setdefault(call_id, {})[entry_id] = skill
+        self.skill_reads_by_call_id = skill_read_calls_for_result(entry, self.calls_by_id, self.parent_by_id)
+
+    def leaf_path(self) -> set[str]:
+        return latest_leaf_path(self.parent_by_id, self.leaf_id)
+
+
 def result_view(event: dict[str, Any], queries: Iterable[str] = ()) -> dict[str, Any]:
     result = {
         key: event.get(key)
@@ -523,14 +572,9 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         session = {"session_id": str(header.get("id", "")), "file": str(path)}
         for aggregation in aggregations:
             aggregation.start_session()
-        parent_by_id: dict[str, Any] = {}
-        leaf_id: str | None = None
-        skill_reads_by_call_id: dict[str, str | None] = {}
-        calls_by_id: dict[str, dict[str, str | None]] = {}
-        names_by_path: dict[str, str] = {}
-        identities_by_entry: dict[str, dict[str, str]] = {}
         header_cwd = header.get("cwd")
         recorded_cwd = header_cwd if isinstance(header_cwd, str) else ""
+        state = BranchSkillState(recorded_cwd) if version >= 2 else LinearSkillState(recorded_cwd)
 
         for entry in entries:
             scanned_entries += 1
@@ -538,27 +582,9 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             nested = message.get("nestedCalls") if isinstance(message, dict) else None
             if isinstance(nested, dict) and nested.get("complete") is not True:
                 warnings.add(path, "incomplete_nested_calls")
-            entry_id = entry.get("id")
-            if version >= 2 and not isinstance(entry_id, str):
+            if version >= 2 and not isinstance(entry.get("id"), str):
                 warnings.add(path, "invalid_entry_id")
-            if version >= 2 and isinstance(entry_id, str):
-                parent_by_id[entry_id] = entry.get("parentId")
-                leaf_id = entry_id
-            if version >= 2:
-                parent_id = entry.get("parentId")
-                names_by_path = identities_by_entry.get(parent_id, {}) if isinstance(parent_id, str) else {}
-            names_by_path = record_skill_identity(entry, names_by_path, recorded_cwd)
-            if version >= 2 and isinstance(entry_id, str):
-                identities_by_entry[entry_id] = names_by_path
-            if version >= 2:
-                entry_calls: dict[str, str | None] = {}
-                record_skill_read_calls(entry, entry_calls, names_by_path, recorded_cwd)
-                if isinstance(entry_id, str):
-                    for call_id, skill in entry_calls.items():
-                        calls_by_id.setdefault(call_id, {})[entry_id] = skill
-                skill_reads_by_call_id = skill_read_calls_for_result(entry, calls_by_id, parent_by_id)
-            else:
-                record_skill_read_calls(entry, skill_reads_by_call_id, names_by_path, recorded_cwd)
+            state.advance(entry)
 
             timestamp = session_common.parse_timestamp(entry.get("timestamp"))
             if not time_range.contains(timestamp):
@@ -566,14 +592,14 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             eligible_entries += 1
             # Parse each entry into events once, then evaluate independent filters.
             events = events_for_entry(
-                entry, session, None, skill_reads_by_call_id, names_by_path, recorded_cwd,
+                entry, session, None, state.skill_reads_by_call_id, state.names_by_path, recorded_cwd,
                 include_arguments=include_arguments,
             )
             for aggregation in aggregations:
                 aggregation.consume(events, timestamp)
 
         if result_limit:
-            leaf_path = latest_leaf_path(parent_by_id, leaf_id) if version >= 2 else set()
+            leaf_path = state.leaf_path()
             for aggregation in aggregations:
                 aggregation.mark_branch(path, version, leaf_path)
 
