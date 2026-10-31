@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import SEARCH_SCRIPT as SCRIPT, header, message, session_search, write_session
+from support import SEARCH_SCRIPT as SCRIPT, cli_args, header, message, session_common, session_search, write_session
 
 
 @contextmanager
@@ -100,9 +100,7 @@ class SessionSearchTests(unittest.TestCase):
     NOW = datetime(2026, 8, 15, tzinfo=timezone.utc)
 
     def args(self, root: Path, cwd: Path, *extra: str):
-        return session_search.build_parser().parse_args([
-            "--sessions-root", str(root), "--cwd", str(cwd), *extra
-        ])
+        return cli_args("aggregate", root, cwd, *extra)
 
     def test_additional_roots_are_opt_in_repeatable_and_keep_project_filter(self):
         with fixture_tree() as (root, project, other_project, _, _, current):
@@ -242,7 +240,7 @@ class SessionSearchTests(unittest.TestCase):
                     return
                 yield from original_walk(path, onerror=onerror)
 
-            with patch.object(session_search.os, "walk", side_effect=failing_walk):
+            with patch.object(session_common.os, "walk", side_effect=failing_walk):
                 with self.assertRaises(PermissionError):
                     session_search.aggregate(self.args(
                         root, root, "--additional-sessions-root", str(backup),
@@ -494,12 +492,12 @@ class SessionSearchTests(unittest.TestCase):
         )
         for raw, expected in cases:
             with self.subTest(raw=raw):
-                self.assertEqual(session_search.mask_and_shorten(raw), expected)
+                self.assertEqual(session_common.mask_and_shorten(raw), expected)
         raw = 'prefix ' * 100 + ' password="' + 'FAKE_SECRET ' * 100 + '" visible-target'
-        evidence = session_search.mask_and_shorten(raw, queries=('FAKE_SECRET', 'visible-target'))
+        evidence = session_common.mask_and_shorten(raw, queries=('FAKE_SECRET', 'visible-target'))
         self.assertNotIn('FAKE_SECRET', evidence)
         self.assertIn('visible-target', evidence)
-        self.assertLessEqual(len(evidence), session_search.MAX_EVIDENCE_CHARS)
+        self.assertLessEqual(len(evidence), session_common.MAX_EVIDENCE_CHARS)
 
     def test_cookie_headers_are_masked_before_whitespace_collapses(self):
         cases = (
@@ -512,7 +510,7 @@ class SessionSearchTests(unittest.TestCase):
         )
         for raw in cases:
             with self.subTest(raw=raw):
-                evidence = session_search.mask_and_shorten(raw + '\nVisible: keep-me')
+                evidence = session_common.mask_and_shorten(raw + '\nVisible: keep-me')
                 self.assertNotIn('FAKE_', evidence)
                 self.assertIn('[REDACTED]', evidence)
                 self.assertIn('Visible: keep-me', evidence)
@@ -535,12 +533,12 @@ class SessionSearchTests(unittest.TestCase):
             + "x" * 280
             + " token=BOUNDARY_SECRET_VALUE"
         )
-        masked = session_search.mask_and_shorten(raw)
+        masked = session_common.mask_and_shorten(raw)
         self.assertNotIn("alice", masked)
         self.assertNotIn("correct-horse", masked)
         self.assertNotIn("private-material", masked)
         self.assertNotIn("BOUNDARY_SECRET_VALUE", masked)
-        self.assertLessEqual(len(masked), session_search.MAX_EVIDENCE_CHARS)
+        self.assertLessEqual(len(masked), session_common.MAX_EVIDENCE_CHARS)
 
     def test_query_centered_evidence_is_opt_in_and_keeps_and_filtering(self):
         raw = "prefix " * 100 + "한글 NEEDLE context " + "middle " * 100 + "distant"
@@ -550,7 +548,7 @@ class SessionSearchTests(unittest.TestCase):
                 message("e1", None, "2026-08-14T00:00:00Z", "user", raw),
             ])
             flags = ("--query", "distant", "--query", "한글 needle")
-            with patch.object(session_search, "mask_and_shorten", wraps=session_search.mask_and_shorten) as shorten:
+            with patch.object(session_common, "mask_and_shorten", wraps=session_common.mask_and_shorten) as shorten:
                 summary = session_search.aggregate(self.args(root, root, *flags), now=self.NOW)
                 shorten.assert_not_called()
             result = session_search.aggregate(self.args(
@@ -566,14 +564,14 @@ class SessionSearchTests(unittest.TestCase):
         self.assertNotIn("distant", evidence)
         self.assertTrue(evidence.startswith("…"))
         self.assertTrue(evidence.endswith("…"))
-        self.assertLessEqual(len(evidence), session_search.MAX_EVIDENCE_CHARS)
+        self.assertLessEqual(len(evidence), session_common.MAX_EVIDENCE_CHARS)
         self.assertEqual(no_match["results"], [])
 
     def test_centered_evidence_handles_casefold_expansion_and_whitespace(self):
         raw = "ß" * 500 + " 한글\n\tStraße context " + "tail " * 100
-        evidence = session_search.mask_and_shorten(raw, queries=("한글\nSTRASSE",))
+        evidence = session_common.mask_and_shorten(raw, queries=("한글\nSTRASSE",))
         self.assertIn("한글 Straße context", evidence)
-        self.assertLessEqual(len(evidence), session_search.MAX_EVIDENCE_CHARS)
+        self.assertLessEqual(len(evidence), session_common.MAX_EVIDENCE_CHARS)
 
     def test_tool_arguments_are_serialized_only_for_queries_or_evidence(self):
         with fixture_tree() as (root, project_a, _, _, _, _):
@@ -593,16 +591,16 @@ class SessionSearchTests(unittest.TestCase):
 
     def test_evidence_falls_back_to_masked_prefix_without_visible_query(self):
         raw = "prefix " * 100 + " token=SYNTHETIC_HIDDEN_VALUE " + "tail " * 100
-        prefix = session_search.mask_and_shorten(raw)
+        prefix = session_common.mask_and_shorten(raw)
         for queries in ((), ("SYNTHETIC_HIDDEN_VALUE",), ("tool-metadata-only",), ("",)):
             with self.subTest(queries=queries):
-                self.assertEqual(session_search.mask_and_shorten(raw, queries=queries), prefix)
+                self.assertEqual(session_common.mask_and_shorten(raw, queries=queries), prefix)
         self.assertEqual(prefix, raw[:299] + "…")
 
     def test_centered_evidence_masks_entire_source_before_selecting_window(self):
         secret = "SYNTHETIC_" + "x" * 800
         raw = "prefix " * 100 + " token=" + secret + " visible-target " + "tail " * 100
-        evidence = session_search.mask_and_shorten(raw, queries=(secret, "visible-target"))
+        evidence = session_common.mask_and_shorten(raw, queries=(secret, "visible-target"))
         self.assertIn("visible-target", evidence)
         self.assertIn("token=[REDACTED]", evidence)
         self.assertNotIn("SYNTHETIC_", evidence)
@@ -611,7 +609,7 @@ class SessionSearchTests(unittest.TestCase):
             "prefix " * 100 + "-----BEGIN TEST PRIVATE KEY-----" + "secret-material " * 100
             + "-----END TEST PRIVATE KEY----- visible-target " + "tail " * 100
         )
-        evidence = session_search.mask_and_shorten(private_key, queries=("visible-target",))
+        evidence = session_common.mask_and_shorten(private_key, queries=("visible-target",))
         self.assertIn("[REDACTED_PRIVATE_KEY]", evidence)
         self.assertIn("visible-target", evidence)
         self.assertNotIn("secret-material", evidence)
@@ -620,7 +618,7 @@ class SessionSearchTests(unittest.TestCase):
         for raw in ("needle " + "x" * 700, "x" * 700 + " needle", "short needle"):
             for limit in (0, 1, 2, 3, 20, 300):
                 with self.subTest(raw=raw[:20], limit=limit):
-                    evidence = session_search.mask_and_shorten(raw, limit, queries=("needle",))
+                    evidence = session_common.mask_and_shorten(raw, limit, queries=("needle",))
                     self.assertLessEqual(len(evidence), limit)
                     if limit >= 20:
                         self.assertIn("needle", evidence)
@@ -678,13 +676,13 @@ class SessionSearchTests(unittest.TestCase):
     def test_header_reader_does_not_decode_body_or_hide_header_io_errors(self):
         valid = (json.dumps(header("session", Path("/project"))) + "\n").encode()
         stream = io.BytesIO(valid + b"\xff\n")
-        self.assertEqual(session_search.read_session_header(stream)["id"], "session")
+        self.assertEqual(session_common.read_session_header(stream)["id"], "session")
         self.assertEqual(stream.readline(), b"\xff\n")
         for raw in (b"not json\n", b"[]\n", b'{"type":"message"}\n'):
             with self.subTest(raw=raw):
-                self.assertIsNone(session_search.read_session_header(io.BytesIO(raw)))
+                self.assertIsNone(session_common.read_session_header(io.BytesIO(raw)))
         with self.assertRaises(UnicodeError):
-            session_search.read_session_header(io.BytesIO(b"\xff\n"))
+            session_common.read_session_header(io.BytesIO(b"\xff\n"))
 
     def test_near_header_utf8_failure_keeps_in_scope_partial_counts(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -987,7 +985,7 @@ class SessionSearchTests(unittest.TestCase):
             project = base / "project"
             project.mkdir()
             write_session(root / "valid.jsonl", header("valid", project), [])
-            for index in range(session_search.MAX_WARNING_ITEMS + 5):
+            for index in range(session_common.MAX_WARNING_ITEMS + 5):
                 path = root / f"broken-{index}.jsonl"
                 path.write_text("invalid\n", encoding="utf-8")
             repeated = root / "repeated.jsonl"
@@ -996,11 +994,11 @@ class SessionSearchTests(unittest.TestCase):
             result = session_search.aggregate(parser.parse_args([
                 "--sessions-root", str(root), "--all-projects", "--include-evidence"
             ]), now=self.NOW)
-        self.assertEqual(result["warnings"]["count"], session_search.MAX_WARNING_ITEMS + 6)
-        self.assertEqual(len(result["warnings"]["items"]), session_search.MAX_WARNING_ITEMS)
+        self.assertEqual(result["warnings"]["count"], session_common.MAX_WARNING_ITEMS + 6)
+        self.assertEqual(len(result["warnings"]["items"]), session_common.MAX_WARNING_ITEMS)
         self.assertTrue(result["warnings"]["truncated"])
         self.assertEqual(result["warnings"]["by_kind"], {
-            "invalid_header": session_search.MAX_WARNING_ITEMS + 6
+            "invalid_header": session_common.MAX_WARNING_ITEMS + 6
         })
 
     def test_empty_session_root_returns_zero_counts(self):
@@ -1014,13 +1012,13 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(result["results"], [])
 
     def test_naive_timestamp_is_treated_as_utc(self):
-        parsed = session_search.parse_timestamp("2026-08-15T00:00:00")
+        parsed = session_common.parse_timestamp("2026-08-15T00:00:00")
         self.assertEqual(parsed, self.NOW)
         self.assertEqual(parsed.tzinfo, timezone.utc)
 
     def test_evidence_and_summary_only_flags_are_mutually_exclusive(self):
         parser = session_search.build_parser()
-        with self.assertRaises(session_search.InvalidArgumentError):
+        with self.assertRaises(session_common.InvalidArgumentError):
             parser.parse_args(["--include-evidence", "--summary-only"])
 
     def test_negative_days_and_limit_are_rejected(self):

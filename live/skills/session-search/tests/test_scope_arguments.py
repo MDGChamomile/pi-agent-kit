@@ -4,7 +4,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import patch
 
-from support import session_recall, session_search
+from support import session_common, session_recall, session_search
 
 
 class ScopeArgumentTests(unittest.TestCase):
@@ -18,7 +18,7 @@ class ScopeArgumentTests(unittest.TestCase):
 
     def test_defaults_match_across_modes(self):
         with patch.dict(os.environ, {"PI_CODING_AGENT_SESSION_DIR": "", "PI_CODING_AGENT_DIR": ""}), \
-                patch.object(session_search.os, "getcwd", return_value="/synthetic-project"):
+                patch.object(session_common.os, "getcwd", return_value="/synthetic-project"):
             for mode in ["aggregate", "find", "recall"]:
                 with self.subTest(mode=mode):
                     args = self.parse(mode)
@@ -56,12 +56,12 @@ class ScopeArgumentTests(unittest.TestCase):
                         if isinstance(actual, list):
                             actual = actual[-1]
                         self.assertEqual(str(actual), value)
-                        with self.assertRaises(session_search.InvalidArgumentError):
+                        with self.assertRaises(session_common.InvalidArgumentError):
                             self.parse(mode, option, value)
 
     def test_project_options_remain_mutually_exclusive(self):
         for mode in ["aggregate", "find", "recall"]:
-            with self.subTest(mode=mode), self.assertRaises(session_search.InvalidArgumentError):
+            with self.subTest(mode=mode), self.assertRaises(session_common.InvalidArgumentError):
                 self.parse(mode, "--all-projects", "--cwd", "project")
 
     def test_storage_default_is_resolved_when_each_parser_is_built(self):

@@ -11,9 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import header, message, session_recall, write_session
-
-session_search = session_recall.session_search
+from support import cli_args, header, message, run_mode, session_common, session_recall, session_search, write_session
 
 
 class TimeRangeTests(unittest.TestCase):
@@ -31,19 +29,10 @@ class TimeRangeTests(unittest.TestCase):
         self.addCleanup(self.environment.stop)
 
     def args(self, mode, *extra):
-        common = ["--sessions-root", str(self.root), "--cwd", str(self.root)]
-        if mode == "aggregate":
-            return session_search.build_parser().parse_args([*common, *extra])
-        return session_recall.build_parser().parse_args([
-            mode, *common, "--term", "needle",
-            *(["--include-evidence"] if mode == "recall" else []), *extra,
-        ])
+        return cli_args(mode, self.root, self.root, *extra)
 
     def output(self, mode, *extra, now=None):
-        args = self.args(mode, *extra)
-        function = {"aggregate": session_search.aggregate, "find": session_recall.find_output,
-                    "recall": session_recall.recall_output}[mode]
-        return function(args, now or self.NOW)
+        return run_mode(mode, self.args(mode, *extra), now or self.NOW)
 
     def write(self, timestamps):
         write_session(self.path, header("synthetic", self.root), [
@@ -106,7 +95,7 @@ class TimeRangeTests(unittest.TestCase):
                         argv.append("--include-evidence")
                     stdout = io.StringIO()
                     main = session_search.main if mode == "aggregate" else session_recall.main
-                    with patch.object(session_search, "discover_session_files") as discover, redirect_stdout(stdout):
+                    with patch.object(session_common, "discover_session_files") as discover, redirect_stdout(stdout):
                         self.assertEqual(main([*argv, *options]), 2)
                     discover.assert_not_called()
                     result = json.loads(stdout.getvalue())
@@ -165,7 +154,7 @@ class TimeRangeTests(unittest.TestCase):
 
     def test_range_computed_once_and_reused_for_candidate_reread(self):
         self.paged()
-        with patch.object(session_search, "time_range_for_args", wraps=session_search.time_range_for_args) as bounds:
+        with patch.object(session_common, "time_range_for_args", wraps=session_common.time_range_for_args) as bounds:
             result = self.output("recall", "--since", self.START, "--until", self.END)
         bounds.assert_called_once()
         self.assertEqual(result["summary"]["matching_messages"], 40)

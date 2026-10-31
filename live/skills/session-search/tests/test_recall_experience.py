@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 from experience_fixtures import CASES, write_cases
-from support import session_recall
+from support import cli_args, session_recall
 
 
 class RecallExperienceTests(unittest.TestCase):
@@ -24,12 +24,7 @@ class RecallExperienceTests(unittest.TestCase):
         write_cases(self.root, self.project)
 
     def args(self, mode, terms):
-        options = [mode, "--sessions-root", str(self.root), "--cwd", str(self.project)]
-        for term in terms:
-            options += ["--term", term]
-        if mode == "recall":
-            options += ["--include-evidence"]
-        return session_recall.build_parser().parse_args(options)
+        return cli_args(mode, self.root, self.project, terms=terms)
 
     def recall(self, terms):
         found = session_recall.find_output(self.args("find", terms), self.NOW)

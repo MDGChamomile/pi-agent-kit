@@ -7,16 +7,16 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from support import session_recall, session_search
+from support import cli_args, session_common, session_recall, session_search
 
 
 class SharedScanTests(unittest.TestCase):
     def test_entries_skip_malformed_lines_without_changing_valid_payloads(self):
         entries = [{"id": "first", "message": {"content": "한글"}}, {}]
         lines = [json.dumps(entries[0]), "not-json", "[]", "null", "", json.dumps(entries[1])]
-        warnings = session_search.WarningCollector()
+        warnings = session_common.WarningCollector()
         stream = io.BytesIO(("\n".join(lines) + "\n").encode("utf-8"))
-        self.assertEqual(list(session_search.read_session_entries(stream, Path("session.jsonl"), warnings)), entries)
+        self.assertEqual(list(session_common.read_session_entries(stream, Path("session.jsonl"), warnings)), entries)
         self.assertEqual(warnings.output(False), {
             "count": 2, "by_kind": {"invalid_entry": 1, "invalid_json_line": 1},
         })
@@ -32,8 +32,8 @@ class SharedScanTests(unittest.TestCase):
         for stream, error in [(io.BytesIO(b'{}\n\xff\n'), UnicodeError),
                               (FailingBody(b'{}\n'), OSError)]:
             with self.subTest(error=error):
-                warnings = session_search.WarningCollector()
-                entries = session_search.read_session_entries(stream, Path("session.jsonl"), warnings)
+                warnings = session_common.WarningCollector()
+                entries = session_common.read_session_entries(stream, Path("session.jsonl"), warnings)
                 self.assertEqual(next(entries), {})
                 with self.assertRaises(error):
                     next(entries)
@@ -42,17 +42,17 @@ class SharedScanTests(unittest.TestCase):
 
     def test_exclusions_use_supplied_identity_and_current_overlap_precedence(self):
         with tempfile.TemporaryDirectory() as temp:
-            current = session_search.normalized_path(Path(temp) / "current.jsonl")
-            missing = session_search.normalized_path(Path(temp) / "missing.jsonl")
-            explicit = session_search.normalized_path(Path(temp) / "explicit.jsonl")
+            current = session_common.normalized_path(Path(temp) / "current.jsonl")
+            missing = session_common.normalized_path(Path(temp) / "missing.jsonl")
+            explicit = session_common.normalized_path(Path(temp) / "explicit.jsonl")
             with patch.dict(os.environ, {"PI_SESSION_FILE": current}):
                 for include_current in (False, True):
                     with self.subTest(include_current=include_current):
-                        tracker = session_search.SessionFileExclusions(
+                        tracker = session_common.SessionFileExclusions(
                             frozenset((current, explicit, missing)), include_current,
                         )
                         # File identities have already been chosen by the caller.
-                        with patch.object(session_search, "normalized_path", side_effect=AssertionError("resolved again")), \
+                        with patch.object(session_common, "normalized_path", side_effect=AssertionError("resolved again")), \
                                 patch.object(Path, "open", side_effect=AssertionError("opened")):
                             self.assertTrue(tracker.excludes(current))
                             self.assertTrue(tracker.excludes(explicit))
@@ -73,9 +73,8 @@ class SharedScanTests(unittest.TestCase):
                      "timestamp": "2026-08-10T00:00:00Z",
                      "message": {"role": "user", "content": "needle"}}
             body = (json.dumps(header) + "\nnot-json\n[]\n" + json.dumps(entry) + "\n").encode()
-            scope = ["--sessions-root", str(root), "--cwd", str(root)]
-            search_args = session_search.build_parser().parse_args(scope)
-            recall_args = session_recall.build_parser().parse_args(["find", *scope, "--term", "needle"])
+            search_args = cli_args("aggregate", root, root)
+            recall_args = cli_args("find", root, root)
             path.write_bytes(body)
             for result in (session_search.aggregate(search_args), session_recall.find_output(recall_args)):
                 self.assertEqual(result["summary"]["entries_scanned"], 1)

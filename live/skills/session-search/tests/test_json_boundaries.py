@@ -11,7 +11,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-from support import RECALL_SCRIPT, SEARCH_SCRIPT, header, message, session_recall, session_search, write_session
+from support import RECALL_SCRIPT, SEARCH_SCRIPT, header, message, session_common, session_recall, write_session
 
 STAMP = "2026-08-14T00:00:00Z"
 # The C JSON decoder can accept depths above Python's recursion limit.
@@ -100,7 +100,7 @@ class JsonBoundaryTests(unittest.TestCase):
     def test_json_emission_round_trips_surrogates_and_literal_escapes(self):
         value = {"unicode": "한글 😀", "edge": "\ud800 middle \udfff", "literal": "\\ud800"}
         with redirect_stdout(io.StringIO()) as output:
-            session_search.emit_json(value)
+            session_common.emit_json(value)
         self.assertEqual(json.loads(output.getvalue()), value)
         output.getvalue().encode("utf-8", "strict")
         self.assertIn("한글 😀", output.getvalue())
@@ -169,12 +169,12 @@ class JsonBoundaryTests(unittest.TestCase):
     def test_parser_limits_are_local_but_utf8_decode_errors_propagate(self):
         for error_type in (ValueError, RecursionError):
             with self.subTest(error_type=error_type):
-                warnings = session_search.WarningCollector()
-                with patch.object(session_search.json, "loads", side_effect=error_type("synthetic parse limit")):
-                    self.assertIsNone(session_search.read_session_header(io.BytesIO(b"{}\n")))
-                    self.assertEqual(list(session_search.read_session_entries(io.BytesIO(b"{}\n"), self.path, warnings)), [])
+                warnings = session_common.WarningCollector()
+                with patch.object(session_common.json, "loads", side_effect=error_type("synthetic parse limit")):
+                    self.assertIsNone(session_common.read_session_header(io.BytesIO(b"{}\n")))
+                    self.assertEqual(list(session_common.read_session_entries(io.BytesIO(b"{}\n"), self.path, warnings)), [])
                 self.assertEqual(warnings.output(False)["by_kind"], {"invalid_json_line": 1})
         with self.assertRaises(UnicodeDecodeError):
-            session_search.read_session_header(io.BytesIO(b"\xff\n"))
+            session_common.read_session_header(io.BytesIO(b"\xff\n"))
         with self.assertRaises(UnicodeDecodeError):
-            list(session_search.read_session_entries(io.BytesIO(b"\xff\n"), self.path, warnings))
+            list(session_common.read_session_entries(io.BytesIO(b"\xff\n"), self.path, warnings))

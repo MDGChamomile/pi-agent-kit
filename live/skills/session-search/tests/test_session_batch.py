@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import test_session_search as fixtures
-from support import SEARCH_SCRIPT as SCRIPT, header, message, session_search, write_session
+from support import SEARCH_SCRIPT as SCRIPT, cli_args, header, message, session_common, session_search, write_session
 from test_session_search import fixture_tree
 
 
@@ -19,10 +19,7 @@ class SessionBatchTests(unittest.TestCase):
     NOW = fixtures.SessionSearchTests.NOW
 
     def args(self, root, project, *flags):
-        scope = [] if '--all-projects' in flags else ['--cwd', str(project)]
-        return session_search.build_parser().parse_args([
-            '--sessions-root', str(root), *scope, *flags,
-        ])
+        return cli_args('aggregate', root, None if '--all-projects' in flags else project, *flags)
 
     def batch(self, root, project, filters, *flags):
         options = [option for item in filters for option in ('--batch-filter', json.dumps(item))]
@@ -150,7 +147,7 @@ class SessionBatchTests(unittest.TestCase):
             ['--include-evidence'], ['--query', 'private'], ['--role', 'user'],
             ['--tool', 'bash'], ['--skill', 'alpha'], ['--error'],
         ]]
-        with patch.object(session_search, 'discover_session_files', side_effect=AssertionError('storage accessed')):
+        with patch.object(session_common, 'discover_session_files', side_effect=AssertionError('storage accessed')):
             for flags in invalid:
                 with self.subTest(flags=flags), self.assertRaises(ValueError):
                     session_search.aggregate(self.args('/unused', '/unused', *flags))
