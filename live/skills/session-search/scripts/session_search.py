@@ -123,6 +123,15 @@ def _tool_event(
     }
 
 
+def _call_event(
+    base: dict[str, Any], tool_name: str, arguments: Any, read_skill: str | None, *, include_arguments: bool,
+) -> dict[str, Any]:
+    arguments_text = (
+        json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str) if include_arguments else ""
+    )
+    return _tool_event(base, "skill_file_read" if read_skill else "tool_call", tool_name, arguments_text, read_skill)
+
+
 def events_for_entry(
     entry: dict[str, Any],
     session: dict[str, str],
@@ -172,14 +181,8 @@ def events_for_entry(
                 continue
             tool_name = str(block.get("name", "unknown"))
             arguments = block.get("arguments", {})
-            arguments_text = (
-                json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str) if include_arguments else ""
-            )
             read_skill = skill_read_name(tool_name, arguments, names_by_path, cwd)
-            events.append(_tool_event(
-                base, "skill_file_read" if read_skill else "tool_call",
-                tool_name, arguments_text, read_skill,
-            ))
+            events.append(_call_event(base, tool_name, arguments, read_skill, include_arguments=include_arguments))
     if role == "toolResult":
         tool_name = str(message.get("toolName", "unknown"))
         tool_call_id = message.get("toolCallId")
@@ -205,13 +208,8 @@ def events_for_entry(
             seen.add(call_id)
             arguments = call.get("arguments")
             read_skill = skill_read_name(name, arguments, names_by_path, cwd)
-            arguments_text = (
-                json.dumps(arguments, ensure_ascii=False, sort_keys=True)
-                if include_arguments and isinstance(arguments, dict) else ""
-            )
-            events.append(_tool_event(
-                base, "skill_file_read" if read_skill else "tool_call",
-                name, arguments_text, read_skill,
+            events.append(_call_event(
+                base, name, arguments, read_skill, include_arguments=include_arguments and isinstance(arguments, dict),
             ))
             if status != "unfinished":
                 error = call.get("error")
