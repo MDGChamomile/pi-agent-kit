@@ -267,7 +267,6 @@ class SessionArgumentParser(argparse.ArgumentParser):
 
 
 def add_storage_scope_arguments(parser: argparse.ArgumentParser) -> None:
-    """Share storage/project selection without coupling search pipelines."""
     scope = parser.add_mutually_exclusive_group()
     scope.add_argument("--all-projects", action="store_true", help="search sessions from every project")
     scope.add_argument("--cwd", default=os.getcwd(), help="project cwd to match exactly (default: current cwd)")

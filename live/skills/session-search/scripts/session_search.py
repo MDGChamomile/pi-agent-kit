@@ -580,7 +580,6 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             if not time_range.contains(timestamp):
                 continue
             eligible_entries += 1
-            # Parse each entry into events once, then evaluate independent filters.
             events = events_for_entry(
                 entry, session, None, state.skill_reads_by_call_id, state.names_by_path, recorded_cwd,
                 include_arguments=include_arguments,
