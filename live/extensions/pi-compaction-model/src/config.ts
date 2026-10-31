@@ -69,7 +69,7 @@ export function resolveConfig(
     ) {
       thinkingLevel = raw.thinkingLevel as ThinkingLevel;
     } else {
-      warn(`Invalid thinkingLevel '${String(raw.thinkingLevel)}'; using the provider default.`);
+      warn(`Invalid thinkingLevel '${String(raw.thinkingLevel)}'; omitting the thinking level.`);
     }
   }
 

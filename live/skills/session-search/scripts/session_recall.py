@@ -13,9 +13,9 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
-import session_search
+import session_common
 
 DEFAULT_CANDIDATE_LIMIT = 10
 MAX_CANDIDATE_LIMIT = 50
@@ -77,6 +77,7 @@ def active_entries(entries: list[dict[str, Any]], version: int) -> list[dict[str
         return entries
 
     by_id: dict[str, dict[str, Any]] = {}
+    parent_by_id: dict[str, str | None] = {}
     leaf_id: str | None = None
     for entry in entries:
         entry_id = entry.get("id")
@@ -86,19 +87,15 @@ def active_entries(entries: list[dict[str, Any]], version: int) -> list[dict[str
         if parent_id is not None and not isinstance(parent_id, str):
             return None
         by_id[entry_id] = entry
+        parent_by_id[entry_id] = parent_id
         leaf_id = entry_id
 
     if leaf_id is None:
         return []
-    path: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    current: str | None = leaf_id
-    while current is not None:
-        if current in seen or current not in by_id:
-            return None
-        seen.add(current)
-        path.append(by_id[current])
-        current = by_id[current].get("parentId")
+    path = [by_id[entry_id] for entry_id in session_common.ancestor_ids(leaf_id, parent_by_id)]
+    # Unlike search, recall rejects a chain that stops at a missing parent or a cycle.
+    if path[-1].get("parentId") is not None:
+        return None
     path.reverse()
     return path
 
@@ -111,11 +108,11 @@ def recall_text(entry: dict[str, Any]) -> RecallMessage | None:
     if not isinstance(role, str) or role not in {"user", "assistant"}:
         return None
     # text_content deliberately ignores thinking and tool-call blocks.
-    text = session_search.text_content(message.get("content"))
+    text = session_common.text_content(message.get("content"))
     if not text:
         return None
     entry_id = entry.get("id")
-    parsed_timestamp = session_search.parse_timestamp(entry.get("timestamp"))
+    parsed_timestamp = session_common.parse_timestamp(entry.get("timestamp"))
     timestamp = (
         parsed_timestamp.isoformat().replace("+00:00", "Z")
         if parsed_timestamp is not None
@@ -142,7 +139,7 @@ def retain_recall_entry(entry: dict[str, Any]) -> dict[str, Any]:
         retained["message"] = {"role": role}
         if role in ("user", "assistant"):
             # Preserve the full searchable text; output limits apply later.
-            retained["message"]["content"] = session_search.text_content(message.get("content"))
+            retained["message"]["content"] = session_common.text_content(message.get("content"))
     return retained
 
 
@@ -150,54 +147,31 @@ def read_active_messages(
     path: Path,
     target_cwd: str,
     all_projects: bool,
-    warnings: session_search.WarningCollector,
+    warnings: session_common.WarningCollector,
 ) -> tuple[list[RecallMessage], int] | None:
-    scope_confirmed = False
-    try:
-        # Decode only the header line before deciding scope. TextIOWrapper can
-        # decode body bytes ahead of readline() and hide an in-scope failure.
-        with path.open("rb") as handle:
-            header = session_search.read_session_header(handle)
-            if header is None:
-                if all_projects:
-                    warnings.add(path, "invalid_header")
-                return None
-            header_cwd = header.get("cwd")
-            if not all_projects and (
-                not isinstance(header_cwd, str)
-                or session_search.normalized_path(header_cwd) != target_cwd
-            ):
-                return ([], -1)
-            scope_confirmed = True
-            version = session_search.session_version(header, path, warnings)
-            if version is None:
-                return None
+    entries: list[dict[str, Any]] = []
 
-            entries: list[dict[str, Any]] = []
-            scanned = 0
-            for entry in session_search.read_session_entries(handle, path, warnings):
-                scanned += 1
-                entries.append(retain_recall_entry(entry))
-    except (OSError, UnicodeError):
-        if all_projects or scope_confirmed:
-            warnings.add(path, "unreadable_file")
+    def retain(_path: Path, _header: dict[str, Any], _version: int, records: Iterator[dict[str, Any]]) -> None:
+        entries.extend(retain_recall_entry(entry) for entry in records)
+
+    scan = session_common.scan_session(path, None if all_projects else target_cwd, warnings, retain)
+    if not scan.complete:
         return None
-
-    branch = active_entries(entries, version)
+    branch = active_entries(entries, scan.version)
     if branch is None:
         warnings.add(path, "invalid_branch_structure")
         return None
     messages = [message for entry in branch if (message := recall_text(entry)) is not None]
-    return messages, scanned
+    return messages, len(entries)
 
 
 def permitted_files(
-    roots: list[Path], warnings: session_search.WarningCollector
+    roots: list[Path], warnings: session_common.WarningCollector
 ) -> list[Path]:
-    discovered = session_search.discover_session_files(
+    discovered = session_common.discover_session_files(
         roots, on_outside=lambda path: warnings.add(path, "file_outside_session_root"),
     )
-    return [Path(session_search.normalized_path(path)) for path in discovered]
+    return [Path(session_common.normalized_path(path)) for path in discovered]
 
 
 def candidate_sort_key(candidate: Candidate) -> tuple[int, int, datetime, str]:
@@ -210,13 +184,15 @@ def candidate_sort_key(candidate: Candidate) -> tuple[int, int, datetime, str]:
 
 
 def message_fingerprint(messages: Iterable[RecallMessage]) -> str:
+    # surrogatepass encodes valid text exactly as UTF-8 and JSON's lone surrogates
+    # distinctly instead of raising.
     digest = hashlib.sha256()
     for message in messages:
         encoded = json.dumps(
             [message.entry_id, message.timestamp, message.role, message.text],
             ensure_ascii=False,
             separators=(",", ":"),
-        ).encode("utf-8")
+        ).encode("utf-8", "surrogatepass")
         digest.update(len(encoded).to_bytes(8, "big"))
         digest.update(encoded)
     return digest.hexdigest()
@@ -232,13 +208,13 @@ def candidate_for_messages(
     fingerprint: bool = True,
 ) -> tuple[Candidate | None, list[RecallMessage]]:
     """Find omits the fingerprint; recall needs it to detect a changed candidate."""
-    time_range = session_search.TimeRange(cutoff, until)
+    time_range = session_common.TimeRange(cutoff, until)
     eligible: list[RecallMessage] = []
     matched_terms: set[str] = set()
     matching_messages = 0
     latest_match = datetime.min.replace(tzinfo=timezone.utc)
     for message in messages:
-        timestamp = session_search.parse_timestamp(message.timestamp)
+        timestamp = session_common.parse_timestamp(message.timestamp)
         if not time_range.contains(timestamp):
             continue
         eligible.append(message)
@@ -264,19 +240,19 @@ def scan_candidates(
     args: argparse.Namespace,
     terms: tuple[str, ...],
     now: datetime | None = None,
-    *, time_range: session_search.TimeRange | None = None,
+    *, time_range: session_common.TimeRange | None = None,
     exclusions: frozenset[str] | None = None,
     fingerprints: bool = True,
-) -> tuple[list[Candidate], dict[str, int], session_search.WarningCollector]:
+) -> tuple[list[Candidate], dict[str, int], session_common.WarningCollector]:
     if time_range is None:
-        time_range = session_search.time_range_for_args(args, now)
+        time_range = session_common.time_range_for_args(args, now)
     if exclusions is None:
-        exclusions = session_search.normalized_exclusions(args.exclude_session_file)
+        exclusions = session_common.normalized_exclusions(args.exclude_session_file)
     roots = [args.sessions_root, *args.additional_sessions_root]
-    warnings = session_search.WarningCollector()
+    warnings = session_common.WarningCollector()
     paths = permitted_files(roots, warnings)
-    target_cwd = session_search.normalized_path(args.cwd)
-    file_exclusions = session_search.SessionFileExclusions(exclusions, args.include_current)
+    target_cwd = session_common.normalized_path(args.cwd)
+    file_exclusions = session_common.SessionFileExclusions(exclusions, args.include_current)
     candidates: list[Candidate] = []
     files_selected = 0
     scanned_entries = 0
@@ -289,8 +265,6 @@ def scan_candidates(
         if loaded is None:
             continue
         messages, scanned = loaded
-        if scanned < 0:
-            continue
         files_selected += 1
         scanned_entries += scanned
         candidate, _eligible = candidate_for_messages(
@@ -299,8 +273,8 @@ def scan_candidates(
         if candidate is not None:
             candidates.append(candidate)
 
-    # Only disclosed, in-scope failures can invalidate an empty result. Unknown
-    # or foreign-project files retain their existing private warning policy.
+    # Only disclosed, in-scope failures can invalidate an empty result. In
+    # current-project searches, failures in unknown or foreign-project files stay private.
     if not candidates and warnings.output(False)["by_kind"].get("unreadable_file", 0):
         raise RecallReadError("read failures prevent verifying an empty recall")
 
@@ -362,7 +336,7 @@ def recall_windows(
         items: list[dict[str, Any]] = []
         for index in range(start, end):
             message = messages[index]
-            evidence, text_truncated = session_search.mask_and_shorten_with_metadata(
+            evidence, text_truncated = session_common.mask_and_shorten_with_metadata(
                 message.text, limit=MAX_MESSAGE_CHARS, queries=terms
             )
             if evidence_chars + len(evidence) > MAX_TOTAL_EVIDENCE_CHARS:
@@ -408,13 +382,13 @@ def recall_windows(
 def add_scope_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--term", action="append", default=[], required=True,
                         help="case-insensitive literal recall term; repeat for alternatives (OR)")
-    session_search.add_time_arguments(parser)
-    session_search.add_storage_scope_arguments(parser)
-    session_search.add_exclusion_argument(parser)
+    session_common.add_time_arguments(parser)
+    session_common.add_storage_scope_arguments(parser)
+    session_common.add_exclusion_argument(parser)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = session_search.SessionArgumentParser(
+    parser = session_common.SessionArgumentParser(
         description="Find or recall bounded evidence from active branches of local Pi sessions."
     )
     subparsers = parser.add_subparsers(dest="mode", required=True)
@@ -435,7 +409,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def scope_view(args: argparse.Namespace, time_range: session_search.TimeRange) -> dict[str, Any]:
+def scope_view(args: argparse.Namespace, time_range: session_common.TimeRange) -> dict[str, Any]:
     return {
         "all_projects": args.all_projects,
         "days": args.days,
@@ -449,7 +423,7 @@ def find_output(args: argparse.Namespace, now: datetime | None = None) -> dict[s
     terms = normalize_terms(args.term)
     if args.limit < 1 or args.limit > MAX_CANDIDATE_LIMIT:
         raise ValueError("candidate limit is invalid")
-    time_range = session_search.time_range_for_args(args, now)
+    time_range = session_common.time_range_for_args(args, now)
     candidates, summary, warnings = scan_candidates(args, terms, time_range=time_range, fingerprints=False)
     returned = candidates[:args.limit]
     summary.update({
@@ -477,26 +451,26 @@ def find_output(args: argparse.Namespace, now: datetime | None = None) -> dict[s
 
 
 def continuation_digest(value: Any) -> str:
-    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8", "surrogatepass",
+    )
     return hashlib.sha256(encoded).hexdigest()
 
 
 def continuation_scope(
     args: argparse.Namespace, terms: tuple[str, ...], reference_time: datetime,
-    time_range: session_search.TimeRange, exclusions: frozenset[str],
+    time_range: session_common.TimeRange, exclusions: frozenset[str],
 ) -> str:
     current = os.environ.get("PI_SESSION_FILE")
-    # Preserve legacy digests when neither new option is used.
-    absolute_bounds = time_range.view() if args.since is not None or args.until is not None else {}
     return continuation_digest({
-        **absolute_bounds,
-        **({"excluded_session_files": sorted(exclusions)} if exclusions else {}),
-        "roots": sorted({session_search.normalized_path(root) for root in
+        **time_range.view(),
+        "excluded_session_files": sorted(exclusions),
+        "roots": sorted({session_common.normalized_path(root) for root in
                          [args.sessions_root, *args.additional_sessions_root]}),
-        "cwd": None if args.all_projects else session_search.normalized_path(args.cwd),
+        "cwd": None if args.all_projects else session_common.normalized_path(args.cwd),
         "all_projects": args.all_projects,
         "include_current": args.include_current,
-        "excluded_current": session_search.normalized_path(current)
+        "excluded_current": session_common.normalized_path(current)
                             if current and not args.include_current else None,
         "days": args.days,
         "terms": sorted(terms),
@@ -518,7 +492,7 @@ def decode_continuation(token: str) -> tuple[datetime, str, str, int]:
         if not isinstance(value, list) or len(value) != 5 or type(value[0]) is not int or value[0] != 1:
             raise ValueError
         _, timestamp, scope, candidate, offset = value
-        reference_time = session_search.parse_timestamp(timestamp)
+        reference_time = session_common.parse_timestamp(timestamp)
         if reference_time is None or timestamp != reference_time.isoformat():
             raise ValueError
         if any(not isinstance(digest, str) or len(digest) != 64
@@ -544,8 +518,8 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
     expected_scope = None
     if args.continuation is not None:
         reference_time, expected_scope, expected_candidate, window_start = decode_continuation(args.continuation)
-    time_range = session_search.time_range_for_args(args, reference_time)
-    exclusions = session_search.normalized_exclusions(args.exclude_session_file)
+    time_range = session_common.time_range_for_args(args, reference_time)
+    exclusions = session_common.normalized_exclusions(args.exclude_session_file)
     scope = continuation_scope(args, terms, reference_time, time_range, exclusions)
     if expected_scope is not None and scope != expected_scope:
         raise ValueError("continuation scope changed")
@@ -565,11 +539,11 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
         candidate = candidates[selected_rank - 1]
     loaded = read_active_messages(
         candidate.path,
-        session_search.normalized_path(args.cwd),
+        session_common.normalized_path(args.cwd),
         args.all_projects,
         warnings,
     )
-    if loaded is None or loaded[1] < 0:
+    if loaded is None:
         raise CandidateNotFoundError
     messages, _scanned = loaded
     refreshed, eligible = candidate_for_messages(
@@ -610,18 +584,18 @@ def main(argv: Iterable[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
         output = find_output(args) if args.mode == "find" else recall_output(args)
-    except (session_search.InvalidArgumentError, ValueError):
-        return session_search.emit_error("INVALID_ARGUMENT", "Arguments are invalid.")
+    except (session_common.InvalidArgumentError, ValueError):
+        return session_common.emit_error("INVALID_ARGUMENT", "Arguments are invalid.")
     except CandidateNotFoundError:
-        return session_search.emit_error("CANDIDATE_NOT_FOUND", "The selected candidate is unavailable.")
+        return session_common.emit_error("CANDIDATE_NOT_FOUND", "The selected candidate is unavailable.")
     except RecallReadError:
-        return session_search.emit_error(
+        return session_common.emit_error(
             "SESSION_STORAGE_UNAVAILABLE",
             "One or more in-scope session files could not be read, so the requested history could not be verified.",
         )
     except (OSError, RuntimeError):
-        return session_search.emit_error("SESSION_STORAGE_UNAVAILABLE", "Session storage could not be read.")
-    print(json.dumps(output, ensure_ascii=False, sort_keys=True))
+        return session_common.emit_error("SESSION_STORAGE_UNAVAILABLE", "Session storage could not be read.")
+    session_common.emit_json(output)
     return 0
 
 

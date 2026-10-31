@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from test_session_search import header, message, session_search, write_session
+from support import cli_args, header, message, session_search, write_session
 
 
 class SkillLocationTests(unittest.TestCase):
@@ -48,9 +48,7 @@ class SkillLocationTests(unittest.TestCase):
                         toolName="read", toolCallId="read-error", isError=True),
             ]
             write_session(root / "record.jsonl", header("synthetic", project), entries)
-            args = session_search.build_parser().parse_args([
-                "--sessions-root", str(root), "--cwd", str(project), "--days", "2", "--skill", "declared-name",
-            ])
+            args = cli_args("aggregate", root, project, "--days", "2", "--skill", "declared-name")
             result = session_search.aggregate(args, now=datetime(2026, 8, 15, tzinfo=timezone.utc))
             summary = result["summary"]
             self.assertEqual(summary["skill_file_read_attempts"], {"declared-name": 2})
@@ -97,10 +95,7 @@ class SkillLocationTests(unittest.TestCase):
                 head = {**header("synthetic", root), "version": version}
                 write_session(root / "record.jsonl", head, entries)
                 for skill in ("declared", "folder"):
-                    args = session_search.build_parser().parse_args([
-                        "--sessions-root", str(root), "--cwd", str(root), "--skill", skill,
-                    ])
-                    summary = session_search.aggregate(args)["summary"]
+                    summary = session_search.aggregate(cli_args("aggregate", root, root, "--skill", skill))["summary"]
                     expected = ({"declared": 3} if version == 1 else {"declared": 1}) if skill == "declared" else (
                         {} if version == 1 else {"folder": 2})
                     self.assertEqual(summary["skill_file_read_attempts"], expected)

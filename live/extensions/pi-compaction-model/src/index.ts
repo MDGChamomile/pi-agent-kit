@@ -1,4 +1,5 @@
 import {
+  compact,
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
 import {
@@ -7,7 +8,6 @@ import {
   loadConfig,
 } from "./config.js";
 import { parseModelReference } from "./model-reference.js";
-import { compactWithOneRetry } from "./retry.js";
 
 import { warn } from "./warnings.js";
 
@@ -105,7 +105,8 @@ export default function compactionModel(pi: ExtensionAPI): void {
         : undefined;
       const requestModel = authBaseUrl ? { ...model, baseUrl: authBaseUrl } : model;
 
-      // Match Pi's native compaction bridge: null marks a deleted header.
+      // compact() accepts string headers; the registry stream re-resolves auth
+      // and restores null deletion markers before provider dispatch.
       const authHeaders = auth.headers
         ? Object.fromEntries(
             Object.entries(auth.headers).filter((entry): entry is [string, string] => entry[1] !== null),
@@ -117,7 +118,7 @@ export default function compactionModel(pi: ExtensionAPI): void {
         authHeaders,
       );
 
-      const result = await compactWithOneRetry(
+      const result = await compact(
         event.preparation,
         requestModel,
         auth.apiKey,
@@ -125,8 +126,9 @@ export default function compactionModel(pi: ExtensionAPI): void {
         event.customInstructions,
         event.signal,
         config.thinkingLevel,
-        undefined,
+        (streamModel, context, options) => ctx.modelRegistry.streamSimple(streamModel, context, options),
         auth.env,
+        settings.getRetrySettings(),
       );
 
       return { compaction: result };

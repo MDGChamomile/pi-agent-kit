@@ -53,7 +53,7 @@ for (const hasUI of [true, false]) {
       });
       const messages = [
         "[pi-compaction-model] compactionModel.model must be a non-empty provider/model string; using Pi's active model.",
-        "[pi-compaction-model] Invalid thinkingLevel 'invalid'; using the provider default.",
+        "[pi-compaction-model] Invalid thinkingLevel 'invalid'; omitting the thinking level.",
         "[pi-compaction-model] reasons must contain only manual, threshold, or overflow; handling all reasons.",
       ];
       if (hasUI) {

@@ -12,27 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import RECALL_SCRIPT as SCRIPT, session_recall
-
-
-def header(session_id: str, cwd: Path, version: int = 3) -> dict:
-    return {
-        "type": "session",
-        "version": version,
-        "id": session_id,
-        "timestamp": "2026-08-01T00:00:00Z",
-        "cwd": str(cwd),
-    }
-
-
-def message(entry_id: str, parent_id: str | None, timestamp: str, role: str, content, **extra) -> dict:
-    return {
-        "type": "message",
-        "id": entry_id,
-        "parentId": parent_id,
-        "timestamp": timestamp,
-        "message": {"role": role, "content": content, **extra},
-    }
+from support import RECALL_SCRIPT as SCRIPT, cli_args, header, message, session_common, session_recall, write_session
 
 
 def entry(entry_type: str, entry_id: str, parent_id: str | None, **extra) -> dict:
@@ -45,24 +25,13 @@ def entry(entry_type: str, entry_id: str, parent_id: str | None, **extra) -> dic
     }
 
 
-def write_session(path: Path, head: dict, entries: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        handle.write(json.dumps(head) + "\n")
-        for item in entries:
-            handle.write(json.dumps(item) + "\n")
 
 
 class SessionRecallTests(unittest.TestCase):
     NOW = datetime(2026, 8, 15, tzinfo=timezone.utc)
 
     def args(self, mode: str, root: Path, cwd: Path, *extra: str):
-        required = ["--term", "인증 오류"]
-        if mode == "recall":
-            required += ["--include-evidence"]
-        return session_recall.build_parser().parse_args([
-            mode, "--sessions-root", str(root), "--cwd", str(cwd), *required, *extra
-        ])
+        return cli_args(mode, root, cwd, *extra, terms=["인증 오류"])
 
     def test_text_truncation_is_distinct_from_missing_matching_messages(self):
         for text, truncated in [("needle … original ellipsis", False),
@@ -94,7 +63,7 @@ class SessionRecallTests(unittest.TestCase):
         self.assertLessEqual(summary["evidence_chars"], 6000)
 
     def test_metadata_helper_preserves_string_api_and_limits(self):
-        helper = session_recall.session_search
+        helper = session_common
         for limit in [-1, 0, 1, 2, 3, 10, 300]:
             for text in ["", "…", "needle " + "x" * 1000]:
                 with self.subTest(limit=limit, text_length=len(text)):
@@ -509,11 +478,11 @@ class SessionRecallTests(unittest.TestCase):
                 raise UnicodeError("synthetic header failure")
 
         path = Path("/synthetic/session.jsonl")
-        cwd = session_recall.session_search.normalized_path("/synthetic/project")
+        cwd = session_common.normalized_path("/synthetic/project")
         for all_projects in (False, True):
             for scope in ("selected", "foreign", "unknown", "open_failure"):
                 with self.subTest(all_projects=all_projects, scope=scope):
-                    warnings = session_recall.session_search.WarningCollector()
+                    warnings = session_common.WarningCollector()
                     head = header("private-id", Path(cwd if scope == "selected" else "/foreign"))
                     stream_type = FailingHeader if scope == "unknown" else FailingBody
                     stream = stream_type((json.dumps(head) + "\n").encode("utf-8"))
@@ -561,7 +530,7 @@ class SessionRecallTests(unittest.TestCase):
             for version in (1, 2, 3):
                 with self.subTest(version=version):
                     write_session(path, header("branch", root, version), records)
-                    warnings = session_recall.session_search.WarningCollector()
+                    warnings = session_common.WarningCollector()
                     validate = session_recall.active_entries
                     with patch.object(session_recall, "active_entries", wraps=validate) as observed:
                         loaded = session_recall.read_active_messages(path, str(root), False, warnings)
@@ -591,7 +560,7 @@ class SessionRecallTests(unittest.TestCase):
                 for name, records in cases.items():
                     with self.subTest(version=version, case=name):
                         write_session(path, header("invalid", root, version), records)
-                        warnings = session_recall.session_search.WarningCollector()
+                        warnings = session_common.WarningCollector()
                         loaded = session_recall.read_active_messages(path, str(root), False, warnings)
                         if version == 1:
                             self.assertEqual(loaded, ([], len(records)))
@@ -601,7 +570,7 @@ class SessionRecallTests(unittest.TestCase):
                             self.assertEqual(warnings.output(False)["by_kind"], {"invalid_branch_structure": 1})
 
     def test_extreme_timestamp_is_ignored_without_overflow(self):
-        self.assertIsNone(session_recall.session_search.parse_timestamp("0001-01-01T00:00:00+14:00"))
+        self.assertIsNone(session_common.parse_timestamp("0001-01-01T00:00:00+14:00"))
 
     def test_untrusted_timestamp_is_not_returned_as_evidence(self):
         with tempfile.TemporaryDirectory() as temp:

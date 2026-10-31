@@ -1,12 +1,15 @@
 """Tool-event refactoring preserves payloads and serialization boundaries."""
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
 from test_nested_calls import nested_entry
-from test_session_search import header, message, session_search, write_session
+from support import header, message, session_search, write_session
 
 
 class ToolEventTests(unittest.TestCase):
@@ -76,6 +79,59 @@ class ToolEventTests(unittest.TestCase):
                 self.assertEqual(event["evidence_raw"], "")
                 self.assertEqual(event["searchable"], "read\nalpha")
                 self.assertEqual(event["skill_file_read"], "alpha")
+
+    def test_quoted_argument_values_are_masked_without_changing_search_matches(self):
+        commands = (
+            'echo password="SYNTHETIC FIRST SECOND"',
+            "echo passwd='SYNTHETIC FIRST SECOND'",
+            r'echo secret="SYNTHETIC\" SECOND"',
+            'echo token="SYNTHETIC\nSECOND"',
+            'echo {"password": "SYNTHETIC FIRST SECOND"}',
+            'Cookie: session=SYNTHETIC_A; sid=SYNTHETIC_B\nVisible: marker',
+        )
+        for command in commands:
+            for nested in (False, True):
+                with self.subTest(command=command, nested=nested), tempfile.TemporaryDirectory() as temp:
+                    root = Path(temp)
+                    call = {"type": "toolCall", "id": "inner", "name": "bash", "status": "unfinished",
+                            "arguments": {"options": [{"command": command}], "token": "SYNTHETIC_FIELD"}}
+                    entry = (nested_entry([call]) if nested else
+                             message("call", None, "2026-09-29T00:00:00Z", "assistant", [call]))
+                    path = root / "session.jsonl"
+                    write_session(path, header("session", root), [entry])
+                    before = path.read_bytes()
+                    flags = ["--sessions-root", temp, "--cwd", temp, "--tool", "bash", "--query", "SYNTHETIC"]
+                    for evidence in (False, True):
+                        args = session_search.build_parser().parse_args(flags + (["--include-evidence"] if evidence else []))
+                        result = session_search.aggregate(args)
+                        self.assertEqual(result["summary"]["matched_events"], 1)
+                        self.assertNotIn("SYNTHETIC", json.dumps(result))
+                        if evidence:
+                            self.assertIn("[REDACTED]", result["results"][0]["evidence"])
+                        else:
+                            self.assertEqual(result["results"], [])
+                    self.assertEqual(path.read_bytes(), before)
+
+    def test_cli_masks_quoted_direct_and_nested_arguments(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            call = {"type": "toolCall", "id": "inner", "name": "bash", "status": "unfinished",
+                    "arguments": {"command": 'echo password="SYNTHETIC FIRST SECOND"'}}
+            write_session(root / "session.jsonl", header("session", root), [
+                message("call", None, "2026-09-29T00:00:00Z", "assistant", [call]),
+                nested_entry([call]),
+            ])
+            for evidence in (False, True):
+                completed = subprocess.run(
+                    [sys.executable, "-B", session_search.__file__, "--sessions-root", temp, "--cwd", temp,
+                     "--tool", "bash", "--query", "SYNTHETIC", *(["--include-evidence"] if evidence else [])],
+                    capture_output=True, text=True, env={**os.environ, "PI_SESSION_FILE": ""},
+                )
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                result = json.loads(completed.stdout)
+                self.assertEqual(result["summary"]["tool_calls"], {"bash": 2})
+                self.assertNotIn("SYNTHETIC", completed.stdout)
+                self.assertEqual(len(result["results"]), 2 if evidence else 0)
 
     def test_nested_argument_query_is_searchable_and_evidence_is_opt_in_and_masked(self):
         with tempfile.TemporaryDirectory() as temp:

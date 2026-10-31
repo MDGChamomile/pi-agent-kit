@@ -20,7 +20,7 @@ This is an independently maintained derivative of [JMHSV/pi-compaction-model](ht
 
 Imported from revision `283f0de4fe56d4cc35931e1255e0d3888761426b`, including [upstream PR #1](https://github.com/JMHSV/pi-compaction-model/pull/1): restore cumulative file-operation lists before falling back to Pi's active model. This concerns file lists in compaction summaries, not loss of files on disk.
 
-Kit-specific changes: source-install documentation and private package metadata; aligning the lockfile's peer range with the inherited manifest; and omitting deleted (`null`) authentication headers before calling `compact()`, matching Pi 0.85.1's native bridge, with a regression test. A root `index.ts` re-exports the implementation so Pi's compact extension list shows the containing directory name rather than `src`. The original compaction routing, file-list restoration, tests, and `compactionModel` configuration are retained. This directory is not separately published to npm; `npm:pi-compaction-model` installs the upstream package, not this derivative.
+Kit-specific changes since that revision, such as source-install documentation, private package metadata, and summarization through Pi's model registry, are recorded in this repository's history. A root `index.ts` re-exports the implementation so Pi's compact extension list shows the containing directory name rather than `src`. The `compactionModel` configuration format and file-list restoration are retained. This directory is not separately published to npm; `npm:pi-compaction-model` installs the upstream package, not this derivative.
 
 ## Install from source
 
@@ -47,13 +47,13 @@ Add `compactionModel` to `~/.pi/agent/settings.json`:
 ```json
 {
   "compactionModel": {
-    "model": "openai-codex/gpt-5.6-terra",
+    "model": "provider/summary-model",
     "thinkingLevel": "medium"
   }
 }
 ```
 
-`model` must be a model known to Pi in `provider/model` form.
+`model` must be a model known to Pi in `provider/model` form; `pi --list-models` shows the available IDs. Summarization uses Pi's model-registry stream path, including extension-registered providers and provider-specific authentication.
 
 Supported thinking levels are:
 
@@ -61,7 +61,7 @@ Supported thinking levels are:
 off, minimal, low, medium, high, xhigh, max
 ```
 
-Omit `thinkingLevel` to use the provider default.
+Omitting `thinkingLevel` leaves it unset; it does not inherit the active conversation's thinking level. Pi's provider adapters may interpret an unset level as off or the model's off mapping. Set it explicitly when a particular level is required.
 
 ### Select which compactions to route
 
@@ -76,7 +76,7 @@ Use `reasons` to handle only a subset:
 ```json
 {
   "compactionModel": {
-    "model": "google/gemini-2.5-flash",
+    "model": "provider/fast-model",
     "thinkingLevel": "low",
     "reasons": ["threshold", "overflow"]
   }
@@ -92,7 +92,7 @@ A trusted project's `.pi/settings.json` can override individual global fields:
 ```json
 {
   "compactionModel": {
-    "model": "anthropic/claude-sonnet-4-5"
+    "model": "provider/project-model"
   }
 }
 ```
@@ -111,7 +111,7 @@ For example, to use Smart Compact manually and this extension only for automatic
     "autoTrigger": false
   },
   "compactionModel": {
-    "model": "openai-codex/gpt-5.6-terra",
+    "model": "provider/summary-model",
     "thinkingLevel": "medium",
     "reasons": ["threshold", "overflow"]
   }
@@ -126,7 +126,7 @@ The resulting routing is:
 | `/compact` | Pi native compaction with the active model |
 | Automatic threshold | Pi native compaction algorithm with the configured model |
 | Overflow recovery | Pi native compaction algorithm with the configured model |
-| Configured-model failure | Retries once for a recognized transient failure, then returns control to Pi's native handling path |
+| Configured-model failure | Retries transient request failures according to Pi's `retry` settings, then returns control to Pi's native handling path |
 
 ## OpenRouter attribution
 
@@ -147,33 +147,29 @@ Configuration fields recover independently:
 | Configured section has a missing or empty `model`, or `model` is not in `provider/model` form | Warns, does not use a dedicated model, and returns control to Pi's native handling path |
 | Model not found | Warns and returns control to Pi's native handling path |
 | Authentication unavailable | Warns and returns control to Pi's native handling path |
-| Invalid `thinkingLevel` | Keeps the dedicated model, warns, and omits the thinking setting so the provider default applies |
+| Invalid `thinkingLevel` | Keeps the dedicated model, warns, and omits the thinking setting |
 | Invalid `reasons` | Keeps the dedicated model, warns, and handles `manual`, `threshold`, and `overflow` |
 
-An empty valid `reasons` array is not an error; it disables dedicated-model routing. Pi currently resolves authentication for the active conversation model before firing the compaction extension hook. Consequently, the active model must also have valid authentication even when a dedicated compaction model is configured.
+An empty valid `reasons` array is not an error; it disables dedicated-model routing. The dedicated model needs its own valid authentication. If Pi falls back to native compaction, the active conversation model's normal authentication requirements apply.
 
 ### Request failures and cancellation
 
-For recognized transient provider or transport failures (such as a 503 response, temporary rate limiting, or a dropped stream), the extension waits one second and retries the dedicated compaction once. There are at most two `compact()` invocations per hook. A second failure, an unknown error, or a deterministic error such as authentication, invalid requests, context overflow, or quota/billing exhaustion returns control to Pi's native handling path with a warning. Model lookup and authentication-resolution failures are not retried.
+The extension passes Pi's `retry` settings to native `compact()`, the same policy Pi applies to its own compaction. Each summarization request is retried for errors Pi classifies as transient, such as a 503 response, temporary rate limiting, or a dropped stream. Retries follow `retry.maxRetries` and exponential backoff from `retry.baseDelayMs`, capped by `retry.maxAgentDelayMs`; `retry.enabled: false` disables them. Deterministic failures such as authentication, invalid requests, or quota/billing exhaustion are not retried. A split-turn compaction retries only its failed request. Retry progress is not shown in the UI, and retrying can add latency and provider usage.
 
-This is a fixed extension policy, independent of Pi's `retry` settings (including `retry.enabled`). The extension passes no native retry policy to `compact()` and does not enable a nested native summarization retry loop. Error classification is conservative and message-based because native compaction flattens provider errors; unrecognized transient errors can still fall back without a retry. Provider retry-delay cap failures are not retried by this wrapper.
+A failure that remains after those retries returns control to Pi's native handling path with a warning. Model lookup and authentication-resolution failures are not retried.
 
-The wrapper predates `compact()`'s native `retry` argument (added after the former 0.80.7 minimum) and intentionally does not use it: native retry applies to each internal summarization request, so a split-turn compaction could make more than two attempts. It is not a generic retry framework and does not bound provider-internal HTTP attempts.
-
-A retry repeats the whole compaction, including any completed part of a split-turn summary. Split-turn compaction, provider/transport retries, and subsequent native fallback can therefore make the total number of HTTP requests greater than two. Retrying can add latency and provider usage.
-
-Cancellation before an attempt, during the wait, or during a request stops further extension attempts and returns `{ cancel: true }`, without a fallback warning. An `AbortError` is also treated as cancellation. Returning no result on other failures hands control back to Pi; the extension does not itself start an active-model request.
+Cancellation during a request or retry wait returns `{ cancel: true }` without a fallback warning. An `AbortError` is also treated as cancellation. Returning no result on other failures hands control back to Pi; the extension does not itself start an active-model request.
 
 ## Development
 
-From this directory, with Bun 1.3.14:
+From this directory, with the Bun version pinned by `packageManager` in `package.json`:
 
 ```bash
 bun install --frozen-lockfile
 bun run check
 ```
 
-The `live-validation` workflow runs these checks against the pinned minimum, Pi 1.0.0, and `pi-latest-compatibility` runs them weekly against Pi's latest release. Offline checks make no model requests; live compaction sends session content to the configured provider and can incur usage charges.
+The `live-validation` workflow runs these checks against the pinned minimum, Pi 1.0.0, and `pi-latest-compatibility` runs them weekly against Pi's latest release. Offline checks use synthetic data and make no live model requests. The provider-routing tests exercise real Pi compaction, model-registry dispatch and authentication with an in-memory credential store and stubbed transport, including a custom API and Cloudflare Gateway header deletions. Live compaction sends session content to the configured provider and can incur usage charges.
 
 ## License
 

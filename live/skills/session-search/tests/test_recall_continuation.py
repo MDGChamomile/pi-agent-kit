@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from test_session_recall import header, message, session_recall, write_session
+from support import cli_args, header, message, session_common, session_recall, write_session
 
 
 class RecallContinuationTests(unittest.TestCase):
@@ -37,10 +37,7 @@ class RecallContinuationTests(unittest.TestCase):
 
     def args(self, token=None, *extra):
         selection = ["--continuation", token] if token is not None else []
-        return session_recall.build_parser().parse_args([
-            "recall", "--sessions-root", str(self.root), "--cwd", str(self.project),
-            "--term", "인증 오류", "--include-evidence", *selection, *extra,
-        ])
+        return cli_args("recall", self.root, self.project, *selection, *extra, terms=["인증 오류"])
 
     def recall(self, token=None, *extra, now=None):
         return session_recall.recall_output(self.args(token, *extra), now or self.NOW)
@@ -229,7 +226,7 @@ class RecallContinuationTests(unittest.TestCase):
         token = self.token()
         for options in (["--continuation", token],
                         ["--continuation", token, "--candidate-rank", "2", "--include-evidence"]):
-            with self.subTest(options=options), self.assertRaises(session_recall.session_search.InvalidArgumentError):
+            with self.subTest(options=options), self.assertRaises(session_common.InvalidArgumentError):
                 session_recall.build_parser().parse_args(["recall", "--term", "needle", *options])
 
     def test_continuation_works_across_processes_without_writing_state(self):
