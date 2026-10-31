@@ -199,6 +199,18 @@ def session_version(header: dict[str, Any], path: Path, warnings: WarningCollect
     return value
 
 
+def ancestor_ids(entry_id: Any, parent_by_id: dict[str, Any]) -> Iterator[str]:
+    """Yield entry_id and its ancestors until a root, an unknown ID, or a cycle.
+
+    Callers decide whether a chain that stops before a root is acceptable.
+    """
+    seen: set[str] = set()
+    while isinstance(entry_id, str) and entry_id in parent_by_id and entry_id not in seen:
+        seen.add(entry_id)
+        yield entry_id
+        entry_id = parent_by_id[entry_id]
+
+
 @dataclass
 class SessionScan:
     header_valid: bool = False

@@ -70,14 +70,6 @@ def record_skill_identity(
     return names_by_path
 
 
-def latest_leaf_path(parent_by_id: dict[str, Any], leaf_id: str | None) -> set[str]:
-    result: set[str] = set()
-    while isinstance(leaf_id, str) and leaf_id in parent_by_id and leaf_id not in result:
-        result.add(leaf_id)
-        leaf_id = parent_by_id[leaf_id]
-    return result
-
-
 @dataclass(frozen=True)
 class EventFilters:
     queries: tuple[str, ...]
@@ -319,7 +311,7 @@ class BranchSkillState:
         self.skill_reads_by_call_id = skill_read_calls_for_result(entry, self.calls_by_id, self.parent_by_id)
 
     def leaf_path(self) -> set[str]:
-        return latest_leaf_path(self.parent_by_id, self.leaf_id)
+        return set(session_common.ancestor_ids(self.leaf_id, self.parent_by_id))
 
 
 def result_view(event: dict[str, Any], queries: Iterable[str] = ()) -> dict[str, Any]:

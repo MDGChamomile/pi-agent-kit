@@ -77,6 +77,7 @@ def active_entries(entries: list[dict[str, Any]], version: int) -> list[dict[str
         return entries
 
     by_id: dict[str, dict[str, Any]] = {}
+    parent_by_id: dict[str, str | None] = {}
     leaf_id: str | None = None
     for entry in entries:
         entry_id = entry.get("id")
@@ -86,19 +87,15 @@ def active_entries(entries: list[dict[str, Any]], version: int) -> list[dict[str
         if parent_id is not None and not isinstance(parent_id, str):
             return None
         by_id[entry_id] = entry
+        parent_by_id[entry_id] = parent_id
         leaf_id = entry_id
 
     if leaf_id is None:
         return []
-    path: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    current: str | None = leaf_id
-    while current is not None:
-        if current in seen or current not in by_id:
-            return None
-        seen.add(current)
-        path.append(by_id[current])
-        current = by_id[current].get("parentId")
+    path = [by_id[entry_id] for entry_id in session_common.ancestor_ids(leaf_id, parent_by_id)]
+    # Unlike search, recall rejects a chain that stops at a missing parent or a cycle.
+    if path[-1].get("parentId") is not None:
+        return None
     path.reverse()
     return path
 
