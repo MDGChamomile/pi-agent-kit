@@ -2,7 +2,7 @@
 import io
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -84,6 +84,16 @@ class SharedScanTests(unittest.TestCase):
                 self.assertEqual(result["summary"]["matched_sessions"], 1)
                 self.assertEqual(result["warnings"]["count"], 0)
             self.assertEqual(results[0]["summary"]["files_selected"], 1)
+
+    def test_windows_recorded_cwd_needs_a_drive_or_unc_share(self):
+        with patch.object(session_common, "Path", PureWindowsPath), \
+                patch.object(session_common, "normalized_path", side_effect=str):
+            for value in ("\\work\\project", "C:work\\project", "~\\project"):
+                with self.subTest(value=value):
+                    self.assertIsNone(session_common.recorded_cwd(value))
+            for value in ("C:\\work\\project", "\\\\server\\share\\project"):
+                with self.subTest(value=value):
+                    self.assertEqual(session_common.recorded_cwd(value), value)
 
     def test_both_pipelines_share_json_warnings_but_keep_partial_read_policy(self):
         with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"PI_SESSION_FILE": ""}):

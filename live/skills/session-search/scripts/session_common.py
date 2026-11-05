@@ -72,10 +72,10 @@ def normalized_path(value: str | Path) -> str:
 def recorded_cwd(value: Any) -> str | None:
     """Return the header's project path, or None when it cannot identify one.
 
-    Empty, relative, and "~" paths would otherwise resolve against whoever runs
-    the search rather than the recorded session.
+    Empty, relative, "~", and drive-less Windows paths would otherwise resolve
+    against whoever runs the search rather than the recorded session.
     """
-    if not isinstance(value, str) or not os.path.isabs(value):
+    if not isinstance(value, str) or not Path(value).is_absolute():
         return None
     try:
         return normalized_path(value)
