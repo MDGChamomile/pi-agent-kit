@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   COMPACTION_REASONS,
   isInstallTelemetryEnabled,
@@ -79,10 +79,19 @@ describe("isInstallTelemetryEnabled", () => {
   const settings = (enabled: boolean) => ({
     getEnableInstallTelemetry: () => enabled,
   });
+  let originalTelemetry: string | undefined;
+  beforeEach(() => {
+    originalTelemetry = process.env.PI_TELEMETRY;
+    delete process.env.PI_TELEMETRY;
+  });
+  afterEach(() => {
+    if (originalTelemetry === undefined) delete process.env.PI_TELEMETRY;
+    else process.env.PI_TELEMETRY = originalTelemetry;
+  });
 
   test("uses the settings value when PI_TELEMETRY is unset", () => {
-    expect(isInstallTelemetryEnabled(settings(true), undefined)).toBe(true);
-    expect(isInstallTelemetryEnabled(settings(false), undefined)).toBe(false);
+    expect(isInstallTelemetryEnabled(settings(true))).toBe(true);
+    expect(isInstallTelemetryEnabled(settings(false))).toBe(false);
   });
 
   test("recognizes truthy PI_TELEMETRY values", () => {
