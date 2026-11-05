@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from support import cli_args, session_common, session_recall, session_search
+from support import cli_args, header, message, session_common, session_recall, session_search, write_session
 
 
 class SharedScanTests(unittest.TestCase):
@@ -63,6 +63,27 @@ class SharedScanTests(unittest.TestCase):
                             "explicit_session_files_excluded": 1 + int(include_current),
                             "session_file_exclusions_unmatched": 1,
                         })
+
+    def test_only_absolute_recorded_cwd_confirms_the_selected_project(self):
+        with tempfile.TemporaryDirectory() as temp, \
+                patch.dict(os.environ, {"PI_SESSION_FILE": "", "HOME": temp}):
+            project = Path(temp).resolve()
+            root = project / "sessions"
+            entry = message("entry", None, "2026-08-10T00:00:00Z", "user", "needle")
+            write_session(root / "valid.jsonl", header("valid", project), [entry])
+            for index, cwd in enumerate(["", ".", "sessions/..", "~", "bad\x00path", "/bad\x00path"]):
+                write_session(root / f"unconfirmed-{index}.jsonl", {**header("unconfirmed", project), "cwd": cwd}, [entry])
+            previous = os.getcwd()
+            os.chdir(project)
+            try:
+                results = [session_search.aggregate(cli_args("aggregate", root, project)),
+                           session_recall.find_output(cli_args("find", root, project))]
+            finally:
+                os.chdir(previous)
+            for result in results:
+                self.assertEqual(result["summary"]["matched_sessions"], 1)
+                self.assertEqual(result["warnings"]["count"], 0)
+            self.assertEqual(results[0]["summary"]["files_selected"], 1)
 
     def test_both_pipelines_share_json_warnings_but_keep_partial_read_policy(self):
         with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"PI_SESSION_FILE": ""}):

@@ -69,6 +69,20 @@ def normalized_path(value: str | Path) -> str:
     return str(Path(value).expanduser().resolve(strict=False))
 
 
+def recorded_cwd(value: Any) -> str | None:
+    """Return the header's project path, or None when it cannot identify one.
+
+    Empty, relative, and "~" paths would otherwise resolve against whoever runs
+    the search rather than the recorded session.
+    """
+    if not isinstance(value, str) or not os.path.isabs(value):
+        return None
+    try:
+        return normalized_path(value)
+    except (ValueError, OSError, RuntimeError):
+        return None
+
+
 def mask_secrets(value: str) -> str:
     for pattern, replacement in MASK_PATTERNS:
         value = pattern.sub(replacement, value)
@@ -240,10 +254,7 @@ def scan_session(
                     warnings.add(path, "invalid_header")
                 return scan
             scan.header_valid = True
-            header_cwd = header.get("cwd")
-            if target_cwd is not None and (
-                not isinstance(header_cwd, str) or normalized_path(header_cwd) != target_cwd
-            ):
+            if target_cwd is not None and recorded_cwd(header.get("cwd")) != target_cwd:
                 return scan
             in_scope = True
             scan.version = session_version(header, path, warnings)
