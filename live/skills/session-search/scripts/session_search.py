@@ -132,6 +132,15 @@ def _call_event(
     return _tool_event(base, "skill_file_read" if read_skill else "tool_call", tool_name, arguments_text, read_skill)
 
 
+def tool_call_blocks(message: dict[str, Any]) -> Iterator[dict[str, Any]]:
+    content = message.get("content")
+    if message.get("role") != "assistant" or not isinstance(content, list):
+        return
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "toolCall":
+            yield block
+
+
 def events_for_entry(
     entry: dict[str, Any],
     session: dict[str, str],
@@ -174,15 +183,11 @@ def events_for_entry(
             "searchable": "\n".join([text, *skills]),
             "evidence_raw": text,
         })
-    content = message.get("content")
-    if role == "assistant" and isinstance(content, list):
-        for block in content:
-            if not isinstance(block, dict) or block.get("type") != "toolCall":
-                continue
-            tool_name = str(block.get("name", "unknown"))
-            arguments = block.get("arguments", {})
-            read_skill = skill_read_name(tool_name, arguments, names_by_path, cwd)
-            events.append(_call_event(base, tool_name, arguments, read_skill, include_arguments=include_arguments))
+    for block in tool_call_blocks(message):
+        tool_name = str(block.get("name", "unknown"))
+        arguments = block.get("arguments", {})
+        read_skill = skill_read_name(tool_name, arguments, names_by_path, cwd)
+        events.append(_call_event(base, tool_name, arguments, read_skill, include_arguments=include_arguments))
     if role == "toolResult":
         tool_name = str(message.get("toolName", "unknown"))
         tool_call_id = message.get("toolCallId")
@@ -227,12 +232,7 @@ def record_skill_read_calls(
 ) -> None:
     if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
         return
-    message = entry["message"]
-    if message.get("role") != "assistant" or not isinstance(message.get("content"), list):
-        return
-    for block in message["content"]:
-        if not isinstance(block, dict) or block.get("type") != "toolCall":
-            continue
+    for block in tool_call_blocks(entry["message"]):
         call_id = block.get("id")
         read_skill = skill_read_name(str(block.get("name", "unknown")), block.get("arguments", {}), names_by_path, cwd)
         if isinstance(call_id, str):
