@@ -108,7 +108,7 @@ class JsonBoundaryTests(unittest.TestCase):
     def test_fingerprints_distinguish_surrogates_from_replacement_and_literal_text(self):
         texts = ("\ud800", "\ud801", "\udfff", "\ufffd", "\\ud800")
         fingerprints = {
-            session_recall.message_fingerprint([session_recall.RecallMessage("0", STAMP, "user", text)])
+            session_recall.message_fingerprint([session_recall.RecallMessage("0", session_common.parse_timestamp(STAMP), "user", text)])
             for text in texts
         }
         self.assertEqual(len(fingerprints), len(texts))
@@ -119,7 +119,7 @@ class JsonBoundaryTests(unittest.TestCase):
         encoded = json.dumps(["0", STAMP, "user", text], ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         expected = hashlib.sha256(len(encoded).to_bytes(8, "big") + encoded).hexdigest()
         self.assertEqual(session_recall.message_fingerprint([
-            session_recall.RecallMessage("0", STAMP, "user", text),
+            session_recall.RecallMessage("0", session_common.parse_timestamp(STAMP), "user", text),
         ]), expected)
         expected = hashlib.sha256(json.dumps(text, ensure_ascii=False).encode("utf-8")).hexdigest()
         self.assertEqual(session_recall.continuation_digest(text), expected)
