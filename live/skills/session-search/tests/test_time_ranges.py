@@ -119,7 +119,7 @@ class TimeRangeTests(unittest.TestCase):
         self.write([self.START, self.END])
         options = ["--since", self.START, "--until", self.END]
         single = self.output("aggregate", *options)
-        original_open = Path.open
+        original_open = session_common.open_session_file
         opened = []
 
         def counted(path, *args, **kwargs):
@@ -127,7 +127,7 @@ class TimeRangeTests(unittest.TestCase):
                 opened.append(path)
             return original_open(path, *args, **kwargs)
 
-        with patch.object(Path, "open", counted):
+        with patch.object(session_common, "open_session_file", counted):
             batch = self.output("aggregate", *options, "--batch-filter", "{}", "--batch-filter", '{"role":["user"]}')
         self.assertEqual(len(opened), 1)
         self.assertEqual(batch["scope"], single["scope"])

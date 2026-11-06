@@ -598,18 +598,18 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                 aggregation.mark_branch(path, version, leaf_path)
 
     scope_cwd = None if args.all_projects else target_cwd
-    for path in paths:
+    for file in paths:
         files_discovered += 1
-        if file_exclusions.excludes(session_common.normalized_path(path)):
+        if file_exclusions.excludes(str(file.target)):
             continue
         attempted_files += 1
-        file_scan = session_common.scan_session(path, scope_cwd, warnings, read_entries)
+        file_scan = session_common.scan_session(file, scope_cwd, warnings, read_entries)
         if file_scan.header_valid:
             readable_headers += 1
         if file_scan.version is not None and not file_scan.complete:
             # Keep already counted evidence, but never claim a complete branch scan.
             for aggregation in aggregations:
-                aggregation.mark_branch(path, 1, None)
+                aggregation.mark_branch(file.path, 1, None)
 
     if attempted_files and not readable_headers:
         raise RuntimeError("all candidate session files were unreadable or invalid")

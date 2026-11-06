@@ -53,14 +53,14 @@ class FileExclusionTests(unittest.TestCase):
         unreadable = self.root / "unreadable.jsonl"
         invalid.write_text("not-json", encoding="utf-8")
         unreadable.write_bytes(b"\xff")
-        original_open = Path.open
+        original_open = session_common.open_session_file
 
         def guarded(path, *args, **kwargs):
             self.assertNotIn(path, (invalid, unreadable), "excluded file was opened")
             return original_open(path, *args, **kwargs)
 
         for mode in ("aggregate", "find", "recall"):
-            with self.subTest(mode=mode), patch.object(Path, "open", guarded):
+            with self.subTest(mode=mode), patch.object(session_common, "open_session_file", guarded):
                 result = self.output(mode, *self.exclusions(invalid, unreadable))
             self.assert_counts(result, 2, 2, 0)
             self.assertEqual(result["summary"]["files_selected"], 1)
@@ -148,14 +148,14 @@ class FileExclusionTests(unittest.TestCase):
         write_session(other, header("other", self.project), self.entries)
         options = [*self.exclusions(other), "--since", "2026-08-10T00:00:00Z", "--until", "2026-08-11T00:00:00Z"]
         single = self.output("aggregate", *options)
-        original_open = Path.open
+        original_open = session_common.open_session_file
         opened = []
 
         def counted(path, *args, **kwargs):
             opened.append(path)
             return original_open(path, *args, **kwargs)
 
-        with patch.object(Path, "open", counted):
+        with patch.object(session_common, "open_session_file", counted):
             batch = self.output("aggregate", *options, "--batch-filter", "{}", "--batch-filter", '{"role":["user"]}')
         self.assertEqual(opened, [self.path])
         self.assertTrue(all(item["summary"] == single["summary"] for item in batch["batches"]))

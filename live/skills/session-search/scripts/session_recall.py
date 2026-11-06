@@ -148,7 +148,9 @@ def read_active_messages(
     def retain(_path: Path, _header: dict[str, Any], _version: int, records: Iterator[dict[str, Any]]) -> None:
         entries.extend(retain_recall_entry(entry) for entry in records)
 
-    scan = session_common.scan_session(path, None if all_projects else target_cwd, warnings, retain)
+    scan = session_common.scan_session(
+        session_common.SessionFile(path, path), None if all_projects else target_cwd, warnings, retain,
+    )
     if not scan.complete:
         return None
     branch = active_entries(entries, scan.version)
@@ -162,10 +164,10 @@ def read_active_messages(
 def permitted_files(
     roots: list[Path], warnings: session_common.WarningCollector
 ) -> list[Path]:
-    discovered = session_common.discover_session_files(
+    files = session_common.discover_session_files(
         roots, on_outside=lambda path: warnings.add(path, "file_outside_session_root"),
     )
-    return [Path(session_common.normalized_path(path)) for path in discovered]
+    return [file.target for file in files]
 
 
 def candidate_sort_key(candidate: Candidate) -> tuple[int, int, datetime, str]:
@@ -247,7 +249,6 @@ def scan_candidates(
     scanned_entries = 0
 
     for path in paths:
-        # permitted_files already normalizes discovered paths.
         if file_exclusions.excludes(str(path)):
             continue
         loaded = read_active_messages(path, target_cwd, args.all_projects, warnings)

@@ -53,7 +53,7 @@ class SharedScanTests(unittest.TestCase):
                         )
                         # File identities have already been chosen by the caller.
                         with patch.object(session_common, "normalized_path", side_effect=AssertionError("resolved again")), \
-                                patch.object(Path, "open", side_effect=AssertionError("opened")):
+                                patch.object(session_common, "open_session_file", side_effect=AssertionError("opened")):
                             self.assertTrue(tracker.excludes(current))
                             self.assertTrue(tracker.excludes(explicit))
                             self.assertFalse(tracker.excludes(str(Path(temp) / "kept.jsonl")))

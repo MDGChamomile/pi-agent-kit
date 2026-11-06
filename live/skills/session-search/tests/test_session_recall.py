@@ -458,7 +458,7 @@ class SessionRecallTests(unittest.TestCase):
     def test_open_failure_remains_private_unless_all_projects_selected(self):
         path = Path("/synthetic/private.jsonl")
         with patch.object(session_recall, "permitted_files", return_value=[path]), patch.object(
-            Path, "open", side_effect=OSError("synthetic open failure"),
+            session_common, "open_session_file", side_effect=OSError("synthetic open failure"),
         ):
             args = self.args("find", Path("/synthetic"), Path("/project"))
             result = session_recall.find_output(args, self.NOW)
@@ -488,7 +488,7 @@ class SessionRecallTests(unittest.TestCase):
                     stream = stream_type((json.dumps(head) + "\n").encode("utf-8"))
                     options = ({"side_effect": OSError("synthetic open failure")}
                                if scope == "open_failure" else {"return_value": stream})
-                    with patch.object(Path, "open", **options):
+                    with patch.object(session_common, "open_session_file", **options):
                         session_recall.read_active_messages(path, cwd, all_projects, warnings)
                     expected = {"unreadable_file": 1} if all_projects or scope == "selected" else {}
                     self.assertEqual(warnings.output(False)["by_kind"], expected)
