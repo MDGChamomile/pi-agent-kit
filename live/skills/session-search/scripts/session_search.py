@@ -591,7 +591,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     scope_cwd = None if args.all_projects else target_cwd
     for path in paths:
         files_discovered += 1
-        if file_exclusions.excludes(session_common.normalized_path(path)):
+        if file_exclusions.excludes(str(path)):
             continue
         attempted_files += 1
         file_scan = session_common.scan_session(path, scope_cwd, warnings, read_entries)

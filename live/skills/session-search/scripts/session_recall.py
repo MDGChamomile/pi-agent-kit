@@ -168,10 +168,9 @@ def read_active_messages(
 def permitted_files(
     roots: list[Path], warnings: session_common.WarningCollector
 ) -> list[Path]:
-    discovered = session_common.discover_session_files(
+    return session_common.discover_session_files(
         roots, on_outside=lambda path: warnings.add(path, "file_outside_session_root"),
     )
-    return [Path(session_common.normalized_path(path)) for path in discovered]
 
 
 def candidate_sort_key(candidate: Candidate) -> tuple[int, int, datetime, str]:
@@ -255,7 +254,6 @@ def scan_candidates(
     scanned_entries = 0
 
     for path in paths:
-        # permitted_files already normalizes discovered paths.
         if file_exclusions.excludes(str(path)):
             continue
         loaded = read_active_messages(path, target_cwd, args.all_projects, warnings)

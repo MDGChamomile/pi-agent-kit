@@ -175,14 +175,14 @@ class SessionSearchTests(unittest.TestCase):
                 message("one", None, "2026-08-14T00:00:00Z", "user", "match"),
             ])
             (root / "alias.jsonl").symlink_to(source)
-            original_open = Path.open
+            original_open = session_common.open_session_file
 
             def guarded_open(path, *args, **kwargs):
                 if path == root / "alias.jsonl":
                     self.fail("out-of-root symlink was opened")
                 return original_open(path, *args, **kwargs)
 
-            with patch.object(Path, "open", guarded_open):
+            with patch.object(session_common, "open_session_file", guarded_open):
                 excluded = session_search.aggregate(self.args(root, base))
             self.assertEqual(excluded["summary"]["files_discovered"], 0)
             self.assertEqual(excluded["summary"]["matched_sessions"], 0)
@@ -762,7 +762,7 @@ class SessionSearchTests(unittest.TestCase):
                         raise OSError("synthetic read failure")
                     return line
 
-            with patch.object(Path, "open", return_value=FailingReader(content)):
+            with patch.object(session_common, "open_session_file", return_value=FailingReader(content)):
                 result = session_search.aggregate(self.args(root, root, "--include-evidence"), now=self.NOW)
             self.assertEqual(result["summary"]["matched_sessions"], 1)
             self.assertEqual(result["summary"]["matched_events"], 1)
@@ -812,7 +812,7 @@ class SessionSearchTests(unittest.TestCase):
             ])
             failing = root / "b-unknown.jsonl"
             write_session(failing, header("unknown", root), [])
-            original_open = Path.open
+            original_open = session_common.open_session_file
 
             class FailingHeader(io.BytesIO):
                 def readline(self, *args, **kwargs):
@@ -832,7 +832,7 @@ class SessionSearchTests(unittest.TestCase):
                         args = session_search.build_parser().parse_args([
                             "--sessions-root", str(root), "--include-evidence", *scope,
                         ])
-                        with patch.object(Path, "open", new=open_file):
+                        with patch.object(session_common, "open_session_file", new=open_file):
                             result = session_search.aggregate(args, now=self.NOW)
                         self.assertEqual(result["summary"]["files_discovered"], 2)
                         self.assertEqual(result["summary"]["files_selected"], 1)

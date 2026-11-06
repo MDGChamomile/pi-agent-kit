@@ -7,6 +7,7 @@ import json
 import math
 import os
 import re
+import stat
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -232,6 +233,58 @@ class SessionScan:
     complete: bool = False
 
 
+def _open_canonical_posix(path: Path) -> int:
+    # Resolve no symlinks after discovery, including in parent directories.
+    directory_flags = (getattr(os, "O_PATH", getattr(os, "O_SEARCH", os.O_RDONLY))
+                       | os.O_DIRECTORY | os.O_NOFOLLOW)
+    directory = os.open(path.anchor, directory_flags)
+    try:
+        for part in path.parts[1:-1]:
+            child = os.open(part, directory_flags, dir_fd=directory)
+            os.close(directory)
+            directory = child
+        return os.open(path.name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=directory)
+    finally:
+        os.close(directory)
+
+
+def _windows_handle_path(fd: int) -> str:
+    import ctypes
+    from ctypes import wintypes
+    import msvcrt
+
+    get_path = ctypes.WinDLL("kernel32", use_last_error=True).GetFinalPathNameByHandleW
+    get_path.argtypes = (wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD)
+    get_path.restype = wintypes.DWORD
+    buffer = ctypes.create_unicode_buffer(32768)
+    length = get_path(msvcrt.get_osfhandle(fd), buffer, len(buffer), 0)
+    if not length or length >= len(buffer):
+        raise OSError("cannot verify the opened session path")
+    return buffer.value
+
+
+def open_session_file(path: Path) -> BinaryIO:
+    if os.name == "nt":
+        fd = os.open(path, os.O_RDONLY | os.O_BINARY)
+    else:
+        fd = _open_canonical_posix(path)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("session is not a regular file")
+        if os.name == "nt":
+            # Compare the actual handle with the previously authorized DOS/UNC path.
+            expected = str(path)
+            if not expected.startswith("\\\\?\\"):
+                expected = ("\\\\?\\UNC\\" + expected[2:] if expected.startswith("\\\\")
+                            else "\\\\?\\" + expected)
+            if _windows_handle_path(fd) != expected:
+                raise OSError("session path changed after discovery")
+        return os.fdopen(fd, "rb")
+    except BaseException:
+        os.close(fd)
+        raise
+
+
 def scan_session(
     path: Path, target_cwd: str | None, warnings: WarningCollector,
     read_entries: Callable[[Path, dict[str, Any], int, Iterator[dict[str, Any]]], None],
@@ -247,7 +300,7 @@ def scan_session(
     try:
         # Decode only the header line before deciding scope. TextIOWrapper can
         # decode body bytes ahead of readline() and hide an in-scope failure.
-        with path.open("rb") as handle:
+        with open_session_file(path) as handle:
             header = read_session_header(handle)
             if header is None:
                 if in_scope:
@@ -355,7 +408,7 @@ def discover_session_files(
     roots: Iterable[Path], on_outside: Callable[[Path], None] | None = None,
 ) -> list[Path]:
     """Fail visibly on traversal errors; keep only files under an allowed root."""
-    paths: dict[str, Path] = {}
+    paths: set[Path] = set()
     allowed_roots: dict[str, Path] = {}
     for value in roots:
         root = value.expanduser()
@@ -379,8 +432,8 @@ def discover_session_files(
                         if on_outside is not None:
                             on_outside(path)
                         continue
-                    paths.setdefault(str(resolved), path)
-    return sorted(paths.values())
+                    paths.add(resolved)
+    return sorted(paths)
 
 
 def cutoff_for_days(

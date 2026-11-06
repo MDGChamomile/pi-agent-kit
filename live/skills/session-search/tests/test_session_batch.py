@@ -61,14 +61,14 @@ class SessionBatchTests(unittest.TestCase):
     def test_opens_each_file_and_builds_events_only_once(self):
         with fixture_tree() as (root, project, _, primary, other, current):
             opens = Counter()
-            original_open = Path.open
+            original_open = session_common.open_session_file
 
             def counted_open(path, *args, **kwargs):
                 opens[path] += 1
                 return original_open(path, *args, **kwargs)
 
             with patch.dict(os.environ, {'PI_SESSION_FILE': str(current)}), \
-                    patch.object(Path, 'open', counted_open), \
+                    patch.object(session_common, 'open_session_file', counted_open), \
                     patch.object(session_search, 'events_for_entry', wraps=session_search.events_for_entry) as events:
                 result = self.batch(root, project, [{}, {'query': ['failure']}, {'skill': ['alpha']}])
             self.assertEqual(opens, {primary: 1, other: 1})
@@ -121,13 +121,13 @@ class SessionBatchTests(unittest.TestCase):
             write_session(outside, header('outside', project), [])
             link = root / 'escape.jsonl'
             link.symlink_to(outside)
-            original_open = Path.open
+            original_open = session_common.open_session_file
 
             def guarded_open(path, *args, **kwargs):
                 self.assertNotEqual(path.resolve(), outside)
                 return original_open(path, *args, **kwargs)
 
-            with patch.object(Path, 'open', guarded_open):
+            with patch.object(session_common, 'open_session_file', guarded_open):
                 self.batch(root, project, [{}, {'error': True}])
 
     def test_invalid_batch_is_rejected_before_storage(self):
