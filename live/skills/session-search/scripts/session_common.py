@@ -65,6 +65,10 @@ def parse_timestamp(value: Any) -> datetime | None:
         return None
 
 
+def format_timestamp(value: datetime | None) -> str | None:
+    return value.isoformat().replace("+00:00", "Z") if value is not None else None
+
+
 def normalized_path(value: str | Path) -> str:
     return str(Path(value).expanduser().resolve(strict=False))
 
@@ -436,8 +440,7 @@ class TimeRange:
                 and (self.until is None or timestamp < self.until))
 
     def view(self) -> dict[str, str | None]:
-        return {name: value.isoformat().replace("+00:00", "Z") if value is not None else None
-                for name, value in (("since", self.since), ("until", self.until))}
+        return {"since": format_timestamp(self.since), "until": format_timestamp(self.until)}
 
 
 def time_range_for_args(args: argparse.Namespace, now: datetime | None = None) -> TimeRange:

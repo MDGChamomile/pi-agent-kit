@@ -179,7 +179,7 @@ class SessionRecallTests(unittest.TestCase):
 
     def test_recall_windows_are_bounded_and_show_omissions(self):
         messages = [
-            session_recall.RecallMessage(str(index), f"2026-08-10T00:00:{index:02d}Z", "user", (
+            session_recall.RecallMessage(str(index), datetime(2026, 8, 10, second=index, tzinfo=timezone.utc), "user", (
                 f"needle {index} " + "x" * 500 if index in {2, 8, 14, 20} else f"filler {index}"
             ))
             for index in range(24)
@@ -214,7 +214,7 @@ class SessionRecallTests(unittest.TestCase):
                 loaded = original(*arguments, **keywords)
                 if calls == 2 and loaded is not None:
                     return ([session_recall.RecallMessage(
-                        "m2", "2026-08-10T00:00:00Z", "user", "인증 오류 changed"
+                        "m2", datetime(2026, 8, 10, tzinfo=timezone.utc), "user", "인증 오류 changed"
                     )], loaded[1])
                 return loaded
 
@@ -541,7 +541,7 @@ class SessionRecallTests(unittest.TestCase):
                     expected = [session_recall.recall_text(item) for item in chosen]
                     self.assertEqual(loaded, (expected, len(records)))
                     self.assertEqual(warnings.count, 0)
-                    candidate, _ = session_recall.candidate_for_messages(path, loaded[0], ("인증 오류",), None)
+                    candidate, _ = session_recall.candidate_for_messages(path, loaded[0], ("인증 오류",), session_common.TimeRange())
                     self.assertIsNotNone(candidate)
 
     def test_reader_preserves_invalid_branch_checks(self):

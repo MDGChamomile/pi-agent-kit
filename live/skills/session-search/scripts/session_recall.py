@@ -31,7 +31,7 @@ MAX_TOTAL_EVIDENCE_CHARS = 6000
 @dataclass(frozen=True)
 class RecallMessage:
     entry_id: str | None
-    timestamp: str | None
+    timestamp: datetime | None
     role: str
     text: str
 
@@ -112,15 +112,9 @@ def recall_text(entry: dict[str, Any]) -> RecallMessage | None:
     if not text:
         return None
     entry_id = entry.get("id")
-    parsed_timestamp = session_common.parse_timestamp(entry.get("timestamp"))
-    timestamp = (
-        parsed_timestamp.isoformat().replace("+00:00", "Z")
-        if parsed_timestamp is not None
-        else None
-    )
     return RecallMessage(
         entry_id=entry_id if isinstance(entry_id, str) else None,
-        timestamp=timestamp,
+        timestamp=session_common.parse_timestamp(entry.get("timestamp")),
         role=role,
         text=text,
     )
@@ -189,7 +183,7 @@ def message_fingerprint(messages: Iterable[RecallMessage]) -> str:
     digest = hashlib.sha256()
     for message in messages:
         encoded = json.dumps(
-            [message.entry_id, message.timestamp, message.role, message.text],
+            [message.entry_id, session_common.format_timestamp(message.timestamp), message.role, message.text],
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode("utf-8", "surrogatepass")
@@ -202,19 +196,17 @@ def candidate_for_messages(
     path: Path,
     messages: list[RecallMessage],
     terms: tuple[str, ...],
-    cutoff: datetime | None,
-    until: datetime | None = None,
+    time_range: session_common.TimeRange,
     *,
     fingerprint: bool = True,
 ) -> tuple[Candidate | None, list[RecallMessage]]:
     """Find omits the fingerprint; recall needs it to detect a changed candidate."""
-    time_range = session_common.TimeRange(cutoff, until)
     eligible: list[RecallMessage] = []
     matched_terms: set[str] = set()
     matching_messages = 0
     latest_match = datetime.min.replace(tzinfo=timezone.utc)
     for message in messages:
-        timestamp = session_common.parse_timestamp(message.timestamp)
+        timestamp = message.timestamp
         if not time_range.contains(timestamp):
             continue
         eligible.append(message)
@@ -265,7 +257,7 @@ def scan_candidates(
         files_selected += 1
         scanned_entries += scanned
         candidate, _eligible = candidate_for_messages(
-            path, messages, terms, time_range.since, time_range.until, fingerprint=fingerprints,
+            path, messages, terms, time_range, fingerprint=fingerprints,
         )
         if candidate is not None:
             candidates.append(candidate)
@@ -342,7 +334,7 @@ def recall_windows(
             evidence_chars += len(evidence)
             items.append({
                 "role": message.role,
-                "timestamp": message.timestamp,
+                "timestamp": session_common.format_timestamp(message.timestamp),
                 "evidence": evidence,
                 "text_truncated": text_truncated,
                 "matches_term": index in hits,
@@ -544,7 +536,7 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
         raise CandidateNotFoundError
     messages, _scanned = loaded
     refreshed, eligible = candidate_for_messages(
-        candidate.path, messages, terms, time_range.since, time_range.until
+        candidate.path, messages, terms, time_range
     )
     if refreshed != candidate:
         raise CandidateNotFoundError
