@@ -239,13 +239,10 @@ def candidate_for_messages(
 def scan_candidates(
     args: argparse.Namespace,
     terms: tuple[str, ...],
-    now: datetime | None = None,
-    *, time_range: session_common.TimeRange | None = None,
-    exclusions: frozenset[str] | None = None,
+    time_range: session_common.TimeRange,
+    *, exclusions: frozenset[str] | None = None,
     fingerprints: bool = True,
 ) -> tuple[list[Candidate], dict[str, int], session_common.WarningCollector]:
-    if time_range is None:
-        time_range = session_common.time_range_for_args(args, now)
     if exclusions is None:
         exclusions = session_common.normalized_exclusions(args.exclude_session_file)
     roots = [args.sessions_root, *args.additional_sessions_root]
@@ -424,7 +421,7 @@ def find_output(args: argparse.Namespace, now: datetime | None = None) -> dict[s
     if args.limit < 1 or args.limit > MAX_CANDIDATE_LIMIT:
         raise ValueError("candidate limit is invalid")
     time_range = session_common.time_range_for_args(args, now)
-    candidates, summary, warnings = scan_candidates(args, terms, time_range=time_range, fingerprints=False)
+    candidates, summary, warnings = scan_candidates(args, terms, time_range, fingerprints=False)
     returned = candidates[:args.limit]
     summary.update({
         "candidates_returned": len(returned),
@@ -523,7 +520,7 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
     scope = continuation_scope(args, terms, reference_time, time_range, exclusions)
     if expected_scope is not None and scope != expected_scope:
         raise ValueError("continuation scope changed")
-    candidates, scan_summary, warnings = scan_candidates(args, terms, time_range=time_range, exclusions=exclusions)
+    candidates, scan_summary, warnings = scan_candidates(args, terms, time_range, exclusions=exclusions)
     if expected_candidate is not None:
         selected = [
             (rank, candidate) for rank, candidate in enumerate(candidates, 1)
