@@ -226,6 +226,12 @@ def ancestor_ids(entry_id: Any, parent_by_id: dict[str, Any]) -> Iterator[str]:
         entry_id = parent_by_id[entry_id]
 
 
+@dataclass(frozen=True)
+class SessionFile:
+    path: Path
+    target: Path
+
+
 @dataclass
 class SessionScan:
     header_valid: bool = False
@@ -286,7 +292,7 @@ def open_session_file(path: Path) -> BinaryIO:
 
 
 def scan_session(
-    path: Path, target_cwd: str | None, warnings: WarningCollector,
+    file: SessionFile, target_cwd: str | None, warnings: WarningCollector,
     read_entries: Callable[[Path, dict[str, Any], int, Iterator[dict[str, Any]]], None],
 ) -> SessionScan:
     """Pass a selected file's entries to read_entries under the shared warning policy.
@@ -295,12 +301,13 @@ def scan_session(
     confirms target_cwd may add warnings; files with an unreadable header or a
     different project stay undisclosed. version is set once the file is selected.
     """
+    path = file.path
     scan = SessionScan()
     in_scope = target_cwd is None
     try:
         # Decode only the header line before deciding scope. TextIOWrapper can
         # decode body bytes ahead of readline() and hide an in-scope failure.
-        with open_session_file(path) as handle:
+        with open_session_file(file.target) as handle:
             header = read_session_header(handle)
             if header is None:
                 if in_scope:
@@ -406,9 +413,9 @@ class SessionFileExclusions:
 
 def discover_session_files(
     roots: Iterable[Path], on_outside: Callable[[Path], None] | None = None,
-) -> list[Path]:
+) -> list[SessionFile]:
     """Fail visibly on traversal errors; keep only files under an allowed root."""
-    paths: set[Path] = set()
+    paths: dict[str, SessionFile] = {}
     allowed_roots: dict[str, Path] = {}
     for value in roots:
         root = value.expanduser()
@@ -432,8 +439,8 @@ def discover_session_files(
                         if on_outside is not None:
                             on_outside(path)
                         continue
-                    paths.add(resolved)
-    return sorted(paths)
+                    paths.setdefault(str(resolved), SessionFile(path, resolved))
+    return sorted(paths.values(), key=lambda file: file.path)
 
 
 def cutoff_for_days(

@@ -50,6 +50,18 @@ class SessionOpenTests(unittest.TestCase):
                 self.assertEqual(output["summary"]["matched_sessions"], int(mode != "aggregate"))
                 self.assertNotIn("OUTSIDE", json.dumps(output))
 
+    def test_aggregate_reports_the_discovered_alias_for_evidence_and_warnings(self):
+        approved = self.root / "approved.data"
+        self.write(approved, "APPROVED")
+        with approved.open("ab") as handle:
+            handle.write(b"not-json\n")
+        alias = self.root / "original.jsonl"
+        alias.symlink_to(approved)
+        output = run_mode("aggregate", cli_args("aggregate", self.root, self.project, "--include-evidence"), self.now)
+        self.assertEqual(output["results"][0]["file"], str(alias))
+        self.assertTrue(output["results"][0]["on_latest_leaf"])
+        self.assertEqual(output["warnings"]["items"], [{"kind": "invalid_json_line", "path": str(alias)}])
+
     def test_replaced_canonical_file_or_parent_is_rejected_before_read(self):
         outside = self.project / "outside"
         outside.mkdir()
@@ -59,17 +71,17 @@ class SessionOpenTests(unittest.TestCase):
         candidate = folder / "candidate.jsonl"
         self.write(candidate, "APPROVED")
         paths = session_common.discover_session_files([self.root])
-        self.assertEqual(paths, [candidate])
+        self.assertEqual([file.target for file in paths], [candidate])
         candidate.unlink()
         candidate.symlink_to(outside / "candidate.jsonl")
         with self.assertRaises(OSError):
-            with session_common.open_session_file(paths[0]):
+            with session_common.open_session_file(paths[0].target):
                 self.fail("followed replaced file")
         candidate.unlink()
         folder.rmdir()
         folder.symlink_to(outside, target_is_directory=True)
         with self.assertRaises(OSError):
-            with session_common.open_session_file(paths[0]):
+            with session_common.open_session_file(paths[0].target):
                 self.fail("followed replaced directory")
 
     @unittest.skipUnless(hasattr(os, "mkfifo"), "requires a POSIX FIFO")
