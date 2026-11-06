@@ -175,15 +175,9 @@ class SessionSearchTests(unittest.TestCase):
                 message("one", None, "2026-08-14T00:00:00Z", "user", "match"),
             ])
             (root / "alias.jsonl").symlink_to(source)
-            original_open = session_common.open_session_file
-
-            def guarded_open(path, *args, **kwargs):
-                if path == root / "alias.jsonl":
-                    self.fail("out-of-root symlink was opened")
-                return original_open(path, *args, **kwargs)
-
-            with patch.object(session_common, "open_session_file", guarded_open):
+            with patch.object(session_common, "open_session_file") as open_file:
                 excluded = session_search.aggregate(self.args(root, base))
+                open_file.assert_not_called()
             self.assertEqual(excluded["summary"]["files_discovered"], 0)
             self.assertEqual(excluded["summary"]["matched_sessions"], 0)
 
