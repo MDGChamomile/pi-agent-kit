@@ -132,13 +132,31 @@ def _call_event(
     return _tool_event(base, "skill_file_read" if read_skill else "tool_call", tool_name, arguments_text, read_skill)
 
 
-def tool_call_blocks(message: dict[str, Any]) -> Iterator[dict[str, Any]]:
+@dataclass(frozen=True)
+class DirectToolCall:
+    call_id: str | None
+    name: str
+    arguments: Any
+    read_skill: str | None
+
+
+def direct_tool_calls(entry: dict[str, Any], names_by_path: dict[str, str] | None, cwd: str) -> list[DirectToolCall]:
+    message = entry.get("message")
+    if entry.get("type") != "message" or not isinstance(message, dict) or message.get("role") != "assistant":
+        return []
     content = message.get("content")
-    if message.get("role") != "assistant" or not isinstance(content, list):
-        return
+    if not isinstance(content, list):
+        return []
+    calls = []
     for block in content:
-        if isinstance(block, dict) and block.get("type") == "toolCall":
-            yield block
+        if not isinstance(block, dict) or block.get("type") != "toolCall":
+            continue
+        name = str(block.get("name", "unknown"))
+        arguments = block.get("arguments", {})
+        call_id = block.get("id")
+        calls.append(DirectToolCall(call_id if isinstance(call_id, str) else None, name, arguments,
+                                    skill_read_name(name, arguments, names_by_path, cwd)))
+    return calls
 
 
 def events_for_entry(
@@ -150,6 +168,7 @@ def events_for_entry(
     cwd: str = "",
     *,
     include_arguments: bool = True,
+    direct_calls: list[DirectToolCall] | None = None,
 ) -> list[dict[str, Any]]:
     """Serialize tool-call arguments only when a query or evidence can use them."""
     if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
@@ -183,11 +202,10 @@ def events_for_entry(
             "searchable": "\n".join([text, *skills]),
             "evidence_raw": text,
         })
-    for block in tool_call_blocks(message):
-        tool_name = str(block.get("name", "unknown"))
-        arguments = block.get("arguments", {})
-        read_skill = skill_read_name(tool_name, arguments, names_by_path, cwd)
-        events.append(_call_event(base, tool_name, arguments, read_skill, include_arguments=include_arguments))
+    if direct_calls is None:
+        direct_calls = direct_tool_calls(entry, names_by_path, cwd)
+    for call in direct_calls:
+        events.append(_call_event(base, call.name, call.arguments, call.read_skill, include_arguments=include_arguments))
     if role == "toolResult":
         tool_name = str(message.get("toolName", "unknown"))
         tool_call_id = message.get("toolCallId")
@@ -226,20 +244,6 @@ def events_for_entry(
     return events
 
 
-def record_skill_read_calls(
-    entry: dict[str, Any], skill_reads_by_call_id: dict[str, str | None],
-    names_by_path: dict[str, str] | None = None, cwd: str = "",
-) -> None:
-    if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
-        return
-    for block in tool_call_blocks(entry["message"]):
-        call_id = block.get("id")
-        read_skill = skill_read_name(str(block.get("name", "unknown")), block.get("arguments", {}), names_by_path, cwd)
-        if isinstance(call_id, str):
-            # A non-skill call must shadow an older skill call with the same ID.
-            skill_reads_by_call_id[call_id] = read_skill
-
-
 def skill_read_calls_for_result(
     entry: dict[str, Any], calls_by_id: dict[str, dict[str, str | None]],
     parent_by_id: dict[str, Any],
@@ -267,9 +271,13 @@ class LinearSkillState:
         self.names_by_path: dict[str, str] = {}
         self.skill_reads_by_call_id: dict[str, str | None] = {}
 
-    def advance(self, entry: dict[str, Any]) -> None:
+    def advance(self, entry: dict[str, Any]) -> list[DirectToolCall]:
         self.names_by_path = record_skill_identity(entry, self.names_by_path, self.cwd)
-        record_skill_read_calls(entry, self.skill_reads_by_call_id, self.names_by_path, self.cwd)
+        calls = direct_tool_calls(entry, self.names_by_path, self.cwd)
+        for call in calls:
+            if call.call_id is not None:
+                self.skill_reads_by_call_id[call.call_id] = call.read_skill
+        return calls
 
     def leaf_path(self) -> set[str]:
         return set()
@@ -287,7 +295,7 @@ class BranchSkillState:
         self.identities_by_entry: dict[str, dict[str, str]] = {}
         self.calls_by_id: dict[str, dict[str, str | None]] = {}
 
-    def advance(self, entry: dict[str, Any]) -> None:
+    def advance(self, entry: dict[str, Any]) -> list[DirectToolCall]:
         entry_id = entry.get("id")
         parent_id = entry.get("parentId")
         if isinstance(entry_id, str):
@@ -297,12 +305,13 @@ class BranchSkillState:
         self.names_by_path = record_skill_identity(entry, names_by_path, self.cwd)
         if isinstance(entry_id, str):
             self.identities_by_entry[entry_id] = self.names_by_path
-        entry_calls: dict[str, str | None] = {}
-        record_skill_read_calls(entry, entry_calls, self.names_by_path, self.cwd)
+        calls = direct_tool_calls(entry, self.names_by_path, self.cwd)
         if isinstance(entry_id, str):
-            for call_id, skill in entry_calls.items():
-                self.calls_by_id.setdefault(call_id, {})[entry_id] = skill
+            for call in calls:
+                if call.call_id is not None:
+                    self.calls_by_id.setdefault(call.call_id, {})[entry_id] = call.read_skill
         self.skill_reads_by_call_id = skill_read_calls_for_result(entry, self.calls_by_id, self.parent_by_id)
+        return calls
 
     def leaf_path(self) -> set[str]:
         return set(session_common.ancestor_ids(self.leaf_id, self.parent_by_id))
@@ -570,7 +579,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                 warnings.add(path, "incomplete_nested_calls")
             if version >= 2 and not isinstance(entry.get("id"), str):
                 warnings.add(path, "invalid_entry_id")
-            state.advance(entry)
+            calls = state.advance(entry)
 
             timestamp = session_common.parse_timestamp(entry.get("timestamp"))
             if not time_range.contains(timestamp):
@@ -578,7 +587,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             eligible_entries += 1
             events = events_for_entry(
                 entry, session, None, state.skill_reads_by_call_id, state.names_by_path, recorded_cwd,
-                include_arguments=include_arguments,
+                include_arguments=include_arguments, direct_calls=calls,
             )
             for aggregation in aggregations:
                 aggregation.consume(events, timestamp)
