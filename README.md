@@ -25,7 +25,7 @@ The collection follows the [harness-minimalism principles](https://github.com/MD
 
 ### Copy an individual resource
 
-Clone the repository, review the resource and its requirements, and copy or link only the directory you want into the applicable Pi location. Keep the bundled `LICENSE` and any `NOTICE.md` with the resource when copying or redistributing it.
+Clone the repository, review the resource and its requirements, and copy or link only the directory you want into the applicable Pi location. Keep the bundled `LICENSE` with the resource when copying or redistributing it.
 
 For `deep-plan`, a compatible `ask_user` tool is required at decision gates; copying the skill does not install that tool. If you do not already have a compatible extension, the reference implementation can be installed with `pi install npm:pi-ask-user`. See the skill's [requirements](live/skills/deep-plan/SKILL.md#requirement) before adopting it.
 
