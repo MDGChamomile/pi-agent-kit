@@ -253,13 +253,9 @@ def skill_read_calls_for_result(
     candidates = calls_by_id.get(call_id)
     if not candidates:
         return {}
-    parent = entry.get("parentId")
-    seen: set[str] = set()
-    while isinstance(parent, str) and parent not in seen:
-        seen.add(parent)
-        if parent in candidates:
-            return {call_id: candidates[parent]}
-        parent = parent_by_id.get(parent)
+    for ancestor in session_common.ancestor_ids(entry.get("parentId"), parent_by_id):
+        if ancestor in candidates:
+            return {call_id: candidates[ancestor]}
     return {}
 
 
