@@ -43,7 +43,7 @@ mkdir -p ~/.pi/agent/skills
 cp -R live/skills/session-search ~/.pi/agent/skills/
 ```
 
-Restart Pi after installing it. Pi will expose the skill as `/skill:session-search` when skill commands are enabled.
+Restart Pi after installing it, or use `/reload`. Pi will expose the skill as `/skill:session-search` when skill commands are enabled.
 
 ## Script usage
 
