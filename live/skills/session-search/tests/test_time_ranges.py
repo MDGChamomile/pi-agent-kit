@@ -11,7 +11,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import cli_args, header, message, run_mode, session_common, session_recall, session_search, write_session
+from support import (
+    cli_args, header, message, run_mode, session_common, session_recall, session_search, skill_envelope, write_session,
+)
 
 
 class TimeRangeTests(unittest.TestCase):
@@ -39,6 +41,14 @@ class TimeRangeTests(unittest.TestCase):
             message(str(i), str(i - 1) if i else None, timestamp, "user", f"needle {i}")
             for i, timestamp in enumerate(timestamps)
         ])
+
+    def test_naive_timestamp_is_treated_as_utc(self):
+        parsed = session_common.parse_timestamp("2026-08-15T00:00:00")
+        self.assertEqual(parsed, self.NOW)
+        self.assertEqual(parsed.tzinfo, timezone.utc)
+
+    def test_extreme_timestamp_is_ignored_without_overflow(self):
+        self.assertIsNone(session_common.parse_timestamp("0001-01-01T00:00:00+14:00"))
 
     def test_bounds_offsets_fractional_seconds_and_one_sided_ranges(self):
         self.write(["2026-08-09T23:59:59.999999Z", self.START,
@@ -135,9 +145,7 @@ class TimeRangeTests(unittest.TestCase):
 
     def test_prior_identity_and_call_survive_time_filter(self):
         write_session(self.path, header("synthetic", self.root), [
-            message("1", None, "2026-08-01T00:00:00Z", "user",
-                    '<skill name="declared" location="/custom/folder/SKILL.md">\n'
-                    'References are relative to /custom/folder.\n\nbody\n</skill>'),
+            message("1", None, "2026-08-01T00:00:00Z", "user", skill_envelope("declared", "/custom/folder/SKILL.md")),
             message("2", "1", "2026-08-02T00:00:00Z", "assistant", [
                 {"type": "toolCall", "id": "call", "name": "read",
                  "arguments": {"path": "/custom/folder/SKILL.md"}},

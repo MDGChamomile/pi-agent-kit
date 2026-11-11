@@ -1,14 +1,15 @@
 import {
   compact,
   type ExtensionAPI,
+  type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import {
   createSettings,
   isInstallTelemetryEnabled,
   loadConfig,
+  type CompactionModelConfig,
 } from "./config.js";
 import { parseModelReference } from "./model-reference.js";
-
 import { warn } from "./warnings.js";
 
 const OPENROUTER_ATTRIBUTION_HEADERS = {
@@ -59,17 +60,44 @@ function restorePreviousFileOperations(
     modifiedFiles?: unknown;
   };
 
-  if (Array.isArray(details.readFiles)) {
-    for (const path of details.readFiles) {
-      if (typeof path === "string") preparation.fileOps.read.add(path);
-    }
+  addStringPaths(preparation.fileOps.read, details.readFiles);
+  addStringPaths(preparation.fileOps.edited, details.modifiedFiles);
+}
+
+function addStringPaths(target: Set<string>, paths: unknown): void {
+  if (!Array.isArray(paths)) return;
+  for (const path of paths) {
+    if (typeof path === "string") target.add(path);
+  }
+}
+
+function resolveDedicatedModel(ctx: ExtensionContext, config: CompactionModelConfig) {
+  const reference = parseModelReference(config.model);
+  if (!reference) {
+    warn(ctx, `Invalid model '${config.model}'; expected provider/model. Using Pi's active model.`);
+    return undefined;
   }
 
-  if (Array.isArray(details.modifiedFiles)) {
-    for (const path of details.modifiedFiles) {
-      if (typeof path === "string") preparation.fileOps.edited.add(path);
-    }
+  const model = ctx.modelRegistry.find(reference.provider, reference.modelId);
+  if (!model) {
+    warn(ctx, `Model not found: ${config.model}. Using Pi's active model.`);
+    return undefined;
   }
+  return model;
+}
+
+/**
+ * compact() accepts string headers; the registry stream re-resolves auth
+ * and restores null deletion markers before provider dispatch.
+ */
+function withoutNullHeaders(
+  headers: Record<string, string | null> | undefined,
+): Record<string, string> | undefined {
+  return headers
+    ? Object.fromEntries(
+        Object.entries(headers).filter((entry): entry is [string, string] => entry[1] !== null),
+      )
+    : undefined;
 }
 
 export default function compactionModel(pi: ExtensionAPI): void {
@@ -80,17 +108,8 @@ export default function compactionModel(pi: ExtensionAPI): void {
     const config = loadConfig(ctx, settings);
     if (!config || !config.reasons.includes(event.reason)) return;
 
-    const reference = parseModelReference(config.model);
-    if (!reference) {
-      warn(ctx, `Invalid model '${config.model}'; expected provider/model. Using Pi's active model.`);
-      return;
-    }
-
-    const model = ctx.modelRegistry.find(reference.provider, reference.modelId);
-    if (!model) {
-      warn(ctx, `Model not found: ${config.model}. Using Pi's active model.`);
-      return;
-    }
+    const model = resolveDedicatedModel(ctx, config);
+    if (!model) return;
 
     try {
       const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
@@ -105,13 +124,7 @@ export default function compactionModel(pi: ExtensionAPI): void {
         : undefined;
       const requestModel = authBaseUrl ? { ...model, baseUrl: authBaseUrl } : model;
 
-      // compact() accepts string headers; the registry stream re-resolves auth
-      // and restores null deletion markers before provider dispatch.
-      const authHeaders = auth.headers
-        ? Object.fromEntries(
-            Object.entries(auth.headers).filter((entry): entry is [string, string] => entry[1] !== null),
-          )
-        : undefined;
+      const authHeaders = withoutNullHeaders(auth.headers);
       const headers = withOpenRouterAttribution(
         requestModel,
         isInstallTelemetryEnabled(settings),

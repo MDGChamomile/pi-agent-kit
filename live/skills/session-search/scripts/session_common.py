@@ -16,8 +16,8 @@ from typing import Any, BinaryIO, Callable, Iterable, Iterator
 
 MAX_EVIDENCE_CHARS = 300
 MAX_WARNING_ITEMS = 100
+MIN_UTC_DATETIME = datetime.min.replace(tzinfo=timezone.utc)
 
-# Mask before truncation so a secret crossing the truncation boundary cannot leak.
 MASK_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"-----BEGIN [^-\n]*PRIVATE KEY-----.*?-----END [^-\n]*PRIVATE KEY-----", re.I | re.S), "[REDACTED_PRIVATE_KEY]"),
     (re.compile(r"\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+", re.I), r"\1 [REDACTED]"),
@@ -66,6 +66,11 @@ def parse_timestamp(value: Any) -> datetime | None:
         return None
 
 
+def as_utc(value: datetime) -> datetime:
+    """Convert value to UTC, interpreting a naive datetime as UTC."""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
 def format_timestamp(value: datetime | None) -> str | None:
     return value.isoformat().replace("+00:00", "Z") if value is not None else None
 
@@ -104,6 +109,7 @@ def mask_and_shorten_with_metadata(
     value: str, limit: int = MAX_EVIDENCE_CHARS, queries: Iterable[str] = (),
 ) -> tuple[str, bool]:
     """Return masked evidence and whether normalized masked text was shortened."""
+    # Mask before truncation so a secret crossing the truncation boundary cannot leak.
     masked = re.sub(r"\s+", " ", mask_secrets(value)).strip()
     if limit <= 0:
         return "", bool(masked)
@@ -165,6 +171,9 @@ class WarningCollector:
     @property
     def count(self) -> int:
         return len(self._seen)
+
+    def count_of(self, kind: str) -> int:
+        return self._counts.get(kind, 0)
 
     def output(self, include_items: bool) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -377,15 +386,6 @@ def normalized_exclusions(values: Iterable[str]) -> frozenset[str]:
     return frozenset(paths)
 
 
-def exclusion_summary(exclusions: frozenset[str], matched: set[str], excluded_count: int) -> dict[str, int]:
-    # A current-session overlap is matched, but counted only in the automatic counter.
-    return {
-        "session_file_exclusions_requested": len(exclusions),
-        "explicit_session_files_excluded": excluded_count,
-        "session_file_exclusions_unmatched": len(exclusions - matched),
-    }
-
-
 class SessionFileExclusions:
     """Count pre-read exclusions using each caller's normalized file identity."""
 
@@ -409,9 +409,12 @@ class SessionFileExclusions:
         return False
 
     def summary(self) -> dict[str, int]:
+        # A current-session overlap is matched, but counted only in the automatic counter.
         return {
             "current_session_files_excluded": self.excluded_current,
-            **exclusion_summary(self.exclusions, self.matched, self.excluded_explicit),
+            "session_file_exclusions_requested": len(self.exclusions),
+            "explicit_session_files_excluded": self.excluded_explicit,
+            "session_file_exclusions_unmatched": len(self.exclusions - self.matched),
         }
 
 
@@ -454,11 +457,8 @@ def cutoff_for_days(
         return None
     if not math.isfinite(days) or days < 0:
         raise ValueError("--days must be a finite non-negative number")
-    current_time = now or datetime.now(timezone.utc)
-    if current_time.tzinfo is None:
-        current_time = current_time.replace(tzinfo=timezone.utc)
     try:
-        return current_time.astimezone(timezone.utc) - timedelta(days=days)
+        return as_utc(now or datetime.now(timezone.utc)) - timedelta(days=days)
     except OverflowError as error:
         raise ValueError("--days exceeds the supported date range") from error
 

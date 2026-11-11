@@ -4,9 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,
-    "declaration": true,
-    "outDir": "dist",
-    "rootDir": ".",
+    "noEmit": true,
     "types": ["bun"],
     "skipLibCheck": true,
     "noUncheckedIndexedAccess": true

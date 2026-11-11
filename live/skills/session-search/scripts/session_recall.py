@@ -44,6 +44,7 @@ class Candidate:
     latest_match: datetime
     message_fingerprint: str
 
+
 class CandidateNotFoundError(Exception):
     pass
 
@@ -202,11 +203,14 @@ def candidate_for_messages(
     *,
     fingerprint: bool = True,
 ) -> tuple[Candidate | None, list[RecallMessage]]:
-    """Find omits the fingerprint; recall needs it to detect a changed candidate."""
+    """Return the candidate (None without a match) and the messages inside time_range.
+
+    Find omits the fingerprint; recall needs it to detect a changed candidate.
+    """
     eligible: list[RecallMessage] = []
     matched_terms: set[str] = set()
     matching_messages = 0
-    latest_match = datetime.min.replace(tzinfo=timezone.utc)
+    latest_match = session_common.MIN_UTC_DATETIME
     for message in messages:
         timestamp = message.timestamp
         if not time_range.contains(timestamp):
@@ -265,7 +269,7 @@ def scan_candidates(
 
     # Only disclosed, in-scope failures can invalidate an empty result. In
     # current-project searches, failures in unknown or foreign-project files stay private.
-    if not candidates and warnings.output(False)["by_kind"].get("unreadable_file", 0):
+    if not candidates and warnings.count_of("unreadable_file"):
         raise RecallReadError("read failures prevent verifying an empty recall")
 
     candidates.sort(key=candidate_sort_key, reverse=True)
@@ -473,6 +477,13 @@ def continuation_candidate(candidate: Candidate, scope: str) -> str:
     return continuation_digest([scope, str(candidate.path), candidate.message_fingerprint])
 
 
+def encode_continuation(reference_time: datetime, scope: str, candidate: str, offset: int) -> str:
+    cursor = [1, reference_time.isoformat(), scope, candidate, offset]
+    return base64.urlsafe_b64encode(
+        json.dumps(cursor, separators=(",", ":")).encode("utf-8")
+    ).decode("ascii")
+
+
 def decode_continuation(token: str) -> tuple[datetime, str, str, int]:
     try:
         if len(token) > 512:
@@ -496,13 +507,27 @@ def decode_continuation(token: str) -> tuple[datetime, str, str, int]:
         raise ValueError("continuation is invalid") from error
 
 
+def select_candidate(
+    candidates: list[Candidate], candidate_rank: int, scope: str, expected_candidate: str | None,
+) -> tuple[int, Candidate]:
+    if expected_candidate is not None:
+        selected = [
+            (rank, candidate) for rank, candidate in enumerate(candidates, 1)
+            if continuation_candidate(candidate, scope) == expected_candidate
+        ]
+        if len(selected) != 1:
+            raise CandidateNotFoundError
+        return selected[0]
+    if candidate_rank > len(candidates):
+        raise CandidateNotFoundError
+    return candidate_rank, candidates[candidate_rank - 1]
+
+
 def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict[str, Any]:
     terms = normalize_terms(args.term)
     if args.candidate_rank < 1 or args.candidate_rank > MAX_CANDIDATE_LIMIT:
         raise ValueError("candidate rank is invalid")
-    reference_time = now or datetime.now(timezone.utc)
-    reference_time = (reference_time.replace(tzinfo=timezone.utc) if reference_time.tzinfo is None
-                      else reference_time.astimezone(timezone.utc))
+    reference_time = session_common.as_utc(now or datetime.now(timezone.utc))
     window_start = 0
     expected_candidate = None
     expected_scope = None
@@ -514,19 +539,7 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
     if expected_scope is not None and scope != expected_scope:
         raise ValueError("continuation scope changed")
     candidates, scan_summary, warnings = scan_candidates(args, terms, time_range, exclusions=exclusions)
-    if expected_candidate is not None:
-        selected = [
-            (rank, candidate) for rank, candidate in enumerate(candidates, 1)
-            if continuation_candidate(candidate, scope) == expected_candidate
-        ]
-        if len(selected) != 1:
-            raise CandidateNotFoundError
-        selected_rank, candidate = selected[0]
-    else:
-        if args.candidate_rank > len(candidates):
-            raise CandidateNotFoundError
-        selected_rank = args.candidate_rank
-        candidate = candidates[selected_rank - 1]
+    selected_rank, candidate = select_candidate(candidates, args.candidate_rank, scope, expected_candidate)
     loaded = read_active_messages(
         candidate.path,
         session_common.normalized_path(args.cwd),
@@ -547,11 +560,9 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
         raise CandidateNotFoundError
     next_continuation = None
     if has_more:
-        cursor = [1, reference_time.isoformat(), scope,
-                  continuation_candidate(candidate, scope), window_start + MAX_WINDOWS]
-        next_continuation = base64.urlsafe_b64encode(
-            json.dumps(cursor, separators=(",", ":")).encode("utf-8")
-        ).decode("ascii")
+        next_continuation = encode_continuation(
+            reference_time, scope, continuation_candidate(candidate, scope), window_start + MAX_WINDOWS,
+        )
     summary = {
         **scan_summary,
         "selected_candidate_rank": selected_rank,

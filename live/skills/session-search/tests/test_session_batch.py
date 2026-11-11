@@ -7,16 +7,16 @@ import subprocess
 import sys
 import unittest
 from collections import Counter
-from pathlib import Path
+from datetime import datetime, timezone
 from unittest.mock import patch
 
-import test_session_search as fixtures
-from support import SEARCH_SCRIPT as SCRIPT, cli_args, header, message, session_common, session_search, write_session
-from test_session_search import fixture_tree
+from support import (
+    SEARCH_SCRIPT as SCRIPT, cli_args, fixture_tree, header, message, session_common, session_search, write_session,
+)
 
 
 class SessionBatchTests(unittest.TestCase):
-    NOW = fixtures.SessionSearchTests.NOW
+    NOW = datetime(2026, 8, 15, tzinfo=timezone.utc)
 
     def args(self, root, project, *flags):
         return cli_args('aggregate', root, None if '--all-projects' in flags else project, *flags)

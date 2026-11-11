@@ -5,15 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from support import cli_args, header, message, session_search, write_session
-
-
-def nested_entry(calls, complete=True):
-    return message(
-        "result", "call", "2026-09-29T00:00:00Z", "toolResult", [],
-        toolCallId="outer", toolName="codemode", isError=False,
-        nestedCalls={"calls": calls, "complete": complete},
-    )
+from support import cli_args, header, message, nested_entry, session_search, write_session
 
 
 class NestedCallTests(unittest.TestCase):

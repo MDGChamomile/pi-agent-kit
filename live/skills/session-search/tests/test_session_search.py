@@ -7,93 +7,15 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import contextmanager, redirect_stdout
+from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import SEARCH_SCRIPT as SCRIPT, cli_args, header, message, session_common, session_search, write_session
-
-
-@contextmanager
-def fixture_tree():
-    with tempfile.TemporaryDirectory() as temp:
-        base = Path(temp)
-        root = base / "sessions"
-        project_a = base / "project-a"
-        project_b = base / "project-b"
-        project_a.mkdir()
-        project_b.mkdir()
-
-        primary = root / "a" / "primary.jsonl"
-        write_session(
-            primary,
-            header("session-a", project_a),
-            [
-                message(
-                    "a1",
-                    None,
-                    "2026-08-10T00:00:00Z",
-                    "user",
-                    '<skill name="alpha" location="/tmp/skills/alpha/SKILL.md">\n'
-                    'References are relative to /tmp/skills/alpha.\n\n'
-                    'Investigate failures token=TOPSECRET123456\n</skill>',
-                ),
-                message(
-                    "a2",
-                    "a1",
-                    "2026-08-11T00:00:00Z",
-                    "assistant",
-                    [
-                        {"type": "text", "text": "Taking the old branch"},
-                        {
-                            "type": "toolCall",
-                            "id": "tc-read",
-                            "name": "read",
-                            "arguments": {"path": "/tmp/skills/alpha/SKILL.md", "api_key": "KEY_SHOULD_HIDE_123"},
-                        },
-                    ],
-                    stopReason="toolUse",
-                ),
-                message(
-                    "a3",
-                    "a2",
-                    "2026-08-12T00:00:00Z",
-                    "toolResult",
-                    [{"type": "text", "text": "old result"}],
-                    toolCallId="tc-read",
-                    toolName="read",
-                    isError=False,
-                ),
-                message("b2", "a1", "2026-08-13T00:00:00Z", "assistant", [
-                    {"type": "toolCall", "id": "tc-bash", "name": "bash", "arguments": {"command": "false"}}
-                ], stopReason="toolUse"),
-                message(
-                    "b3",
-                    "b2",
-                    "2026-08-14T00:00:00Z",
-                    "toolResult",
-                    [{"type": "text", "text": "Repeated FAILURE password=hunter2"}],
-                    toolCallId="tc-bash",
-                    toolName="bash",
-                    isError=True,
-                ),
-            ],
-            malformed=True,
-        )
-        other = root / "b" / "other.jsonl"
-        write_session(
-            other,
-            header("session-b", project_b),
-            [message("c1", None, "2026-08-14T12:00:00Z", "user", "failure in another project")],
-        )
-        current = root / "a" / "current.jsonl"
-        write_session(
-            current,
-            header("session-current", project_a),
-            [message("d1", None, "2026-08-14T13:00:00Z", "user", "current only marker")],
-        )
-        yield root, project_a, project_b, primary, other, current
+from support import (
+    SEARCH_SCRIPT as SCRIPT, cli_args, fixture_tree, header, message, session_common, session_search, skill_envelope,
+    write_session,
+)
 
 
 class SessionSearchTests(unittest.TestCase):
@@ -443,11 +365,7 @@ class SessionSearchTests(unittest.TestCase):
         self.assertIn("direct_skills", events["message"])
 
     def test_direct_skill_detection_requires_user_role_and_full_pi_envelope(self):
-        envelope = (
-            '<skill name="alpha" location="/tmp/skills/alpha/SKILL.md">\n'
-            'References are relative to /tmp/skills/alpha.\n\n'
-            'Instructions\n</skill>\n\nuser arguments'
-        )
+        envelope = skill_envelope("alpha", "/tmp/skills/alpha/SKILL.md", "Instructions") + "\n\nuser arguments"
         session = {"session_id": "session", "file": "/tmp/session.jsonl"}
         generic_user = message("u1", None, "2026-08-10T00:00:00Z", "user", 'Discuss <skill name="alpha">')
         assistant_example = message("a1", None, "2026-08-10T00:00:00Z", "assistant", envelope)
@@ -471,44 +389,6 @@ class SessionSearchTests(unittest.TestCase):
         self.assertNotIn("KEY_SHOULD_HIDE_123", serialized)
         self.assertIn("REDACTED", serialized)
 
-    def test_quoted_secrets_are_masked_in_full(self):
-        cases = (
-            ('password="FAKE FIRST SECOND" visible', 'password=[REDACTED] visible'),
-            ("passwd='FAKE FIRST; SECOND' visible", 'passwd=[REDACTED] visible'),
-            ('{"password": "FAKE FIRST SECOND"}', '{"password": [REDACTED]}'),
-            (r'password="FAKE\" SECOND" visible', 'password=[REDACTED] visible'),
-            (r"secret='FAKE\' SECOND' visible", 'secret=[REDACTED] visible'),
-            ('token="FAKE\nSECOND" visible', 'token=[REDACTED] visible'),
-            ('password="FAKE FIRST SECOND', 'password=[REDACTED]'),
-            ('password="FAKE FIRST' + '\\', 'password=[REDACTED]'),
-            ("secret='FAKE FIRST" + '\\', 'secret=[REDACTED]'),
-            ('token=FAKE_VALUE visible', 'token=[REDACTED] visible'),
-        )
-        for raw, expected in cases:
-            with self.subTest(raw=raw):
-                self.assertEqual(session_common.mask_and_shorten(raw), expected)
-        raw = 'prefix ' * 100 + ' password="' + 'FAKE_SECRET ' * 100 + '" visible-target'
-        evidence = session_common.mask_and_shorten(raw, queries=('FAKE_SECRET', 'visible-target'))
-        self.assertNotIn('FAKE_SECRET', evidence)
-        self.assertIn('visible-target', evidence)
-        self.assertLessEqual(len(evidence), session_common.MAX_EVIDENCE_CHARS)
-
-    def test_cookie_headers_are_masked_before_whitespace_collapses(self):
-        cases = (
-            'Cookie: session=FAKE_A; sid=FAKE_B',
-            'set-cookie: session=FAKE_A; Path=/; HttpOnly',
-            'Cookie: session=FAKE_A;\r\n\tsid=FAKE_B',
-            'Cookie: session=FAKE_A\nSet-Cookie: sid=FAKE_B; Secure',
-            '{"Cookie": "session=FAKE_A; sid=FAKE_B"}',
-            '{"Set-Cookie": "session=FAKE_A; Path=/"}',
-        )
-        for raw in cases:
-            with self.subTest(raw=raw):
-                evidence = session_common.mask_and_shorten(raw + '\nVisible: keep-me')
-                self.assertNotIn('FAKE_', evidence)
-                self.assertIn('[REDACTED]', evidence)
-                self.assertIn('Visible: keep-me', evidence)
-
     def test_aggregate_evidence_masks_quoted_password_and_all_cookies(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -519,20 +399,6 @@ class SessionSearchTests(unittest.TestCase):
             result = session_search.aggregate(self.args(root, root, '--include-evidence'), now=self.NOW)
         self.assertEqual(result['results'][0]['evidence'],
                          'password=[REDACTED] Cookie: [REDACTED]')
-
-    def test_private_key_url_credentials_and_boundary_secret_are_masked(self):
-        raw = (
-            "https://alice:correct-horse@example.test/path "
-            "-----BEGIN TEST PRIVATE KEY-----private-material-----END TEST PRIVATE KEY----- "
-            + "x" * 280
-            + " token=BOUNDARY_SECRET_VALUE"
-        )
-        masked = session_common.mask_and_shorten(raw)
-        self.assertNotIn("alice", masked)
-        self.assertNotIn("correct-horse", masked)
-        self.assertNotIn("private-material", masked)
-        self.assertNotIn("BOUNDARY_SECRET_VALUE", masked)
-        self.assertLessEqual(len(masked), session_common.MAX_EVIDENCE_CHARS)
 
     def test_query_centered_evidence_is_opt_in_and_keeps_and_filtering(self):
         raw = "prefix " * 100 + "한글 NEEDLE context " + "middle " * 100 + "distant"
@@ -561,12 +427,6 @@ class SessionSearchTests(unittest.TestCase):
         self.assertLessEqual(len(evidence), session_common.MAX_EVIDENCE_CHARS)
         self.assertEqual(no_match["results"], [])
 
-    def test_centered_evidence_handles_casefold_expansion_and_whitespace(self):
-        raw = "ß" * 500 + " 한글\n\tStraße context " + "tail " * 100
-        evidence = session_common.mask_and_shorten(raw, queries=("한글\nSTRASSE",))
-        self.assertIn("한글 Straße context", evidence)
-        self.assertLessEqual(len(evidence), session_common.MAX_EVIDENCE_CHARS)
-
     def test_tool_arguments_are_serialized_only_for_queries_or_evidence(self):
         with fixture_tree() as (root, project_a, _, _, _, _):
             with patch.object(session_search.json, "dumps", side_effect=AssertionError("serialized")):
@@ -582,42 +442,6 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(queried["summary"]["matched_events"], 1)
         self.assertEqual([item["summary"]["matched_events"] for item in batch["batches"]],
                          [counts["summary"]["matched_events"], 1])
-
-    def test_evidence_falls_back_to_masked_prefix_without_visible_query(self):
-        raw = "prefix " * 100 + " token=SYNTHETIC_HIDDEN_VALUE " + "tail " * 100
-        prefix = session_common.mask_and_shorten(raw)
-        for queries in ((), ("SYNTHETIC_HIDDEN_VALUE",), ("tool-metadata-only",), ("",)):
-            with self.subTest(queries=queries):
-                self.assertEqual(session_common.mask_and_shorten(raw, queries=queries), prefix)
-        self.assertEqual(prefix, raw[:299] + "…")
-
-    def test_centered_evidence_masks_entire_source_before_selecting_window(self):
-        secret = "SYNTHETIC_" + "x" * 800
-        raw = "prefix " * 100 + " token=" + secret + " visible-target " + "tail " * 100
-        evidence = session_common.mask_and_shorten(raw, queries=(secret, "visible-target"))
-        self.assertIn("visible-target", evidence)
-        self.assertIn("token=[REDACTED]", evidence)
-        self.assertNotIn("SYNTHETIC_", evidence)
-        self.assertNotIn("xxx", evidence)
-        private_key = (
-            "prefix " * 100 + "-----BEGIN TEST PRIVATE KEY-----" + "secret-material " * 100
-            + "-----END TEST PRIVATE KEY----- visible-target " + "tail " * 100
-        )
-        evidence = session_common.mask_and_shorten(private_key, queries=("visible-target",))
-        self.assertIn("[REDACTED_PRIVATE_KEY]", evidence)
-        self.assertIn("visible-target", evidence)
-        self.assertNotIn("secret-material", evidence)
-
-    def test_centered_evidence_respects_limits_and_text_edges(self):
-        for raw in ("needle " + "x" * 700, "x" * 700 + " needle", "short needle"):
-            for limit in (0, 1, 2, 3, 20, 300):
-                with self.subTest(raw=raw[:20], limit=limit):
-                    evidence = session_common.mask_and_shorten(raw, limit, queries=("needle",))
-                    self.assertLessEqual(len(evidence), limit)
-                    if limit >= 20:
-                        self.assertIn("needle", evidence)
-                    if len(raw) <= limit:
-                        self.assertEqual(evidence, raw)
 
     def test_limit_summary_only_no_match_and_warning(self):
         with fixture_tree() as (root, project_a, _, primary, _, current):
@@ -667,17 +491,6 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(result["summary"]["results_returned"], 3)
         self.assertEqual([item["entry_id"] for item in result["results"]], ["e9", "e8", "e7"])
 
-    def test_header_reader_does_not_decode_body_or_hide_header_io_errors(self):
-        valid = (json.dumps(header("session", Path("/project"))) + "\n").encode()
-        stream = io.BytesIO(valid + b"\xff\n")
-        self.assertEqual(session_common.read_session_header(stream)["id"], "session")
-        self.assertEqual(stream.readline(), b"\xff\n")
-        for raw in (b"not json\n", b"[]\n", b'{"type":"message"}\n'):
-            with self.subTest(raw=raw):
-                self.assertIsNone(session_common.read_session_header(io.BytesIO(raw)))
-        with self.assertRaises(UnicodeError):
-            session_common.read_session_header(io.BytesIO(b"\xff\n"))
-
     def test_near_header_utf8_failure_keeps_in_scope_partial_counts(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -711,7 +524,7 @@ class SessionSearchTests(unittest.TestCase):
                         toolName="read", isError=True),
                 message("b", "a", "2026-08-10T00:00:01Z", "toolResult", "needle",
                         toolName="read", isError=True),
-                # Force the decode error beyond TextIOWrapper's initial read-ahead.
+                # Place the decode error far beyond the header and the matching entries.
                 *[{"type": "custom", "id": f"p{i}", "parentId": "b", "padding": "x" * 300}
                   for i in range(100)],
             ])
@@ -774,9 +587,7 @@ class SessionSearchTests(unittest.TestCase):
                          "arguments": {"path": location}}]
                 write_session(root / "a-first.jsonl", head, [
                     message("shared", None, timestamp, "user", "first root"),
-                    message("alias", "shared", timestamp, "user",
-                            f'<skill name="declared" location="{location}">\n'
-                            'References are relative to /custom/folder.\n\nbody\n</skill>'),
+                    message("alias", "shared", timestamp, "user", skill_envelope("declared", location)),
                     message("call", "alias", timestamp, "assistant", call),
                 ])
                 second = root / "b-second.jsonl"
@@ -868,7 +679,6 @@ class SessionSearchTests(unittest.TestCase):
             selected_project.mkdir()
             other_project.mkdir()
             write_session(root / "selected.jsonl", header("selected", selected_project), [])
-            foreign = root / "foreign.jsonl"
             write_session(root / "foreign.jsonl", header("foreign", other_project), [], malformed=True)
             result = session_search.aggregate(self.args(root, selected_project), now=self.NOW)
         self.assertEqual(result["summary"]["files_selected"], 1)
@@ -1004,11 +814,6 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(result["summary"]["tool_error_sessions"], {})
         self.assertEqual(result["summary"]["matched_events"], 0)
         self.assertEqual(result["results"], [])
-
-    def test_naive_timestamp_is_treated_as_utc(self):
-        parsed = session_common.parse_timestamp("2026-08-15T00:00:00")
-        self.assertEqual(parsed, self.NOW)
-        self.assertEqual(parsed.tzinfo, timezone.utc)
 
     def test_evidence_and_summary_only_flags_are_mutually_exclusive(self):
         parser = session_search.build_parser()

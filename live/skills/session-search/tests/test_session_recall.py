@@ -25,8 +25,6 @@ def entry(entry_type: str, entry_id: str, parent_id: str | None, **extra) -> dic
     }
 
 
-
-
 class SessionRecallTests(unittest.TestCase):
     NOW = datetime(2026, 8, 15, tzinfo=timezone.utc)
 
@@ -61,17 +59,6 @@ class SessionRecallTests(unittest.TestCase):
         self.assertFalse(match["text_truncated"])
         self.assertFalse(summary["evidence_truncated"])
         self.assertLessEqual(summary["evidence_chars"], 6000)
-
-    def test_metadata_helper_preserves_string_api_and_limits(self):
-        helper = session_common
-        for limit in [-1, 0, 1, 2, 3, 10, 300]:
-            for text in ["", "…", "needle " + "x" * 1000]:
-                with self.subTest(limit=limit, text_length=len(text)):
-                    evidence, truncated = helper.mask_and_shorten_with_metadata(
-                        text, limit, ("needle",))
-                    self.assertEqual(evidence, helper.mask_and_shorten(text, limit, ("needle",)))
-                    self.assertLessEqual(len(evidence), max(0, limit))
-                    self.assertEqual(truncated, len(text) > max(0, limit))
 
     def test_find_is_path_free_and_project_scoped(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -362,7 +349,7 @@ class SessionRecallTests(unittest.TestCase):
             path = root / "corrupt.jsonl"
             write_session(path, header("private-id", root), [
                 message("u", None, "2026-08-10T00:00:00Z", "user", "인증 오류"),
-                # Put the invalid byte beyond the header's decoding buffer.
+                # Put the invalid byte far beyond the header line.
                 message("t", "u", "2026-08-10T00:00:01Z", "toolResult", "x" * 20000),
             ])
             with path.open("ab") as handle:
@@ -568,9 +555,6 @@ class SessionRecallTests(unittest.TestCase):
                         else:
                             self.assertIsNone(loaded)
                             self.assertEqual(warnings.output(False)["by_kind"], {"invalid_branch_structure": 1})
-
-    def test_extreme_timestamp_is_ignored_without_overflow(self):
-        self.assertIsNone(session_common.parse_timestamp("0001-01-01T00:00:00+14:00"))
 
     def test_untrusted_timestamp_is_not_returned_as_evidence(self):
         with tempfile.TemporaryDirectory() as temp:

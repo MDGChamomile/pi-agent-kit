@@ -21,6 +21,17 @@ class SharedScanTests(unittest.TestCase):
             "count": 2, "by_kind": {"invalid_entry": 1, "invalid_json_line": 1},
         })
 
+    def test_header_reader_does_not_decode_body_or_hide_header_io_errors(self):
+        valid = (json.dumps(header("session", Path("/project"))) + "\n").encode()
+        stream = io.BytesIO(valid + b"\xff\n")
+        self.assertEqual(session_common.read_session_header(stream)["id"], "session")
+        self.assertEqual(stream.readline(), b"\xff\n")
+        for raw in (b"not json\n", b"[]\n", b'{"type":"message"}\n'):
+            with self.subTest(raw=raw):
+                self.assertIsNone(session_common.read_session_header(io.BytesIO(raw)))
+        with self.assertRaises(UnicodeError):
+            session_common.read_session_header(io.BytesIO(b"\xff\n"))
+
     def test_body_failures_propagate_after_preceding_entries(self):
         class FailingBody(io.BytesIO):
             def __next__(self):
@@ -99,11 +110,10 @@ class SharedScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"PI_SESSION_FILE": ""}):
             root = Path(temp)
             path = root / "session.jsonl"
-            header = {"type": "session", "version": 3, "id": "session", "cwd": str(root)}
             entry = {"type": "message", "id": "entry", "parentId": None,
                      "timestamp": "2026-08-10T00:00:00Z",
                      "message": {"role": "user", "content": "needle"}}
-            body = (json.dumps(header) + "\nnot-json\n[]\n" + json.dumps(entry) + "\n").encode()
+            body = (json.dumps(header("session", root)) + "\nnot-json\n[]\n" + json.dumps(entry) + "\n").encode()
             search_args = cli_args("aggregate", root, root)
             recall_args = cli_args("find", root, root)
             path.write_bytes(body)
