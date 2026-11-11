@@ -1,4 +1,4 @@
-"""Tool-event refactoring preserves payloads and serialization boundaries."""
+"""Direct and nested tool events keep their payloads, serialization boundaries, and masking."""
 import json
 import os
 from pathlib import Path

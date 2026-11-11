@@ -170,7 +170,11 @@ def events_for_entry(
     include_arguments: bool = True,
     direct_calls: list[DirectToolCall] | None = None,
 ) -> list[dict[str, Any]]:
-    """Serialize tool-call arguments only when a query or evidence can use them."""
+    """Build one entry's message, tool-call, tool-result, and nested-call events.
+
+    Tool-call arguments are serialized only with include_arguments, because only
+    a query or evidence can use them. direct_calls reuses already parsed calls.
+    """
     if entry.get("type") != "message" or not isinstance(entry.get("message"), dict):
         return []
     message = entry["message"]

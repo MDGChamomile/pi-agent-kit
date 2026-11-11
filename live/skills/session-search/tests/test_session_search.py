@@ -711,7 +711,7 @@ class SessionSearchTests(unittest.TestCase):
                         toolName="read", isError=True),
                 message("b", "a", "2026-08-10T00:00:01Z", "toolResult", "needle",
                         toolName="read", isError=True),
-                # Force the decode error beyond TextIOWrapper's initial read-ahead.
+                # Place the decode error far beyond the header and the matching entries.
                 *[{"type": "custom", "id": f"p{i}", "parentId": "b", "padding": "x" * 300}
                   for i in range(100)],
             ])

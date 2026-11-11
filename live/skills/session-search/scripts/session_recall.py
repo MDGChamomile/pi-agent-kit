@@ -202,7 +202,10 @@ def candidate_for_messages(
     *,
     fingerprint: bool = True,
 ) -> tuple[Candidate | None, list[RecallMessage]]:
-    """Find omits the fingerprint; recall needs it to detect a changed candidate."""
+    """Return the candidate (None without a match) and the messages inside time_range.
+
+    Find omits the fingerprint; recall needs it to detect a changed candidate.
+    """
     eligible: list[RecallMessage] = []
     matched_terms: set[str] = set()
     matching_messages = 0

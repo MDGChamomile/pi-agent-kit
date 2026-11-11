@@ -362,7 +362,7 @@ class SessionRecallTests(unittest.TestCase):
             path = root / "corrupt.jsonl"
             write_session(path, header("private-id", root), [
                 message("u", None, "2026-08-10T00:00:00Z", "user", "인증 오류"),
-                # Put the invalid byte beyond the header's decoding buffer.
+                # Put the invalid byte far beyond the header line.
                 message("t", "u", "2026-08-10T00:00:01Z", "toolResult", "x" * 20000),
             ])
             with path.open("ab") as handle:

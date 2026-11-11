@@ -17,7 +17,6 @@ from typing import Any, BinaryIO, Callable, Iterable, Iterator
 MAX_EVIDENCE_CHARS = 300
 MAX_WARNING_ITEMS = 100
 
-# Mask before truncation so a secret crossing the truncation boundary cannot leak.
 MASK_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"-----BEGIN [^-\n]*PRIVATE KEY-----.*?-----END [^-\n]*PRIVATE KEY-----", re.I | re.S), "[REDACTED_PRIVATE_KEY]"),
     (re.compile(r"\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+", re.I), r"\1 [REDACTED]"),
@@ -104,6 +103,7 @@ def mask_and_shorten_with_metadata(
     value: str, limit: int = MAX_EVIDENCE_CHARS, queries: Iterable[str] = (),
 ) -> tuple[str, bool]:
     """Return masked evidence and whether normalized masked text was shortened."""
+    # Mask before truncation so a secret crossing the truncation boundary cannot leak.
     masked = re.sub(r"\s+", " ", mask_secrets(value)).strip()
     if limit <= 0:
         return "", bool(masked)
