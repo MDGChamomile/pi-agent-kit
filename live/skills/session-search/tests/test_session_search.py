@@ -7,93 +7,15 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import contextmanager, redirect_stdout
+from contextlib import redirect_stdout
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import SEARCH_SCRIPT as SCRIPT, cli_args, header, message, session_common, session_search, write_session
-
-
-@contextmanager
-def fixture_tree():
-    with tempfile.TemporaryDirectory() as temp:
-        base = Path(temp)
-        root = base / "sessions"
-        project_a = base / "project-a"
-        project_b = base / "project-b"
-        project_a.mkdir()
-        project_b.mkdir()
-
-        primary = root / "a" / "primary.jsonl"
-        write_session(
-            primary,
-            header("session-a", project_a),
-            [
-                message(
-                    "a1",
-                    None,
-                    "2026-08-10T00:00:00Z",
-                    "user",
-                    '<skill name="alpha" location="/tmp/skills/alpha/SKILL.md">\n'
-                    'References are relative to /tmp/skills/alpha.\n\n'
-                    'Investigate failures token=TOPSECRET123456\n</skill>',
-                ),
-                message(
-                    "a2",
-                    "a1",
-                    "2026-08-11T00:00:00Z",
-                    "assistant",
-                    [
-                        {"type": "text", "text": "Taking the old branch"},
-                        {
-                            "type": "toolCall",
-                            "id": "tc-read",
-                            "name": "read",
-                            "arguments": {"path": "/tmp/skills/alpha/SKILL.md", "api_key": "KEY_SHOULD_HIDE_123"},
-                        },
-                    ],
-                    stopReason="toolUse",
-                ),
-                message(
-                    "a3",
-                    "a2",
-                    "2026-08-12T00:00:00Z",
-                    "toolResult",
-                    [{"type": "text", "text": "old result"}],
-                    toolCallId="tc-read",
-                    toolName="read",
-                    isError=False,
-                ),
-                message("b2", "a1", "2026-08-13T00:00:00Z", "assistant", [
-                    {"type": "toolCall", "id": "tc-bash", "name": "bash", "arguments": {"command": "false"}}
-                ], stopReason="toolUse"),
-                message(
-                    "b3",
-                    "b2",
-                    "2026-08-14T00:00:00Z",
-                    "toolResult",
-                    [{"type": "text", "text": "Repeated FAILURE password=hunter2"}],
-                    toolCallId="tc-bash",
-                    toolName="bash",
-                    isError=True,
-                ),
-            ],
-            malformed=True,
-        )
-        other = root / "b" / "other.jsonl"
-        write_session(
-            other,
-            header("session-b", project_b),
-            [message("c1", None, "2026-08-14T12:00:00Z", "user", "failure in another project")],
-        )
-        current = root / "a" / "current.jsonl"
-        write_session(
-            current,
-            header("session-current", project_a),
-            [message("d1", None, "2026-08-14T13:00:00Z", "user", "current only marker")],
-        )
-        yield root, project_a, project_b, primary, other, current
+from support import (
+    SEARCH_SCRIPT as SCRIPT, cli_args, fixture_tree, header, message, session_common, session_search, skill_envelope,
+    write_session,
+)
 
 
 class SessionSearchTests(unittest.TestCase):
@@ -443,11 +365,7 @@ class SessionSearchTests(unittest.TestCase):
         self.assertIn("direct_skills", events["message"])
 
     def test_direct_skill_detection_requires_user_role_and_full_pi_envelope(self):
-        envelope = (
-            '<skill name="alpha" location="/tmp/skills/alpha/SKILL.md">\n'
-            'References are relative to /tmp/skills/alpha.\n\n'
-            'Instructions\n</skill>\n\nuser arguments'
-        )
+        envelope = skill_envelope("alpha", "/tmp/skills/alpha/SKILL.md", "Instructions") + "\n\nuser arguments"
         session = {"session_id": "session", "file": "/tmp/session.jsonl"}
         generic_user = message("u1", None, "2026-08-10T00:00:00Z", "user", 'Discuss <skill name="alpha">')
         assistant_example = message("a1", None, "2026-08-10T00:00:00Z", "assistant", envelope)
@@ -774,9 +692,7 @@ class SessionSearchTests(unittest.TestCase):
                          "arguments": {"path": location}}]
                 write_session(root / "a-first.jsonl", head, [
                     message("shared", None, timestamp, "user", "first root"),
-                    message("alias", "shared", timestamp, "user",
-                            f'<skill name="declared" location="{location}">\n'
-                            'References are relative to /custom/folder.\n\nbody\n</skill>'),
+                    message("alias", "shared", timestamp, "user", skill_envelope("declared", location)),
                     message("call", "alias", timestamp, "assistant", call),
                 ])
                 second = root / "b-second.jsonl"

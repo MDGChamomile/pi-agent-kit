@@ -11,7 +11,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import cli_args, header, message, run_mode, session_common, session_recall, session_search, write_session
+from support import (
+    cli_args, header, message, run_mode, session_common, session_recall, session_search, skill_envelope, write_session,
+)
 
 
 class TimeRangeTests(unittest.TestCase):
@@ -135,9 +137,7 @@ class TimeRangeTests(unittest.TestCase):
 
     def test_prior_identity_and_call_survive_time_filter(self):
         write_session(self.path, header("synthetic", self.root), [
-            message("1", None, "2026-08-01T00:00:00Z", "user",
-                    '<skill name="declared" location="/custom/folder/SKILL.md">\n'
-                    'References are relative to /custom/folder.\n\nbody\n</skill>'),
+            message("1", None, "2026-08-01T00:00:00Z", "user", skill_envelope("declared", "/custom/folder/SKILL.md")),
             message("2", "1", "2026-08-02T00:00:00Z", "assistant", [
                 {"type": "toolCall", "id": "call", "name": "read",
                  "arguments": {"path": "/custom/folder/SKILL.md"}},

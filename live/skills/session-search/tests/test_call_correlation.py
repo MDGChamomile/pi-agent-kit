@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from support import cli_args, header, message, session_search, write_session
+from support import cli_args, header, message, session_search, skill_envelope, write_session
 
 STAMP = "2026-08-14T00:00:00Z"
 
@@ -120,15 +120,12 @@ class CallCorrelationTests(unittest.TestCase):
         ), {})
 
     def test_result_keeps_the_identity_recorded_at_its_call(self):
-        def envelope(name):
-            return (f'<skill name="{name}" location="/folder/SKILL.md">\n'
-                    'References are relative to /folder.\n\nbody\n</skill>')
         for version in (1, 2, 3):
             with self.subTest(version=version):
                 summary = self.aggregate([
-                    message("name-a", None, STAMP, "user", envelope("original")),
+                    message("name-a", None, STAMP, "user", skill_envelope("original", "/folder/SKILL.md")),
                     call("a", "name-a", "/folder/SKILL.md"),
-                    message("name-b", "a", STAMP, "user", envelope("renamed")),
+                    message("name-b", "a", STAMP, "user", skill_envelope("renamed", "/folder/SKILL.md")),
                     result("ar", "name-b"),
                 ], version)["summary"]
                 self.assertEqual(summary["skill_file_read_successes"], {"original": 1})

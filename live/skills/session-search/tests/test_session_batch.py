@@ -10,8 +10,9 @@ from collections import Counter
 from datetime import datetime, timezone
 from unittest.mock import patch
 
-from support import SEARCH_SCRIPT as SCRIPT, cli_args, header, message, session_common, session_search, write_session
-from test_session_search import fixture_tree
+from support import (
+    SEARCH_SCRIPT as SCRIPT, cli_args, fixture_tree, header, message, session_common, session_search, write_session,
+)
 
 
 class SessionBatchTests(unittest.TestCase):

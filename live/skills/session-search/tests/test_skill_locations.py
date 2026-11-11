@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from support import cli_args, header, message, session_search, write_session
+from support import cli_args, header, message, session_search, skill_envelope, write_session
 
 
 class SkillLocationTests(unittest.TestCase):
@@ -33,9 +33,7 @@ class SkillLocationTests(unittest.TestCase):
             location = str(project / "custom" / "renamed-folder" / "SKILL.md")
             entries = [
                 message("m1", None, "2026-08-01T00:00:00Z", "user",
-                        f'<skill name="declared-name" location="{location}">\n'
-                        f'References are relative to {project / "custom" / "renamed-folder"}.\n\n'
-                        'Synthetic instructions\n</skill>'),
+                        skill_envelope("declared-name", location, "Synthetic instructions")),
                 message("m2", "m1", "2026-08-14T00:00:00Z", "assistant", [
                     {"type": "toolCall", "id": "read-ok", "name": "read",
                      "arguments": {"path": "custom/renamed-folder/./SKILL.md"}},
@@ -60,7 +58,7 @@ class SkillLocationTests(unittest.TestCase):
 
     def test_unrelated_text_does_not_register_names(self):
         for role, text in [
-            ("assistant", '<skill name="wrong" location="/custom/folder/SKILL.md">\nReferences are relative to /custom/folder.\n\nbody\n</skill>'),
+            ("assistant", skill_envelope("wrong", "/custom/folder/SKILL.md")),
             ("user", 'Example: <skill name="wrong" location="/custom/folder/SKILL.md">'),
         ]:
             identities = {}
@@ -77,9 +75,7 @@ class SkillLocationTests(unittest.TestCase):
                 timestamp = "2026-08-14T00:00:00Z"
                 entries = [
                     message("root", None, timestamp, "user", "start"),
-                    message("alias", "root", timestamp, "user",
-                            f'<skill name="declared" location="{location}">\n'
-                            'References are relative to /custom/folder.\n\nbody\n</skill>'),
+                    message("alias", "root", timestamp, "user", skill_envelope("declared", location)),
                     message("sibling", "root", timestamp, "assistant", [
                         {"type": "toolCall", "id": "sibling-call", "name": "read", "arguments": {"path": location}},
                     ]),
