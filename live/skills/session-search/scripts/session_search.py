@@ -79,14 +79,20 @@ class EventFilters:
     errors_only: bool
 
     @classmethod
-    def from_args(cls, args: argparse.Namespace) -> "EventFilters":
+    def from_values(
+        cls, query: Iterable[str], role: Iterable[str], tool: Iterable[str], skill: Iterable[str], error: bool,
+    ) -> "EventFilters":
         return cls(
-            queries=tuple(value.casefold() for value in args.query),
-            roles=frozenset(value.casefold() for value in args.role),
-            tools=frozenset(value.casefold() for value in args.tool),
-            skills=frozenset(value.casefold() for value in args.skill),
-            errors_only=args.error,
+            queries=tuple(value.casefold() for value in query),
+            roles=frozenset(value.casefold() for value in role),
+            tools=frozenset(value.casefold() for value in tool),
+            skills=frozenset(value.casefold() for value in skill),
+            errors_only=error,
         )
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> "EventFilters":
+        return cls.from_values(args.query, args.role, args.tool, args.skill, args.error)
 
 
 def event_matches(event: dict[str, Any], filters: EventFilters) -> bool:
@@ -408,10 +414,10 @@ def aggregate_filters(args: argparse.Namespace) -> list[EventFilters]:
                 not isinstance(item, str) or len(item) > 256 for item in items
             ):
                 raise ValueError("invalid filter values")
-        filters.append(EventFilters.from_args(argparse.Namespace(
-            **{key: value.get(key, []) for key in ("query", "role", "tool", "skill")},
-            error=value.get("error", False),
-        )))
+        filters.append(EventFilters.from_values(
+            value.get("query", []), value.get("role", []), value.get("tool", []), value.get("skill", []),
+            value.get("error", False),
+        ))
     return filters
 
 
