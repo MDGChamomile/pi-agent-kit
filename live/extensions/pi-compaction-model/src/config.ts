@@ -36,10 +36,35 @@ function section(settings: unknown): unknown {
   return isRecord(settings) ? settings.compactionModel : undefined;
 }
 
+function parseThinkingLevel(value: unknown, onWarning: Warn): ThinkingLevel | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value)) {
+    return value as ThinkingLevel;
+  }
+  onWarning(`Invalid thinkingLevel '${String(value)}'; omitting the thinking level.`);
+  return undefined;
+}
+
+function parseReasons(value: unknown, onWarning: Warn): CompactionReason[] {
+  if (value === undefined) return [...COMPACTION_REASONS];
+  if (
+    Array.isArray(value) &&
+    value.every(
+      (reason) =>
+        typeof reason === "string" &&
+        (COMPACTION_REASONS as readonly string[]).includes(reason),
+    )
+  ) {
+    return [...new Set(value)] as CompactionReason[];
+  }
+  onWarning("reasons must contain only manual, threshold, or overflow; handling all reasons.");
+  return [...COMPACTION_REASONS];
+}
+
 export function resolveConfig(
   globalSettings: unknown,
   projectSettings: unknown,
-  warn: Warn = (message) => console.warn(`[pi-compaction-model] ${message}`),
+  onWarning: Warn = (message) => console.warn(`[pi-compaction-model] ${message}`),
 ): CompactionModelConfig | null {
   const globalSection = section(globalSettings);
   const projectSection = section(projectSettings);
@@ -56,43 +81,15 @@ export function resolveConfig(
 
   if (typeof raw.model !== "string" || !raw.model.trim()) {
     if (globalSection !== undefined || projectSection !== undefined) {
-      warn("compactionModel.model must be a non-empty provider/model string; using Pi's active model.");
+      onWarning("compactionModel.model must be a non-empty provider/model string; using Pi's active model.");
     }
     return null;
   }
 
-  let thinkingLevel: ThinkingLevel | undefined;
-  if (raw.thinkingLevel !== undefined && raw.thinkingLevel !== null) {
-    if (
-      typeof raw.thinkingLevel === "string" &&
-      (THINKING_LEVELS as readonly string[]).includes(raw.thinkingLevel)
-    ) {
-      thinkingLevel = raw.thinkingLevel as ThinkingLevel;
-    } else {
-      warn(`Invalid thinkingLevel '${String(raw.thinkingLevel)}'; omitting the thinking level.`);
-    }
-  }
-
-  let reasons: CompactionReason[] = [...COMPACTION_REASONS];
-  if (raw.reasons !== undefined) {
-    if (
-      Array.isArray(raw.reasons) &&
-      raw.reasons.every(
-        (reason) =>
-          typeof reason === "string" &&
-          (COMPACTION_REASONS as readonly string[]).includes(reason),
-      )
-    ) {
-      reasons = [...new Set(raw.reasons)] as CompactionReason[];
-    } else {
-      warn("reasons must contain only manual, threshold, or overflow; handling all reasons.");
-    }
-  }
-
   return {
     model: raw.model.trim(),
-    thinkingLevel,
-    reasons,
+    thinkingLevel: parseThinkingLevel(raw.thinkingLevel, onWarning),
+    reasons: parseReasons(raw.reasons, onWarning),
   };
 }
 
