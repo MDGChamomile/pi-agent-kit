@@ -210,7 +210,7 @@ def candidate_for_messages(
     eligible: list[RecallMessage] = []
     matched_terms: set[str] = set()
     matching_messages = 0
-    latest_match = datetime.min.replace(tzinfo=timezone.utc)
+    latest_match = session_common.MIN_UTC_DATETIME
     for message in messages:
         timestamp = message.timestamp
         if not time_range.contains(timestamp):
@@ -269,7 +269,7 @@ def scan_candidates(
 
     # Only disclosed, in-scope failures can invalidate an empty result. In
     # current-project searches, failures in unknown or foreign-project files stay private.
-    if not candidates and warnings.output(False)["by_kind"].get("unreadable_file", 0):
+    if not candidates and warnings.count_of("unreadable_file"):
         raise RecallReadError("read failures prevent verifying an empty recall")
 
     candidates.sort(key=candidate_sort_key, reverse=True)
@@ -527,9 +527,7 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
     terms = normalize_terms(args.term)
     if args.candidate_rank < 1 or args.candidate_rank > MAX_CANDIDATE_LIMIT:
         raise ValueError("candidate rank is invalid")
-    reference_time = now or datetime.now(timezone.utc)
-    reference_time = (reference_time.replace(tzinfo=timezone.utc) if reference_time.tzinfo is None
-                      else reference_time.astimezone(timezone.utc))
+    reference_time = session_common.as_utc(now or datetime.now(timezone.utc))
     window_start = 0
     expected_candidate = None
     expected_scope = None

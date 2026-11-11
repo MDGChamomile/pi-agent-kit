@@ -11,7 +11,7 @@ import re
 import sys
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
@@ -499,7 +499,7 @@ class EventAggregation:
                     self.counters[counter][read_skill.casefold()] += 1
             if self.result_limit:
                 self.result_sequence += 1
-                result_key = timestamp or datetime.min.replace(tzinfo=timezone.utc)
+                result_key = timestamp or session_common.MIN_UTC_DATETIME
                 item = (result_key, self.result_sequence, event)
                 if len(self.result_heap) < self.result_limit:
                     heapq.heappush(self.result_heap, item)
