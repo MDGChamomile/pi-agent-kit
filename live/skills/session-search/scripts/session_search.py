@@ -13,7 +13,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any, Callable, Iterable, Iterator
 
 import session_common
 
@@ -283,8 +283,8 @@ class LinearSkillState:
                 self.skill_reads_by_call_id[call.call_id] = call.read_skill
         return calls
 
-    def leaf_path(self) -> set[str]:
-        return set()
+    def leaf_membership(self) -> Callable[[Any], bool | None]:
+        return lambda _entry_id: True
 
 
 class BranchSkillState:
@@ -317,8 +317,9 @@ class BranchSkillState:
         self.skill_reads_by_call_id = skill_read_calls_for_result(entry, self.calls_by_id, self.parent_by_id)
         return calls
 
-    def leaf_path(self) -> set[str]:
-        return set(session_common.ancestor_ids(self.leaf_id, self.parent_by_id))
+    def leaf_membership(self) -> Callable[[Any], bool | None]:
+        leaf_path = set(session_common.ancestor_ids(self.leaf_id, self.parent_by_id))
+        return lambda entry_id: entry_id in leaf_path if isinstance(entry_id, str) else None
 
 
 def result_view(event: dict[str, Any], queries: Iterable[str] = ()) -> dict[str, Any]:
@@ -481,15 +482,10 @@ class EventAggregation:
                 elif item[:2] > self.result_heap[0][:2]:
                     heapq.heapreplace(self.result_heap, item)
 
-    def mark_branch(self, path: Path, version: int, leaf_path: set[str] | None) -> None:
+    def mark_branch(self, path: Path, membership: Callable[[Any], bool | None]) -> None:
         for _timestamp, _sequence, event in self.result_heap:
             if event["file"] == str(path):
-                event_id = event.get("entry_id")
-                event["on_latest_leaf"] = (
-                    None if leaf_path is None else
-                    True if version == 1 else
-                    event_id in leaf_path if isinstance(event_id, str) else None
-                )
+                event["on_latest_leaf"] = membership(event.get("entry_id"))
 
     def results(self) -> list[dict[str, Any]]:
         return [
@@ -597,9 +593,9 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                 aggregation.consume(events, timestamp)
 
         if result_limit:
-            leaf_path = state.leaf_path()
+            membership = state.leaf_membership()
             for aggregation in aggregations:
-                aggregation.mark_branch(path, version, leaf_path)
+                aggregation.mark_branch(path, membership)
 
     scope_cwd = None if args.all_projects else target_cwd
     for file in paths:
@@ -613,7 +609,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         if file_scan.version is not None and not file_scan.complete:
             # Keep already counted evidence, but never claim a complete branch scan.
             for aggregation in aggregations:
-                aggregation.mark_branch(file.path, 1, None)
+                aggregation.mark_branch(file.path, lambda _entry_id: None)
 
     if attempted_files and not readable_headers:
         raise RuntimeError("all candidate session files were unreadable or invalid")
