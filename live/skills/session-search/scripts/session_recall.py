@@ -44,6 +44,7 @@ class Candidate:
     latest_match: datetime
     message_fingerprint: str
 
+
 class CandidateNotFoundError(Exception):
     pass
 

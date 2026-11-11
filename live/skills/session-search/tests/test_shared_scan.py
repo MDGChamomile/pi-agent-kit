@@ -99,11 +99,10 @@ class SharedScanTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"PI_SESSION_FILE": ""}):
             root = Path(temp)
             path = root / "session.jsonl"
-            header = {"type": "session", "version": 3, "id": "session", "cwd": str(root)}
             entry = {"type": "message", "id": "entry", "parentId": None,
                      "timestamp": "2026-08-10T00:00:00Z",
                      "message": {"role": "user", "content": "needle"}}
-            body = (json.dumps(header) + "\nnot-json\n[]\n" + json.dumps(entry) + "\n").encode()
+            body = (json.dumps(header("session", root)) + "\nnot-json\n[]\n" + json.dumps(entry) + "\n").encode()
             search_args = cli_args("aggregate", root, root)
             recall_args = cli_args("find", root, root)
             path.write_bytes(body)

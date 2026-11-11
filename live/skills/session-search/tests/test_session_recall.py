@@ -25,8 +25,6 @@ def entry(entry_type: str, entry_id: str, parent_id: str | None, **extra) -> dic
     }
 
 
-
-
 class SessionRecallTests(unittest.TestCase):
     NOW = datetime(2026, 8, 15, tzinfo=timezone.utc)
 

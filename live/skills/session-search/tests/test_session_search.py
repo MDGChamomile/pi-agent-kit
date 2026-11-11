@@ -868,7 +868,6 @@ class SessionSearchTests(unittest.TestCase):
             selected_project.mkdir()
             other_project.mkdir()
             write_session(root / "selected.jsonl", header("selected", selected_project), [])
-            foreign = root / "foreign.jsonl"
             write_session(root / "foreign.jsonl", header("foreign", other_project), [], malformed=True)
             result = session_search.aggregate(self.args(root, selected_project), now=self.NOW)
         self.assertEqual(result["summary"]["files_selected"], 1)
