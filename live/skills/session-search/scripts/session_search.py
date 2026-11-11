@@ -165,6 +165,60 @@ def direct_tool_calls(entry: dict[str, Any], names_by_path: dict[str, str] | Non
     return calls
 
 
+def _message_event(base: dict[str, Any], message: dict[str, Any], role: str) -> dict[str, Any] | None:
+    text = session_common.text_content(message.get("content"))
+    # Provider failures may have no text content; their details live in errorMessage.
+    error_message = message.get("errorMessage")
+    if role == "assistant" and isinstance(error_message, str):
+        text = "\n".join(filter(None, [text, error_message]))
+    skills = direct_skills(text) if role == "user" else []
+    is_error = bool(message.get("isError", False) or message.get("stopReason") == "error")
+    if not (text or is_error):
+        return None
+    return {
+        **base,
+        "event": "message",
+        "tool_name": None,
+        "is_error": is_error,
+        "skill_names": skills,
+        "direct_skills": skills,
+        "skill_file_read": None,
+        "searchable": "\n".join([text, *skills]),
+        "evidence_raw": text,
+    }
+
+
+def _nested_call_events(
+    base: dict[str, Any], message: dict[str, Any], names_by_path: dict[str, str] | None, cwd: str,
+    *, include_arguments: bool,
+) -> list[dict[str, Any]]:
+    nested = message.get("nestedCalls")
+    calls = nested.get("calls") if isinstance(nested, dict) else None
+    events: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for call in calls if isinstance(calls, list) else []:
+        if not isinstance(call, dict):
+            continue
+        call_id, name, status = call.get("id"), call.get("name"), call.get("status")
+        if (not isinstance(call_id, str) or not isinstance(name, str) or not name
+                or status not in ("ok", "error", "unfinished") or call_id in seen):
+            continue
+        seen.add(call_id)
+        arguments = call.get("arguments")
+        read_skill = skill_read_name(name, arguments, names_by_path, cwd)
+        events.append(_call_event(
+            base, name, arguments, read_skill, include_arguments=include_arguments and isinstance(arguments, dict),
+        ))
+        if status != "unfinished":
+            error = call.get("error")
+            error_text = error if isinstance(error, str) else ""
+            events.append(_tool_event(
+                base, "tool_error" if status == "error" else "tool_result",
+                name, error_text, read_skill, is_error=status == "error",
+            ))
+    return events
+
+
 def events_for_entry(
     entry: dict[str, Any],
     session: dict[str, str],
@@ -193,25 +247,10 @@ def events_for_entry(
         "on_latest_leaf": on_leaf,
     }
     events: list[dict[str, Any]] = []
-    text = session_common.text_content(message.get("content"))
-    # Provider failures may have no text content; their details live in errorMessage.
-    error_message = message.get("errorMessage")
-    if role == "assistant" and isinstance(error_message, str):
-        text = "\n".join(filter(None, [text, error_message]))
-    skills = direct_skills(text) if role == "user" else []
-    is_error = bool(message.get("isError", False) or message.get("stopReason") == "error")
-    if (text or is_error) and role != "toolResult":
-        events.append({
-            **base,
-            "event": "message",
-            "tool_name": None,
-            "is_error": is_error,
-            "skill_names": skills,
-            "direct_skills": skills,
-            "skill_file_read": None,
-            "searchable": "\n".join([text, *skills]),
-            "evidence_raw": text,
-        })
+    if role != "toolResult":
+        message_event = _message_event(base, message, role)
+        if message_event is not None:
+            events.append(message_event)
     if direct_calls is None:
         direct_calls = direct_tool_calls(entry, names_by_path, cwd)
     for call in direct_calls:
@@ -226,31 +265,10 @@ def events_for_entry(
         )
         events.append(_tool_event(
             base, "tool_error" if message.get("isError") else "tool_result",
-            tool_name, text, read_skill, is_error=bool(message.get("isError", False)),
+            tool_name, session_common.text_content(message.get("content")), read_skill,
+            is_error=bool(message.get("isError", False)),
         ))
-        nested = message.get("nestedCalls")
-        calls = nested.get("calls") if isinstance(nested, dict) else None
-        seen: set[str] = set()
-        for call in calls if isinstance(calls, list) else []:
-            if not isinstance(call, dict):
-                continue
-            call_id, name, status = call.get("id"), call.get("name"), call.get("status")
-            if (not isinstance(call_id, str) or not isinstance(name, str) or not name
-                    or status not in ("ok", "error", "unfinished") or call_id in seen):
-                continue
-            seen.add(call_id)
-            arguments = call.get("arguments")
-            read_skill = skill_read_name(name, arguments, names_by_path, cwd)
-            events.append(_call_event(
-                base, name, arguments, read_skill, include_arguments=include_arguments and isinstance(arguments, dict),
-            ))
-            if status != "unfinished":
-                error = call.get("error")
-                error_text = error if isinstance(error, str) else ""
-                events.append(_tool_event(
-                    base, "tool_error" if status == "error" else "tool_result",
-                    name, error_text, read_skill, is_error=status == "error",
-                ))
+        events.extend(_nested_call_events(base, message, names_by_path, cwd, include_arguments=include_arguments))
     return events
 
 
