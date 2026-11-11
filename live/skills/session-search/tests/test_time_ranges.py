@@ -42,6 +42,14 @@ class TimeRangeTests(unittest.TestCase):
             for i, timestamp in enumerate(timestamps)
         ])
 
+    def test_naive_timestamp_is_treated_as_utc(self):
+        parsed = session_common.parse_timestamp("2026-08-15T00:00:00")
+        self.assertEqual(parsed, self.NOW)
+        self.assertEqual(parsed.tzinfo, timezone.utc)
+
+    def test_extreme_timestamp_is_ignored_without_overflow(self):
+        self.assertIsNone(session_common.parse_timestamp("0001-01-01T00:00:00+14:00"))
+
     def test_bounds_offsets_fractional_seconds_and_one_sided_ranges(self):
         self.write(["2026-08-09T23:59:59.999999Z", self.START,
                     "2026-08-10T09:00:00.000001+09:00", self.END, None, "invalid"])

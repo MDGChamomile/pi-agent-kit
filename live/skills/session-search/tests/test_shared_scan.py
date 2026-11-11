@@ -21,6 +21,17 @@ class SharedScanTests(unittest.TestCase):
             "count": 2, "by_kind": {"invalid_entry": 1, "invalid_json_line": 1},
         })
 
+    def test_header_reader_does_not_decode_body_or_hide_header_io_errors(self):
+        valid = (json.dumps(header("session", Path("/project"))) + "\n").encode()
+        stream = io.BytesIO(valid + b"\xff\n")
+        self.assertEqual(session_common.read_session_header(stream)["id"], "session")
+        self.assertEqual(stream.readline(), b"\xff\n")
+        for raw in (b"not json\n", b"[]\n", b'{"type":"message"}\n'):
+            with self.subTest(raw=raw):
+                self.assertIsNone(session_common.read_session_header(io.BytesIO(raw)))
+        with self.assertRaises(UnicodeError):
+            session_common.read_session_header(io.BytesIO(b"\xff\n"))
+
     def test_body_failures_propagate_after_preceding_entries(self):
         class FailingBody(io.BytesIO):
             def __next__(self):
