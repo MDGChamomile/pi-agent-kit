@@ -534,6 +534,15 @@ class EventAggregation:
         }
 
 
+@dataclass
+class ScanCounters:
+    files_selected: int = 0
+    entries_scanned: int = 0
+    entries_eligible: int = 0
+    files_attempted: int = 0
+    readable_headers: int = 0
+
+
 def _aggregate_output(
     args: argparse.Namespace, time_range: session_common.TimeRange, target_cwd: str,
     scan: dict[str, int], aggregations: list[EventAggregation], warnings: session_common.WarningCollector,
@@ -575,19 +584,13 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     result_limit = args.limit if args.include_evidence else 0
     aggregations = [EventAggregation(item, result_limit, args.include_evidence) for item in filters]
     include_arguments = args.include_evidence or any(item.queries for item in filters)
-    files_discovered = 0
-    selected_files = 0
-    scanned_entries = 0
-    eligible_entries = 0
-    attempted_files = 0
-    readable_headers = 0
+    counters = ScanCounters()
 
     def read_entries(
         path: Path, header: dict[str, Any], version: int, entries: Iterator[dict[str, Any]],
     ) -> None:
         # Shared counters preserve progress even when a file fails partway through.
-        nonlocal selected_files, scanned_entries, eligible_entries
-        selected_files += 1
+        counters.files_selected += 1
         session = {"session_id": str(header.get("id", "")), "file": str(path)}
         for aggregation in aggregations:
             aggregation.start_session()
@@ -596,7 +599,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
         state = BranchSkillState(recorded_cwd) if version >= 2 else LinearSkillState(recorded_cwd)
 
         for entry in entries:
-            scanned_entries += 1
+            counters.entries_scanned += 1
             message = entry.get("message")
             nested = message.get("nestedCalls") if isinstance(message, dict) else None
             if isinstance(nested, dict) and nested.get("complete") is not True:
@@ -608,7 +611,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             timestamp = session_common.parse_timestamp(entry.get("timestamp"))
             if not time_range.contains(timestamp):
                 continue
-            eligible_entries += 1
+            counters.entries_eligible += 1
             events = events_for_entry(
                 entry, session, None, state.skill_reads_by_call_id, state.names_by_path, recorded_cwd,
                 include_arguments=include_arguments, direct_calls=calls,
@@ -623,27 +626,26 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
 
     scope_cwd = None if args.all_projects else target_cwd
     for file in paths:
-        files_discovered += 1
         if file_exclusions.excludes(str(file.target)):
             continue
-        attempted_files += 1
+        counters.files_attempted += 1
         file_scan = session_common.scan_session(file, scope_cwd, warnings, read_entries)
         if file_scan.header_valid:
-            readable_headers += 1
+            counters.readable_headers += 1
         if file_scan.version is not None and not file_scan.complete:
             # Keep already counted evidence, but never claim a complete branch scan.
             for aggregation in aggregations:
                 aggregation.mark_branch(file.path, lambda _entry_id: None)
 
-    if attempted_files and not readable_headers:
+    if counters.files_attempted and not counters.readable_headers:
         raise RuntimeError("all candidate session files were unreadable or invalid")
 
     scan = {
-        "files_discovered": files_discovered,
-        "files_selected": selected_files,
+        "files_discovered": len(paths),
+        "files_selected": counters.files_selected,
         **file_exclusions.summary(),
-        "entries_scanned": scanned_entries,
-        "entries_eligible": eligible_entries,
+        "entries_scanned": counters.entries_scanned,
+        "entries_eligible": counters.entries_eligible,
     }
     return _aggregate_output(args, time_range, target_cwd, scan, aggregations, warnings)
 
