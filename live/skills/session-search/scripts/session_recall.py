@@ -163,10 +163,10 @@ def read_active_messages(
 
 
 def permitted_files(
-    roots: list[Path], warnings: session_common.WarningCollector
+    root: Path, warnings: session_common.WarningCollector
 ) -> list[Path]:
     files = session_common.discover_session_files(
-        roots, on_outside=lambda path: warnings.add(path, "file_outside_session_root"),
+        root, on_outside=lambda path: warnings.add(path, "file_outside_session_root"),
     )
     return [file.target for file in files]
 
@@ -238,16 +238,12 @@ def scan_candidates(
     args: argparse.Namespace,
     terms: tuple[str, ...],
     time_range: session_common.TimeRange,
-    *, exclusions: frozenset[str] | None = None,
-    fingerprints: bool = True,
+    *, fingerprints: bool = True,
 ) -> tuple[list[Candidate], dict[str, int], session_common.WarningCollector]:
-    if exclusions is None:
-        exclusions = session_common.normalized_exclusions(args.exclude_session_file)
-    roots = [args.sessions_root, *args.additional_sessions_root]
     warnings = session_common.WarningCollector()
-    paths = permitted_files(roots, warnings)
+    paths = permitted_files(args.sessions_root, warnings)
     target_cwd = session_common.normalized_path(args.cwd)
-    file_exclusions = session_common.SessionFileExclusions(exclusions, args.include_current)
+    file_exclusions = session_common.CurrentSessionExclusion(args.include_current)
     candidates: list[Candidate] = []
     files_selected = 0
     scanned_entries = 0
@@ -378,7 +374,6 @@ def add_scope_arguments(parser: argparse.ArgumentParser) -> None:
                         help="case-insensitive literal recall term; repeat for alternatives (OR)")
     session_common.add_time_arguments(parser)
     session_common.add_storage_scope_arguments(parser)
-    session_common.add_exclusion_argument(parser)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -453,14 +448,12 @@ def continuation_digest(value: Any) -> str:
 
 def continuation_scope(
     args: argparse.Namespace, terms: tuple[str, ...], reference_time: datetime,
-    time_range: session_common.TimeRange, exclusions: frozenset[str],
+    time_range: session_common.TimeRange,
 ) -> str:
     current = os.environ.get("PI_SESSION_FILE")
     return continuation_digest({
         **time_range.view(),
-        "excluded_session_files": sorted(exclusions),
-        "roots": sorted({session_common.normalized_path(root) for root in
-                         [args.sessions_root, *args.additional_sessions_root]}),
+        "root": session_common.normalized_path(args.sessions_root),
         "cwd": None if args.all_projects else session_common.normalized_path(args.cwd),
         "all_projects": args.all_projects,
         "include_current": args.include_current,
@@ -534,11 +527,10 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
     if args.continuation is not None:
         reference_time, expected_scope, expected_candidate, window_start = decode_continuation(args.continuation)
     time_range = session_common.time_range_for_args(args, reference_time)
-    exclusions = session_common.normalized_exclusions(args.exclude_session_file)
-    scope = continuation_scope(args, terms, reference_time, time_range, exclusions)
+    scope = continuation_scope(args, terms, reference_time, time_range)
     if expected_scope is not None and scope != expected_scope:
         raise ValueError("continuation scope changed")
-    candidates, scan_summary, warnings = scan_candidates(args, terms, time_range, exclusions=exclusions)
+    candidates, scan_summary, warnings = scan_candidates(args, terms, time_range)
     selected_rank, candidate = select_candidate(candidates, args.candidate_rank, scope, expected_candidate)
     loaded = read_active_messages(
         candidate.path,

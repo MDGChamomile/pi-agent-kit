@@ -16,12 +16,9 @@ Use this skill for factual aggregation across multiple Pi sessions and for bound
 
 Resolve paths relative to this `SKILL.md`. Run the selected script with `--help` on its first use in the current session, and run subcommand help when using recall. Reuse that output unless the script changed, options are unclear, or the earlier output is no longer available. Treat help output as the source of truth; never invent aliases.
 
-Use `--since`/`--until` only for a period the user specifies, and `--exclude-session-file`
-only for files the user explicitly asks to omit; do not invent a narrower period or
-infer sessions to exclude. Reuse the same time and exclusion options across find,
-recall, and continuation, and report a nonzero `session_file_exclusions_unmatched`.
-See [time ranges](README.md#time-ranges) and
-[file exclusions](README.md#exclude-specific-session-files).
+Use `--since`/`--until` only for a period the user specifies; do not invent a narrower
+period. Reuse the same time options across find, recall, and continuation.
+See [time ranges](README.md#time-ranges).
 
 ## Aggregate workflow
 

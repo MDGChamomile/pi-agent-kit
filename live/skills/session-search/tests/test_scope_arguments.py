@@ -25,27 +25,22 @@ class ScopeArgumentTests(unittest.TestCase):
                     self.assertEqual(args.cwd, "/synthetic-project")
                     self.assertFalse(args.all_projects)
                     self.assertFalse(args.include_current)
-                    self.assertEqual(args.additional_sessions_root, [])
                     self.assertEqual(args.sessions_root, Path.home() / ".pi" / "agent" / "sessions")
 
     def test_explicit_options_match_across_modes(self):
         for mode in ["aggregate", "find", "recall"]:
             with self.subTest(mode=mode):
                 args = self.parse(mode, "--cwd", "project", "--include-current",
-                                  "--sessions-root", "primary",
-                                  "--additional-sessions-root", "extra-one",
-                                  "--additional-sessions-root", "extra-two")
+                                  "--sessions-root", "primary")
                 self.assertEqual(args.cwd, "project")
                 self.assertFalse(args.all_projects)
                 self.assertTrue(args.include_current)
                 self.assertEqual(args.sessions_root, Path("primary"))
-                self.assertEqual(args.additional_sessions_root, [Path("extra-one"), Path("extra-two")])
                 self.assertTrue(self.parse(mode, "--all-projects").all_projects)
 
     def test_dash_prefixed_strings_use_equals_across_modes(self):
         for mode in ("aggregate", "find", "recall"):
-            options = ["--cwd", "--sessions-root", "--additional-sessions-root",
-                       "--exclude-session-file"]
+            options = ["--cwd", "--sessions-root"]
             options += (["--query", "--role", "--tool", "--skill"] if mode == "aggregate"
                         else ["--term"])
             for value in ("-inf", "-infinity", "-nan"):
