@@ -16,7 +16,7 @@ The GIF replays actual terminal output with typing and waits accelerated; model 
 - A compatible `ask_user` tool for decision gates. [pi-ask-user](https://github.com/edlsh/pi-ask-user) is the reference implementation; copying this skill does not install it.
 - A writable records destination; the skill installation itself may be read-only.
 
-The demo GIF is hosted in the repository's `docs/assets/`, outside this installable directory. The README uses an online image URL so it also works when copied on its own; viewing the demo requires network access.
+The demo GIF is kept in the repository history, outside this installable directory. The README uses an online image URL so it also works when copied on its own; viewing the demo requires network access.
 
 From the repository root, copy the directory into Pi's skill location:
 

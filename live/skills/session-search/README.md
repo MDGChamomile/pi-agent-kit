@@ -34,7 +34,7 @@ The parser supports Pi session versions 1 through 3. It treats a missing version
 
 ## Installation
 
-The demo GIF is hosted in the repository's `docs/assets/`, outside this installable directory. The README uses an online image URL so it also works when copied on its own; viewing the demo requires network access.
+The demo GIF is kept in the repository history, outside this installable directory. The README uses an online image URL so it also works when copied on its own; viewing the demo requires network access.
 
 From the repository root, copy this directory into one of Pi's skill locations, for example:
 

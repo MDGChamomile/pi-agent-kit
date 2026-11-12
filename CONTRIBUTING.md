@@ -11,7 +11,7 @@ For a proposed change:
 5. Run the checks appropriate to the changed resource below; distinguish offline results from live Pi/provider verification.
 6. Prefer adapting a resource in your own fork when the desired behavior is personal or highly specific.
 
-The [harness-minimalism principles](https://github.com/MDGChamomile/MDGChamomile/blob/main/PRINCIPLE.md) are maintained in the MDGChamomile repository. This repository's [PRINCIPLE.md](PRINCIPLE.md) is a pointer, not a separate copy; propose changes to the principles at the canonical source.
+The [harness-minimalism principles](https://github.com/MDGChamomile/MDGChamomile/blob/main/PRINCIPLE.md) are maintained in the MDGChamomile repository; propose changes to the principles at the canonical source.
 
 ## Pull requests
 
@@ -40,8 +40,7 @@ Verification, and Risk. If you accidentally target `main`, change the base to
 `updates` and review the resulting diff and checks again.
 
 External contributors do not need to merge `main`, synchronize release history,
-or perform releases; those are maintainer responsibilities described in
-[MAINTAINING.md](.github/MAINTAINING.md).
+or perform releases; those are maintainer responsibilities.
 
 ### Branch protection and review
 
