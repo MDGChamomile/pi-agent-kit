@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
-  COMPACTION_REASONS,
   isInstallTelemetryEnabled,
   resolveConfig,
 } from "../src/config.js";
@@ -8,70 +7,38 @@ import { parseModelReference } from "../src/model-reference.js";
 
 describe("resolveConfig", () => {
   test("returns null when unconfigured", () => {
-    expect(resolveConfig({}, {})).toBeNull();
+    expect(resolveConfig({})).toBeNull();
+    expect(resolveConfig(undefined)).toBeNull();
   });
 
-  test("defaults to every compaction reason", () => {
-    expect(
-      resolveConfig({ compactionModel: { model: "provider/model" } }, {}),
-    ).toEqual({
+  test("reads the model and optional thinking level", () => {
+    expect(resolveConfig({ compactionModel: { model: " provider/model " } })).toEqual({
       model: "provider/model",
       thinkingLevel: undefined,
-      reasons: [...COMPACTION_REASONS],
     });
-  });
-
-  test("merges trusted project overrides", () => {
-    expect(
-      resolveConfig(
-        {
-          compactionModel: {
-            model: "provider/base",
-            thinkingLevel: "low",
-            reasons: ["manual"],
-          },
-        },
-        {
-          compactionModel: {
-            model: "provider/project",
-            reasons: ["threshold", "overflow"],
-          },
-        },
-      ),
-    ).toEqual({
-      model: "provider/project",
+    expect(resolveConfig({ compactionModel: { model: "provider/model", thinkingLevel: "low" } })).toEqual({
+      model: "provider/model",
       thinkingLevel: "low",
-      reasons: ["threshold", "overflow"],
     });
   });
 
-  test("can be disabled globally or per project", () => {
-    expect(resolveConfig({ compactionModel: false }, {})).toBeNull();
-    expect(
-      resolveConfig({ compactionModel: { model: "provider/model" } }, { compactionModel: false }),
-    ).toBeNull();
+  test("warns and returns null without a usable model", () => {
+    for (const section of [false, [], {}, { model: "" }, { model: 1 }]) {
+      const warnings: string[] = [];
+      expect(resolveConfig({ compactionModel: section }, (message) => warnings.push(message))).toBeNull();
+      expect(warnings).toHaveLength(1);
+    }
   });
 
-  test("falls back safely for invalid optional settings", () => {
+  test("omits an invalid thinking level with a warning", () => {
     const warnings: string[] = [];
     const config = resolveConfig(
-      {
-        compactionModel: {
-          model: "provider/model",
-          thinkingLevel: "extreme",
-          reasons: ["threshold", "other"],
-        },
-      },
-      {},
+      { compactionModel: { model: "provider/model", thinkingLevel: "extreme" } },
       (message) => warnings.push(message),
     );
 
-    expect(config).toEqual({
-      model: "provider/model",
-      thinkingLevel: undefined,
-      reasons: [...COMPACTION_REASONS],
-    });
-    expect(warnings).toHaveLength(2);
+    expect(config).toEqual({ model: "provider/model", thinkingLevel: undefined });
+    expect(warnings).toHaveLength(1);
   });
 });
 

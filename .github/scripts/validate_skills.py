@@ -87,8 +87,7 @@ if __name__ == "__main__":
     failures = validate_skills(root / "live/skills")
     failures += validate_relative_links(
         [root / name for name in (
-            "README.md", "AGENTS.md", "MIGRATION.md", "CONTRIBUTING.md", "PRINCIPLE.md", ".github/PULLFROG.md",
-            ".github/MAINTAINING.md",
+            "README.md", "AGENTS.md", "CONTRIBUTING.md", ".github/PULLFROG.md",
         )] + resource_documents(root / "live")
     )
     if failures:

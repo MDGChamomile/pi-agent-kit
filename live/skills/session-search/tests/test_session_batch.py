@@ -75,25 +75,6 @@ class SessionBatchTests(unittest.TestCase):
             self.assertEqual(events.call_count, result['summary']['entries_eligible'])
             self.assertEqual(result['summary']['entries_scanned'], 5)
 
-    def test_shared_archive_project_and_current_scope(self):
-        with fixture_tree() as (root, project, other_project, _, _, current):
-            archive = root.parent / 'archive'
-            archived = archive / 'current.jsonl'
-            write_session(archived, header('archive-current', project), [
-                message('x', None, '2026-08-14T00:00:00Z', 'user', 'archive-only')
-            ])
-            write_session(archive / 'other.jsonl', header('archive-other', other_project), [
-                message('y', None, '2026-08-14T00:00:00Z', 'user', 'archive-only')
-            ])
-            flags = ['--additional-sessions-root', str(archive)]
-            with patch.dict(os.environ, {'PI_SESSION_FILE': str(archived)}):
-                excluded = self.batch(root, project, [{'query': ['archive-only']}], *flags)
-                included = self.batch(root, project, [{'query': ['archive-only']}], *flags, '--include-current')
-                all_projects = self.batch(root, project, [{'query': ['archive-only']}], *flags, '--all-projects')
-            self.assertEqual(excluded['batches'][0]['summary']['matched_sessions'], 0)
-            self.assertEqual(included['batches'][0]['summary']['matched_sessions'], 1)
-            self.assertEqual(all_projects['batches'][0]['summary']['matched_sessions'], 1)
-
     def test_partial_read_and_error_session_counts_remain_independent(self):
         with fixture_tree() as (root, project, _, _, _, current):
             damaged = root / 'a' / 'damaged.jsonl'

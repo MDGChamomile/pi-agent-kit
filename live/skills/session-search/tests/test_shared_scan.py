@@ -51,28 +51,20 @@ class SharedScanTests(unittest.TestCase):
                 # The caller decides whether this file's failure is disclosed.
                 self.assertEqual(warnings.count, 0)
 
-    def test_exclusions_use_supplied_identity_and_current_overlap_precedence(self):
+    def test_current_session_exclusion_uses_the_supplied_identity(self):
         with tempfile.TemporaryDirectory() as temp:
             current = session_common.normalized_path(Path(temp) / "current.jsonl")
-            missing = session_common.normalized_path(Path(temp) / "missing.jsonl")
-            explicit = session_common.normalized_path(Path(temp) / "explicit.jsonl")
             with patch.dict(os.environ, {"PI_SESSION_FILE": current}):
                 for include_current in (False, True):
                     with self.subTest(include_current=include_current):
-                        tracker = session_common.SessionFileExclusions(
-                            frozenset((current, explicit, missing)), include_current,
-                        )
+                        tracker = session_common.CurrentSessionExclusion(include_current)
                         # File identities have already been chosen by the caller.
                         with patch.object(session_common, "normalized_path", side_effect=AssertionError("resolved again")), \
                                 patch.object(session_common, "open_session_file", side_effect=AssertionError("opened")):
-                            self.assertTrue(tracker.excludes(current))
-                            self.assertTrue(tracker.excludes(explicit))
+                            self.assertEqual(tracker.excludes(current), not include_current)
                             self.assertFalse(tracker.excludes(str(Path(temp) / "kept.jsonl")))
                         self.assertEqual(tracker.summary(), {
                             "current_session_files_excluded": int(not include_current),
-                            "session_file_exclusions_requested": 3,
-                            "explicit_session_files_excluded": 1 + int(include_current),
-                            "session_file_exclusions_unmatched": 1,
                         })
 
     def test_only_absolute_recorded_cwd_confirms_the_selected_project(self):

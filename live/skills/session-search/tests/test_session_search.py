@@ -24,50 +24,7 @@ class SessionSearchTests(unittest.TestCase):
     def args(self, root: Path, cwd: Path, *extra: str):
         return cli_args("aggregate", root, cwd, *extra)
 
-    def test_additional_roots_are_opt_in_repeatable_and_keep_project_filter(self):
-        with fixture_tree() as (root, project, other_project, _, _, current):
-            backup = root.parent / "backup"
-            second = root.parent / "second"
-            entry = message("extra", None, "2026-08-14T00:00:00Z", "user", "extra marker")
-            write_session(backup / "project" / "same.jsonl", header("extra-private-id", project), [entry])
-            write_session(backup / "foreign.jsonl", header("foreign", other_project), [entry])
-            write_session(second / "another.jsonl", header("another", project), [entry])
-            extra = ["--additional-sessions-root", str(backup), "--additional-sessions-root", str(second)]
-            with patch.dict(os.environ, {"PI_SESSION_FILE": str(current)}):
-                default = session_search.aggregate(self.args(root, project, "--query", "extra marker"))
-                selected = session_search.aggregate(self.args(root, project, *extra, "--query", "extra marker"))
-                all_projects = session_search.aggregate(session_search.build_parser().parse_args([
-                    "--sessions-root", str(root), *extra, "--all-projects", "--query", "extra marker",
-                ]))
-            self.assertEqual(default["summary"]["matched_sessions"], 0)
-            self.assertEqual(selected["summary"]["matched_sessions"], 2)
-            self.assertEqual(all_projects["summary"]["matched_sessions"], 3)
-            self.assertEqual(selected["results"], [])
-            for private in (str(root.parent), "extra-private-id", "extra marker"):
-                self.assertNotIn(private, json.dumps(selected))
-
-    def test_additional_root_current_exclusion_and_global_evidence_limit(self):
-        with fixture_tree() as (root, project, _, _, _, _):
-            backup = root.parent / "backup"
-            current = backup / "current.jsonl"
-            write_session(current, header("extra-current", project), [
-                message("extra", None, "2026-08-14T23:00:00Z", "user", "failure token=EXTRA_SECRET"),
-            ])
-            flags = ["--additional-sessions-root", str(backup), "--query", "failure"]
-            with patch.dict(os.environ, {"PI_SESSION_FILE": str(current)}):
-                excluded = session_search.aggregate(self.args(root, project, *flags))
-                included = session_search.aggregate(self.args(
-                    root, project, *flags, "--include-current", "--include-evidence", "--limit", "1",
-                ))
-            self.assertEqual(excluded["summary"]["current_session_files_excluded"], 1)
-            self.assertEqual(excluded["summary"]["matched_sessions"], 1)
-            self.assertEqual(included["summary"]["matched_sessions"], 2)
-            self.assertEqual(len(included["results"]), 1)
-            self.assertEqual(included["results"][0]["session_id"], "extra-current")
-            self.assertTrue(included["summary"]["evidence_truncated"])
-            self.assertNotIn("EXTRA_SECRET", json.dumps(included))
-
-    def test_overlapping_roots_and_symlinks_count_once_but_copies_stay_separate(self):
+    def test_symlink_aliases_count_once_but_copies_stay_separate(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
             root = base / "sessions"
@@ -77,16 +34,11 @@ class SessionSearchTests(unittest.TestCase):
             ])
             (root / "copy.jsonl").write_bytes(source.read_bytes())
             (root / "alias.jsonl").symlink_to(source)
-            alias = base / "root-alias"
-            alias.symlink_to(root, target_is_directory=True)
-            flags = []
-            for path in (root, root / "nested", alias):
-                flags.extend(["--additional-sessions-root", str(path)])
-            result = session_search.aggregate(self.args(root, base, *flags))
+            result = session_search.aggregate(self.args(root, base))
             self.assertEqual(result["summary"]["files_discovered"], 2)
             self.assertEqual(result["summary"]["matched_sessions"], 2)
 
-    def test_file_symlink_outside_all_roots_is_skipped_before_opening(self):
+    def test_file_symlink_outside_the_root_is_skipped_before_opening(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
             root = base / "sessions"
@@ -103,42 +55,16 @@ class SessionSearchTests(unittest.TestCase):
             self.assertEqual(excluded["summary"]["files_discovered"], 0)
             self.assertEqual(excluded["summary"]["matched_sessions"], 0)
 
-            # Once the target's directory is explicitly allowed, its alias and
-            # the real file are counted only once.
-            included = session_search.aggregate(self.args(
-                root, base, "--additional-sessions-root", str(other),
-            ))
-            self.assertEqual(included["summary"]["files_discovered"], 1)
-            self.assertEqual(included["summary"]["matched_sessions"], 1)
-
-    def test_additional_root_relative_home_and_empty_directories(self):
+    def test_missing_or_non_directory_root_fails_without_paths(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
-            root = base / "sessions"
-            root.mkdir()
-            backup = base / "backup"
-            backup.mkdir()
-            with patch.dict(os.environ, {"HOME": str(base)}):
-                result = session_search.aggregate(self.args(
-                    root, base, "--additional-sessions-root", "~/backup",
-                    "--additional-sessions-root", os.path.relpath(backup),
-                ))
-            self.assertEqual(result["summary"]["files_discovered"], 0)
-
-    def test_missing_or_non_directory_additional_root_fails_without_paths(self):
-        with tempfile.TemporaryDirectory() as temp:
-            base = Path(temp)
-            root = base / "sessions"
-            root.mkdir()
             non_directory = base / "not-directory"
             non_directory.write_text("test", encoding="utf-8")
-            for extra in (base / "missing-private", non_directory):
-                with self.subTest(extra=extra):
+            for root in (base / "missing-private", non_directory):
+                with self.subTest(root=root):
                     stdout = io.StringIO()
                     with redirect_stdout(stdout):
-                        code = session_search.main([
-                            "--sessions-root", str(root), "--additional-sessions-root", str(extra),
-                        ])
+                        code = session_search.main(["--sessions-root", str(root)])
                     self.assertEqual(code, 2)
                     self.assertEqual(json.loads(stdout.getvalue())["error"]["code"], "SESSION_STORAGE_UNAVAILABLE")
                     self.assertNotIn(str(base), stdout.getvalue())
@@ -146,21 +72,14 @@ class SessionSearchTests(unittest.TestCase):
     def test_directory_traversal_failure_is_not_silently_skipped(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            backup = root / "backup"
-            backup.mkdir()
-            original_walk = os.walk
 
-            def failing_walk(path, *, onerror):
-                if Path(path) == backup:
-                    onerror(PermissionError("private directory"))
-                    return
-                yield from original_walk(path, onerror=onerror)
+            def failing_walk(_path, *, onerror):
+                onerror(PermissionError("private directory"))
+                yield from ()
 
             with patch.object(session_common.os, "walk", side_effect=failing_walk):
                 with self.assertRaises(PermissionError):
-                    session_search.aggregate(self.args(
-                        root, root, "--additional-sessions-root", str(backup),
-                    ))
+                    session_search.aggregate(self.args(root, root))
 
     def test_default_cwd_current_exclusion_and_literal_filter(self):
         with fixture_tree() as (root, project_a, _, primary, _, current):
@@ -895,7 +814,6 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0)
         self.assertEqual(completed.stderr, "")
         self.assertIn("usage:", completed.stdout)
-        self.assertIn("--additional-sessions-root PATH", completed.stdout)
         self.assertIn("--sessions-root PATH", completed.stdout)
 
     def test_total_parse_failure_is_fatal(self):

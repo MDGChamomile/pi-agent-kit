@@ -252,52 +252,12 @@ class SessionScan:
     complete: bool = False
 
 
-def _open_canonical_posix(path: Path) -> int:
-    # Resolve no symlinks after discovery, including in parent directories.
-    directory_flags = (getattr(os, "O_PATH", getattr(os, "O_SEARCH", os.O_RDONLY))
-                       | os.O_DIRECTORY | os.O_NOFOLLOW)
-    directory = os.open(path.anchor, directory_flags)
-    try:
-        for part in path.parts[1:-1]:
-            child = os.open(part, directory_flags, dir_fd=directory)
-            os.close(directory)
-            directory = child
-        return os.open(path.name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=directory)
-    finally:
-        os.close(directory)
-
-
-def _windows_handle_path(fd: int) -> str:
-    import ctypes
-    from ctypes import wintypes
-    import msvcrt
-
-    get_path = ctypes.WinDLL("kernel32", use_last_error=True).GetFinalPathNameByHandleW
-    get_path.argtypes = (wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD)
-    get_path.restype = wintypes.DWORD
-    buffer = ctypes.create_unicode_buffer(32768)
-    length = get_path(msvcrt.get_osfhandle(fd), buffer, len(buffer), 0)
-    if not length or length >= len(buffer):
-        raise OSError("cannot verify the opened session path")
-    return buffer.value
-
-
 def open_session_file(path: Path) -> BinaryIO:
-    if os.name == "nt":
-        fd = os.open(path, os.O_RDONLY | os.O_BINARY)
-    else:
-        fd = _open_canonical_posix(path)
+    # Non-blocking, so a FIFO without a writer cannot stall the scan.
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0))
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise OSError("session is not a regular file")
-        if os.name == "nt":
-            # Compare the actual handle with the previously authorized DOS/UNC path.
-            expected = str(path)
-            if not expected.startswith("\\\\?\\"):
-                expected = ("\\\\?\\UNC\\" + expected[2:] if expected.startswith("\\\\")
-                            else "\\\\?\\" + expected)
-            if _windows_handle_path(fd) != expected:
-                raise OSError("session path changed after discovery")
         return os.fdopen(fd, "rb")
     except BaseException:
         os.close(fd)
@@ -356,97 +316,55 @@ def add_storage_scope_arguments(parser: argparse.ArgumentParser) -> None:
     scope.add_argument("--cwd", default=os.getcwd(), help="project cwd to match exactly (default: current cwd)")
     parser.add_argument("--include-current", action="store_true", help="include PI_SESSION_FILE (excluded by default)")
     parser.add_argument(
-        "--additional-sessions-root", type=Path, action="append", default=[], metavar="PATH",
-        help="also search this directory recursively; repeat for multiple directories; "
-             "additive to the selected sessions root; all directories must be readable",
-    )
-    parser.add_argument(
         "--sessions-root", type=Path, default=default_sessions_root(), metavar="PATH",
         help="replace the primary sessions directory; default precedence: PI_CODING_AGENT_SESSION_DIR, "
              "PI_CODING_AGENT_DIR/sessions, ~/.pi/agent/sessions",
     )
 
 
-def add_exclusion_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--exclude-session-file", action="append", default=[], metavar="PATH",
-                        help="exclude an exact session file before opening; repeatable; paths resolve from process cwd; "
-                             "overrides --include-current; reports path-free requested/excluded/unmatched counts")
+class CurrentSessionExclusion:
+    """Skip the active session file before it is read, unless --include-current is set."""
 
-
-def normalized_exclusions(values: Iterable[str]) -> frozenset[str]:
-    paths: set[str] = set()
-    for value in values:
-        # Validate before Path('') can silently become the current directory.
-        if not value or "\x00" in value:
-            raise ValueError("session exclusion is invalid")
-        try:
-            paths.add(normalized_path(value))
-        except (ValueError, OSError, RuntimeError) as error:
-            raise ValueError("session exclusion is invalid") from error
-    return frozenset(paths)
-
-
-class SessionFileExclusions:
-    """Count pre-read exclusions using each caller's normalized file identity."""
-
-    def __init__(self, exclusions: frozenset[str], include_current: bool) -> None:
-        self.exclusions = exclusions
-        self.include_current = include_current
-        self.current = normalized_path(os.environ["PI_SESSION_FILE"]) if os.environ.get("PI_SESSION_FILE") else None
-        self.matched: set[str] = set()
-        self.excluded_current = 0
-        self.excluded_explicit = 0
+    def __init__(self, include_current: bool) -> None:
+        current = os.environ.get("PI_SESSION_FILE")
+        self.current = normalized_path(current) if current and not include_current else None
+        self.excluded = 0
 
     def excludes(self, path_key: str) -> bool:
-        if path_key in self.exclusions:
-            self.matched.add(path_key)
-        if not self.include_current and self.current and path_key == self.current:
-            self.excluded_current += 1
-            return True
-        if path_key in self.exclusions:
-            self.excluded_explicit += 1
-            return True
-        return False
+        if self.current is None or path_key != self.current:
+            return False
+        self.excluded += 1
+        return True
 
     def summary(self) -> dict[str, int]:
-        # A current-session overlap is matched, but counted only in the automatic counter.
-        return {
-            "current_session_files_excluded": self.excluded_current,
-            "session_file_exclusions_requested": len(self.exclusions),
-            "explicit_session_files_excluded": self.excluded_explicit,
-            "session_file_exclusions_unmatched": len(self.exclusions - self.matched),
-        }
+        return {"current_session_files_excluded": self.excluded}
 
 
 def discover_session_files(
-    roots: Iterable[Path], on_outside: Callable[[Path], None] | None = None,
+    root: Path, on_outside: Callable[[Path], None] | None = None,
 ) -> list[SessionFile]:
-    """Fail visibly on traversal errors; keep only files under an allowed root."""
+    """Fail visibly on traversal errors; keep only files that resolve inside the root."""
+    root = root.expanduser()
+    if not root.is_dir():
+        raise RuntimeError("session root is unavailable")
+    allowed = normalized_path(root)
     paths: dict[str, SessionFile] = {}
-    allowed_roots: dict[str, Path] = {}
-    for value in roots:
-        root = value.expanduser()
-        key = normalized_path(root)
-        if not root.is_dir():
-            raise RuntimeError("session root is unavailable")
-        allowed_roots.setdefault(key, root)
 
     def traversal_error(error: OSError) -> None:
         raise error
 
-    for root in allowed_roots.values():
-        # Unlike Path.rglob, walk's onerror makes inaccessible subtrees visible.
-        # Do not follow nested directory symlinks.
-        for directory, _dirs, files in os.walk(root, onerror=traversal_error):
-            for name in files:
-                if name.endswith(".jsonl"):
-                    path = Path(directory) / name
-                    resolved = Path(normalized_path(path))
-                    if not any(resolved.is_relative_to(allowed) for allowed in allowed_roots):
-                        if on_outside is not None:
-                            on_outside(path)
-                        continue
-                    paths.setdefault(str(resolved), SessionFile(path, resolved))
+    # Unlike Path.rglob, walk's onerror makes inaccessible subtrees visible.
+    # Do not follow nested directory symlinks.
+    for directory, _dirs, files in os.walk(root, onerror=traversal_error):
+        for name in files:
+            if name.endswith(".jsonl"):
+                path = Path(directory) / name
+                resolved = Path(normalized_path(path))
+                if not resolved.is_relative_to(allowed):
+                    if on_outside is not None:
+                        on_outside(path)
+                    continue
+                paths.setdefault(str(resolved), SessionFile(path, resolved))
     return sorted(paths.values(), key=lambda file: file.path)
 
 

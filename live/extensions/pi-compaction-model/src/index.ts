@@ -106,7 +106,7 @@ export default function compactionModel(pi: ExtensionAPI): void {
 
     const settings = createSettings(ctx);
     const config = loadConfig(ctx, settings);
-    if (!config || !config.reasons.includes(event.reason)) return;
+    if (!config) return;
 
     const model = resolveDedicatedModel(ctx, config);
     if (!model) return;

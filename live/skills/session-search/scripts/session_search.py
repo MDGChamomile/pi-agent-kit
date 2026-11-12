@@ -380,7 +380,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-filter", action="append", default=[], metavar="JSON",
                         help="independent summary-only filter object; repeat up to 8 times; "
                              "keys: query, role, tool, skill (string arrays), error (boolean)")
-    session_common.add_exclusion_argument(parser)
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help=f"maximum evidence results with --include-evidence (default: {DEFAULT_LIMIT})")
     evidence = parser.add_mutually_exclusive_group()
     evidence.add_argument(
@@ -575,10 +574,9 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     if args.limit < 0:
         raise ValueError("--limit must be non-negative")
     filters = aggregate_filters(args)
-    exclusions = session_common.normalized_exclusions(args.exclude_session_file)
-    paths = session_common.discover_session_files([args.sessions_root, *args.additional_sessions_root])
+    paths = session_common.discover_session_files(args.sessions_root)
     target_cwd = session_common.normalized_path(args.cwd)
-    file_exclusions = session_common.SessionFileExclusions(exclusions, args.include_current)
+    file_exclusions = session_common.CurrentSessionExclusion(args.include_current)
 
     warnings = session_common.WarningCollector()
     result_limit = args.limit if args.include_evidence else 0

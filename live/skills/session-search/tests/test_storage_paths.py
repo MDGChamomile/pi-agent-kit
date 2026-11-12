@@ -62,14 +62,6 @@ class StoragePathTests(unittest.TestCase):
                             self.assertEqual(payload["candidates"][0]["rank"], 1)
                 record.unlink()
                 selected.rmdir()
-            extra.mkdir()
-            # Adding a directory must not silently replace an unavailable primary.
-            for script, args in commands[:2]:
-                result = subprocess.run([sys.executable, "-B", str(SCRIPTS / script), *args,
-                                         "--additional-sessions-root", str(extra)], cwd=base, env=env,
-                                        capture_output=True, text=True)
-                self.assertEqual(result.returncode, 2)
-                self.assertIn("SESSION_STORAGE_UNAVAILABLE", result.stdout)
 
     def test_all_help_entries_expose_replacement_root(self):
         for script, args in [("session_search.py", []), ("session_recall.py", ["find"]),
