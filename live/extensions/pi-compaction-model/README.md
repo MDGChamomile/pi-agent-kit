@@ -20,7 +20,7 @@ This is an independently maintained derivative of [JMHSV/pi-compaction-model](ht
 
 Imported from revision `283f0de4fe56d4cc35931e1255e0d3888761426b`, including [upstream PR #1](https://github.com/JMHSV/pi-compaction-model/pull/1): restore cumulative file-operation lists before falling back to Pi's active model. This concerns file lists in compaction summaries, not loss of files on disk.
 
-Kit-specific changes since that revision, such as source-install documentation, private package metadata, and summarization through Pi's model registry, are recorded in this repository's history. A root `index.ts` re-exports the implementation so Pi's compact extension list shows the containing directory name rather than `src`. The `compactionModel` configuration format and file-list restoration are retained. This directory is not separately published to npm; `npm:pi-compaction-model` installs the upstream package, not this derivative.
+Kit-specific changes since that revision, such as source-install documentation, private package metadata, and summarization through Pi's model registry, are recorded in this repository's history. A root `index.ts` re-exports the implementation so Pi's compact extension list shows the containing directory name rather than `src`. The `model` and `thinkingLevel` settings and file-list restoration are retained; the upstream `reasons`, `enabled`, and project-override settings are not supported. This directory is not separately published to npm; `npm:pi-compaction-model` installs the upstream package, not this derivative.
 
 ## Install from source
 
@@ -63,70 +63,11 @@ off, minimal, low, medium, high, xhigh, max
 
 Omitting `thinkingLevel` leaves it unset; it does not inherit the active conversation's thinking level. Pi's provider adapters may interpret an unset level as off or the model's off mapping. Set it explicitly when a particular level is required.
 
-### Select which compactions to route
-
-By default the configured model handles all native compaction reasons:
-
-- `manual` — `/compact`
-- `threshold` — automatic context-threshold compaction
-- `overflow` — overflow recovery before retry
-
-Use `reasons` to handle only a subset:
-
-```json
-{
-  "compactionModel": {
-    "model": "provider/fast-model",
-    "thinkingLevel": "low",
-    "reasons": ["threshold", "overflow"]
-  }
-}
-```
-
-An empty `reasons` array disables routing without removing the configuration. You can also use `"enabled": false`, or set `"compactionModel": false` in trusted project settings.
-
-### Project overrides
-
-A trusted project's `.pi/settings.json` can override individual global fields:
-
-```json
-{
-  "compactionModel": {
-    "model": "provider/project-model"
-  }
-}
-```
-
-Project fields are shallow-merged over the global `compactionModel` object. Untrusted project settings are ignored.
+By default the configured model handles every native compaction: `/compact`, automatic context-threshold compaction, and overflow recovery before retry. To stop routing, remove the `compactionModel` section. Only the global settings file is read; a project's `.pi/settings.json` cannot override it.
 
 ## Coexisting with other compaction extensions
 
-Multiple extensions can handle `session_before_compact`, and the last extension that returns a compaction result wins. Avoid configuring two extensions for the same reason.
-
-For example, to use Smart Compact manually and this extension only for automatic native compaction:
-
-```json
-{
-  "smartCompact": {
-    "autoTrigger": false
-  },
-  "compactionModel": {
-    "model": "provider/summary-model",
-    "thinkingLevel": "medium",
-    "reasons": ["threshold", "overflow"]
-  }
-}
-```
-
-The resulting routing is:
-
-| Event | Handler |
-|---|---|
-| `/smart-compact` | Smart Compact |
-| `/compact` | Pi native compaction with the active model |
-| Automatic threshold | Pi native compaction algorithm with the configured model |
-| Overflow recovery | Pi native compaction algorithm with the configured model |
-| Configured-model failure | Retries transient request failures according to Pi's `retry` settings, then returns control to Pi's native handling path |
+Multiple extensions can handle `session_before_compact`, and the last extension that returns a compaction result wins. Avoid loading another extension that returns a result for the same compaction.
 
 ## OpenRouter attribution
 
@@ -148,9 +89,8 @@ Configuration fields recover independently:
 | Model not found | Warns and returns control to Pi's native handling path |
 | Authentication unavailable | Warns and returns control to Pi's native handling path |
 | Invalid `thinkingLevel` | Keeps the dedicated model, warns, and omits the thinking setting |
-| Invalid `reasons` | Keeps the dedicated model, warns, and handles `manual`, `threshold`, and `overflow` |
 
-An empty valid `reasons` array is not an error; it disables dedicated-model routing. The dedicated model needs its own valid authentication. If Pi falls back to native compaction, the active conversation model's normal authentication requirements apply.
+The dedicated model needs its own valid authentication. If Pi falls back to native compaction, the active conversation model's normal authentication requirements apply.
 
 ### Request failures and cancellation
 

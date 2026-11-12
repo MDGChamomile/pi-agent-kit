@@ -11,7 +11,7 @@ let retry: RetryPolicy;
 mock.module("../src/config.js", () => ({
   createSettings: () => ({ getRetrySettings: () => retry }),
   isInstallTelemetryEnabled: () => false,
-  loadConfig: () => ({ model: reference, reasons: ["manual"] }),
+  loadConfig: () => ({ model: reference }),
 }));
 let extension: (pi: ExtensionAPI) => void;
 beforeAll(async () => { extension = (await import("../index.js")).default; });
