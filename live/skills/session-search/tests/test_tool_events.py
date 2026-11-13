@@ -1,4 +1,4 @@
-"""Tool-event refactoring preserves payloads and serialization boundaries."""
+"""Direct and nested tool events keep their payloads, serialization boundaries, and masking."""
 import json
 import os
 from pathlib import Path
@@ -8,8 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from test_nested_calls import nested_entry
-from support import header, message, session_search, write_session
+from support import header, message, nested_entry, session_search, write_session
 
 
 class ToolEventTests(unittest.TestCase):

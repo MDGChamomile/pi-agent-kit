@@ -25,8 +25,6 @@ def entry(entry_type: str, entry_id: str, parent_id: str | None, **extra) -> dic
     }
 
 
-
-
 class SessionRecallTests(unittest.TestCase):
     NOW = datetime(2026, 8, 15, tzinfo=timezone.utc)
 
@@ -61,17 +59,6 @@ class SessionRecallTests(unittest.TestCase):
         self.assertFalse(match["text_truncated"])
         self.assertFalse(summary["evidence_truncated"])
         self.assertLessEqual(summary["evidence_chars"], 6000)
-
-    def test_metadata_helper_preserves_string_api_and_limits(self):
-        helper = session_common
-        for limit in [-1, 0, 1, 2, 3, 10, 300]:
-            for text in ["", "…", "needle " + "x" * 1000]:
-                with self.subTest(limit=limit, text_length=len(text)):
-                    evidence, truncated = helper.mask_and_shorten_with_metadata(
-                        text, limit, ("needle",))
-                    self.assertEqual(evidence, helper.mask_and_shorten(text, limit, ("needle",)))
-                    self.assertLessEqual(len(evidence), max(0, limit))
-                    self.assertEqual(truncated, len(text) > max(0, limit))
 
     def test_find_is_path_free_and_project_scoped(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -179,7 +166,7 @@ class SessionRecallTests(unittest.TestCase):
 
     def test_recall_windows_are_bounded_and_show_omissions(self):
         messages = [
-            session_recall.RecallMessage(str(index), f"2026-08-10T00:00:{index:02d}Z", "user", (
+            session_recall.RecallMessage(str(index), datetime(2026, 8, 10, second=index, tzinfo=timezone.utc), "user", (
                 f"needle {index} " + "x" * 500 if index in {2, 8, 14, 20} else f"filler {index}"
             ))
             for index in range(24)
@@ -214,7 +201,7 @@ class SessionRecallTests(unittest.TestCase):
                 loaded = original(*arguments, **keywords)
                 if calls == 2 and loaded is not None:
                     return ([session_recall.RecallMessage(
-                        "m2", "2026-08-10T00:00:00Z", "user", "인증 오류 changed"
+                        "m2", datetime(2026, 8, 10, tzinfo=timezone.utc), "user", "인증 오류 changed"
                     )], loaded[1])
                 return loaded
 
@@ -362,7 +349,7 @@ class SessionRecallTests(unittest.TestCase):
             path = root / "corrupt.jsonl"
             write_session(path, header("private-id", root), [
                 message("u", None, "2026-08-10T00:00:00Z", "user", "인증 오류"),
-                # Put the invalid byte beyond the header's decoding buffer.
+                # Put the invalid byte far beyond the header line.
                 message("t", "u", "2026-08-10T00:00:01Z", "toolResult", "x" * 20000),
             ])
             with path.open("ab") as handle:
@@ -458,7 +445,7 @@ class SessionRecallTests(unittest.TestCase):
     def test_open_failure_remains_private_unless_all_projects_selected(self):
         path = Path("/synthetic/private.jsonl")
         with patch.object(session_recall, "permitted_files", return_value=[path]), patch.object(
-            Path, "open", side_effect=OSError("synthetic open failure"),
+            session_common, "open_session_file", side_effect=OSError("synthetic open failure"),
         ):
             args = self.args("find", Path("/synthetic"), Path("/project"))
             result = session_recall.find_output(args, self.NOW)
@@ -488,7 +475,7 @@ class SessionRecallTests(unittest.TestCase):
                     stream = stream_type((json.dumps(head) + "\n").encode("utf-8"))
                     options = ({"side_effect": OSError("synthetic open failure")}
                                if scope == "open_failure" else {"return_value": stream})
-                    with patch.object(Path, "open", **options):
+                    with patch.object(session_common, "open_session_file", **options):
                         session_recall.read_active_messages(path, cwd, all_projects, warnings)
                     expected = {"unreadable_file": 1} if all_projects or scope == "selected" else {}
                     self.assertEqual(warnings.output(False)["by_kind"], expected)
@@ -541,7 +528,7 @@ class SessionRecallTests(unittest.TestCase):
                     expected = [session_recall.recall_text(item) for item in chosen]
                     self.assertEqual(loaded, (expected, len(records)))
                     self.assertEqual(warnings.count, 0)
-                    candidate, _ = session_recall.candidate_for_messages(path, loaded[0], ("인증 오류",), None)
+                    candidate, _ = session_recall.candidate_for_messages(path, loaded[0], ("인증 오류",), session_common.TimeRange())
                     self.assertIsNotNone(candidate)
 
     def test_reader_preserves_invalid_branch_checks(self):
@@ -568,9 +555,6 @@ class SessionRecallTests(unittest.TestCase):
                         else:
                             self.assertIsNone(loaded)
                             self.assertEqual(warnings.output(False)["by_kind"], {"invalid_branch_structure": 1})
-
-    def test_extreme_timestamp_is_ignored_without_overflow(self):
-        self.assertIsNone(session_common.parse_timestamp("0001-01-01T00:00:00+14:00"))
 
     def test_untrusted_timestamp_is_not_returned_as_evidence(self):
         with tempfile.TemporaryDirectory() as temp:

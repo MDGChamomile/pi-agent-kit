@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
-let config: { model: string; reasons: string[]; thinkingLevel?: string } | null;
+let config: { model: string; thinkingLevel?: string } | null;
 let compactImplementation: (...args: any[]) => Promise<any>;
 let telemetryEnabled: boolean;
 const retrySettings = { enabled: true, maxRetries: 3, baseDelayMs: 2000 };
@@ -23,7 +23,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  config = { model: "provider/model", reasons: ["manual", "threshold", "overflow"] };
+  config = { model: "provider/model" };
   compactImplementation = async () => ({ summary: "compacted" });
   telemetryEnabled = true;
 });
@@ -86,7 +86,7 @@ describe("session_before_compact", () => {
       const consoleWarn = spyOn(console, "warn").mockImplementation(() => {});
       try {
         for (const failure of ["reference", "lookup", "authentication", "request"]) {
-          config = { model: failure === "reference" ? "invalid" : "provider/model", reasons: ["manual"] };
+          config = { model: failure === "reference" ? "invalid" : "provider/model" };
           const state = harness({
             hasUI, findModel: failure !== "lookup",
             auth: failure === "authentication" ? { ok: false, error: "synthetic auth failure" } : undefined,
@@ -138,7 +138,7 @@ describe("session_before_compact", () => {
     [" openrouter / vendor/model ", "openrouter", "vendor/model"],
   ] as const) {
     test(`passes the real parsed reference to model lookup: ${reference}`, async () => {
-      config = { model: reference, reasons: ["manual"] };
+      config = { model: reference };
       const state = harness({ model: { provider, id: modelId, baseUrl: "https://api.example.com" } });
       let receivedModel: unknown;
       compactImplementation = async (_preparation, model) => {
@@ -155,7 +155,7 @@ describe("session_before_compact", () => {
 
   for (const reference of ["invalid", "/model", "provider/", "provider/ ", " /model"]) {
     test(`rejects malformed references before model lookup: ${reference}`, async () => {
-      config = { model: reference, reasons: ["manual"] };
+      config = { model: reference };
       const state = harness();
       compactImplementation = mock(async () => ({ summary: "unexpected" }));
 
@@ -165,14 +165,6 @@ describe("session_before_compact", () => {
       expectRestored(state.preparation);
     });
   }
-
-  test("restores previous file operations before excluded-reason fallback", async () => {
-    config = { model: "provider/model", reasons: ["manual"] };
-    const state = harness({ reason: "threshold" });
-
-    expect(await state.handler(state.event, state.ctx)).toBeUndefined();
-    expectRestored(state.preparation);
-  });
 
   test("restores previous file operations before model lookup fallback", async () => {
     const state = harness({ findModel: false });
@@ -204,7 +196,7 @@ describe("session_before_compact", () => {
   });
 
   test("omits deleted headers and forwards authentication and compaction options", async () => {
-    config = { model: "provider/model", reasons: ["manual"], thinkingLevel: "low" };
+    config = { model: "provider/model", thinkingLevel: "low" };
     const state = harness({
       auth: {
         ok: true,
@@ -290,7 +282,7 @@ describe("session_before_compact", () => {
   });
 
   test("adds Pi attribution for an OpenRouter compaction request", async () => {
-    config = { model: "openrouter/model", reasons: ["manual"] };
+    config = { model: "openrouter/model" };
     const state = harness({
       model: {
         provider: "openrouter",
@@ -400,7 +392,7 @@ describe("session_before_compact", () => {
     expect(receivedHeaders).toEqual({ "x-test": "retained" });
 
     telemetryEnabled = false;
-    config = { model: "openrouter/model", reasons: ["manual"] };
+    config = { model: "openrouter/model" };
     const telemetryOff = harness({
       model: {
         provider: "openrouter",

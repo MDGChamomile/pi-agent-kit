@@ -36,25 +36,23 @@ for (const hasUI of [true, false]) {
   test(`routes configuration warnings with hasUI=${hasUI}`, () => {
     const notify = mock((_message: string, _type?: "info" | "warning" | "error") => {});
     const ctx = {
-      hasUI, ui: { notify }, isProjectTrusted: () => false,
+      hasUI, ui: { notify },
     } as unknown as ExtensionContext;
     let section: unknown = { model: "" };
     const settings = {
       getGlobalSettings: () => ({ compactionModel: section }),
-      getProjectSettings: () => { throw new Error("untrusted project must not be read"); },
+      getProjectSettings: () => { throw new Error("project settings must not be read"); },
     } as unknown as SettingsManager;
     const consoleWarn = spyOn(console, "warn").mockImplementation(() => {});
     try {
       expect(loadConfig(ctx, settings)).toBeNull();
-      section = { model: "provider/model", thinkingLevel: "invalid", reasons: ["invalid"] };
+      section = { model: "provider/model", thinkingLevel: "invalid" };
       expect(loadConfig(ctx, settings)).toEqual({
         model: "provider/model", thinkingLevel: undefined,
-        reasons: ["manual", "threshold", "overflow"],
       });
       const messages = [
         "[pi-compaction-model] compactionModel.model must be a non-empty provider/model string; using Pi's active model.",
         "[pi-compaction-model] Invalid thinkingLevel 'invalid'; omitting the thinking level.",
-        "[pi-compaction-model] reasons must contain only manual, threshold, or overflow; handling all reasons.",
       ];
       if (hasUI) {
         expect(notify.mock.calls).toEqual(messages.map((message) => [message, "warning"]));

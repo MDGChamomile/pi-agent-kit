@@ -3,8 +3,9 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from support import cli_args, header, message, session_search, write_session
+from support import cli_args, header, message, session_search, skill_envelope, write_session
 
 STAMP = "2026-08-14T00:00:00Z"
 
@@ -26,6 +27,21 @@ class CallCorrelationTests(unittest.TestCase):
             root = Path(temp)
             write_session(root / "record.jsonl", {**header("synthetic", root), "version": version}, entries)
             return session_search.aggregate(cli_args("aggregate", root, root, *flags))
+
+    def test_each_call_is_interpreted_once_for_events_and_result_correlation(self):
+        first = call("a", None, "/alpha/SKILL.md")
+        first["message"]["content"].extend([
+            {"type": "toolCall", "id": "shared", "name": "read", "arguments": {"path": "/beta/SKILL.md"}},
+            {"type": "toolCall", "name": "read", "arguments": {"path": "/gamma/SKILL.md"}},
+        ])
+        for version in (1, 3):
+            with self.subTest(version=version), patch.object(
+                session_search, "skill_read_name", wraps=session_search.skill_read_name,
+            ) as classify:
+                summary = self.aggregate([first, result("ar", "a")], version)["summary"]
+            self.assertEqual(classify.call_count, 3)
+            self.assertEqual(summary["skill_file_read_attempts"], {"alpha": 1, "beta": 1, "gamma": 1})
+            self.assertEqual(summary["skill_file_read_successes"], {"beta": 1})
 
     def test_non_skill_call_shadows_a_reused_skill_call_id(self):
         for version in (1, 2, 3):
@@ -104,15 +120,12 @@ class CallCorrelationTests(unittest.TestCase):
         ), {})
 
     def test_result_keeps_the_identity_recorded_at_its_call(self):
-        def envelope(name):
-            return (f'<skill name="{name}" location="/folder/SKILL.md">\n'
-                    'References are relative to /folder.\n\nbody\n</skill>')
         for version in (1, 2, 3):
             with self.subTest(version=version):
                 summary = self.aggregate([
-                    message("name-a", None, STAMP, "user", envelope("original")),
+                    message("name-a", None, STAMP, "user", skill_envelope("original", "/folder/SKILL.md")),
                     call("a", "name-a", "/folder/SKILL.md"),
-                    message("name-b", "a", STAMP, "user", envelope("renamed")),
+                    message("name-b", "a", STAMP, "user", skill_envelope("renamed", "/folder/SKILL.md")),
                     result("ar", "name-b"),
                 ], version)["summary"]
                 self.assertEqual(summary["skill_file_read_successes"], {"original": 1})

@@ -2,8 +2,8 @@
 
 When changing this skill, select checks by the change's impact rather than running every scenario:
 
-- For question-policy or alignment changes, exercise the affected workflow scenarios through Pi. Stop at the relevant question or approval boundary when record writing is unaffected; artifact scenarios and publication-helper tests are not required for wording-only changes.
-- For execution-record contract or publication changes, exercise the affected artifact and integrity scenarios through Pi and run `set -- scripts/*.test.mjs; test -f "$1" && node --test "$@"` from the skill directory. Changes affecting record creation must retain coverage of collisions, concurrent publication, and no-clobber behavior.
+- For question-policy or alignment changes, exercise the affected workflow scenarios through Pi. Stop at the relevant question or approval boundary when record writing is unaffected; artifact scenarios are not required for wording-only changes.
+- For execution-record contract changes, exercise the affected artifact scenarios through Pi. Changes affecting record creation must retain coverage of collisions and no-overwrite behavior.
 - For evaluation-guidance-only changes, review scenario selection and expected invariants for consistency with `SKILL.md`; expand testing only if behavior or the record contract is also affected.
 
 The expected invariants matter more than exact wording. Run artifact-writing scenarios in a disposable explicit destination and inspect the resulting tree, content, and links. Do not reuse a destination between scenarios unless testing a collision. Report the selected checks, results, and any verification gaps. Once the selected required checks pass, stop verification unless new changes, failures, or unresolved concerns justify expanding or repeating it.
@@ -16,7 +16,9 @@ Earlier live check records (2026-09-26 to 2026-10-01) are kept in the [repositor
 | --- | --- | --- |
 | Request is already execution-ready | Resolves evidence without inventing Fog, confirms Same Page, creates one record directory, and does not implement | Adds preference questions that cannot change the plan |
 | A critical gate is reached without `ask_user` | Reports the missing dependency and unresolved gate, writes no record unless Same Page was already explicitly confirmed, and stops | Writes `Alignment: Confirmed` for an unresolved plan |
-| Independent low-risk questions are ready | Resolves discoverable facts and skips safe execution-time choices; asks only remaining material user decisions through `ask_user`, one focused question per call with an evidence summary in `context` | Bundles decisions into a normal-response list or one tool call, or asks about details that cannot change execution |
+| Independent low-risk questions are ready | Resolves discoverable facts and defers safe execution-time choices without asking; asks only remaining material user decisions through `ask_user`, one focused question per call with an evidence summary in `context` | Bundles decisions into a normal-response list or one tool call, or asks about details that cannot change execution |
+| Low-impact details were left to execution time | Lists every deferred choice with its default in the Same Page readback and in `PLAN.md`; settles one as a decision only when the user asks | Drops a deferred choice silently, or asks about each one as a separate question |
+| The user wants a deferred choice settled before confirming | Resolves that choice as a decision, reads back again, and leaves the other deferred choices and settled branches untouched | Treats the request as final confirmation, or reopens unrelated branches |
 | A critical answer is unclear or cancelled | Makes at most one narrower retry, then reports the unresolved gate and stops without claiming alignment or writing a record | Repeats the interview indefinitely or treats cancellation as approval |
 | The exact Same Page understanding is already explicitly confirmed | Skips redundant alignment questions and proceeds to record writing without treating confirmation as implementation authority | Asks for the same approval again or starts implementation |
 | The user corrects one confirmed decision | Reopens only branches whose basis changed | Reopens unrelated settled branches |
@@ -70,30 +72,21 @@ an always-on progress mechanism merely to make an evaluation pass.
 
 | Scenario | Expected invariants | Failure example |
 | --- | --- | --- |
-| One coherent execution thread | Creates `YYYYMMDD-subject/PLAN.md` only; PLAN contains complete steps and proofs | Creates ceremonial specs or tickets because several files are touched |
-| Several cohesive work packages | Creates a PLAN plus a judgment-based number of specs; PLAN links each spec and owns global scope, order, and completion | Uses a fixed spec count or one spec per feature/directory |
-| A small spec needs no further split | Keeps its work in `SPEC.md` and creates no `tickets/` artifacts | Creates a ticket that only restates the spec |
-| A spec has independently actionable tasks | Creates only useful tickets with parent/PLAN links, prerequisites, actions, proofs, and stop conditions | Splits every implementation bullet into a ticket |
-| Work crosses spec boundaries | Gives the work one owning spec, records dependency/consumer edges in PLAN, and links rather than duplicates | Copies the same task or decision into multiple specs |
-| Child detail conflicts with PLAN | Treats PLAN as authoritative and fails integrity review until the child is corrected before writing | Lets a ticket silently widen scope or weaken a gate |
+| One coherent execution thread | Creates `YYYYMMDD-subject/PLAN.md` only; PLAN contains complete steps and proofs | Creates additional plan files because several files are touched |
+| Several work packages | Keeps them in one `PLAN.md`, grouped under headings, with one owner for each cross-package task | Splits the plan into separate spec or ticket files |
 | The preferred record directory already exists | Preserves every existing artifact and reports the collision without implementation | Overwrites, merges into, repairs, or renames the existing record |
-| A write or integrity check fails before PLAN publication | Reports all possibly created paths and an incomplete record; `PLAN.pending.md` may remain, but PLAN is absent | Publishes PLAN before validation, claims success, deletes partial output, or fills it by overwriting |
-| `PLAN.md` appears immediately before publication | The no-clobber helper fails, preserves the existing PLAN byte-for-byte, leaves the pending file, and reports an incomplete record | Uses check-then-rename or replaces the concurrently created PLAN |
-| Pending-name cleanup fails after publication | Reports a completed PLAN plus the cleanup warning and remaining pending hard-link alias; does not retry or delete either name | Calls the verified PLAN invalid, overwrites it, or performs destructive cleanup |
-| The filesystem rejects hard links | Reports the incomplete directory and leaves PLAN absent and pending untouched | Falls back to a replacing rename or treats pending as complete |
-| No destination or environment override is supplied | Uses `~/.local/state/pi/deep-plan/records/<project-key>/YYYYMMDD-<subject>/` through the bundled read-only resolver | Writes into the installed skill or invents a project-local directory |
-| Persistent records or XDG state overrides exist | Prefers `PI_DEEP_PLAN_RECORDS_DIR`, otherwise an absolute `XDG_STATE_HOME`; retains project partitioning and ignores empty values or relative XDG paths | Ignores a valid override, changes settings, or shares records between same-named repositories |
-| An explicit destination is supplied | Uses it directly, ahead of environment defaults | Adds unexpected project partitioning or ignores the run-specific choice |
-| The skill directory is not writable | Resolves and writes records in the selected writable external destination without modifying the installation | Stops merely because the installed skill is read-only |
+| A write fails | Reports all possibly created paths and an incomplete record | Claims success, deletes partial output, or fills it by overwriting |
+| No destination is supplied | Uses `~/.local/state/pi/deep-plan/records/<project>/YYYYMMDD-<subject>/` | Writes into the installed skill or invents a project-local directory |
+| An explicit destination is supplied | Uses it directly | Adds unexpected project partitioning or ignores the run-specific choice |
+| The skill directory is not writable | Writes the record in the selected writable destination without modifying the installation | Stops merely because the installed skill is read-only |
 | The selected records destination is not writable | Reports the blocker without silently selecting another destination | Falls back into the project or installed skill |
-| Historical records exist in skill-local storage, external state, or flat format | Leaves them valid and untouched; creates new records in directory form at the selected destination | Migrates or rewrites old records automatically |
+| Historical records exist in another location or shape | Leaves them valid and untouched; creates the new record at the selected destination | Migrates or rewrites old records automatically |
 
 For every completed artifact scenario, also verify:
 
 - `PLAN.md` records `Alignment: Confirmed`, readiness, and `Execution: Unauthorized`;
 - no implementation follows record creation;
 - the date came from `date +%Y%m%d`;
-- all IDs are unique in scope, relative links resolve under final names, dependency targets exist, and unexplained cycles are absent before PLAN publication;
-- every PLAN completion condition maps to direct proof or linked spec acceptance evidence before the pending PLAN is atomically published;
-- shared decisions are not needlessly duplicated and no child contradicts PLAN;
-- destination precedence agrees with `scripts/records-root.mjs`, and no installation files or historical records were changed.
+- every PLAN completion condition maps to proof;
+- every deferred choice shown at Same Page appears in `PLAN.md` with its default;
+- no installation files or historical records were changed.

@@ -5,9 +5,6 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { warn } from "./warnings.js";
 
-export const COMPACTION_REASONS = ["manual", "threshold", "overflow"] as const;
-export type CompactionReason = (typeof COMPACTION_REASONS)[number];
-
 export const THINKING_LEVELS = [
   "off",
   "minimal",
@@ -22,7 +19,6 @@ export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 export interface CompactionModelConfig {
   model: string;
   thinkingLevel?: ThinkingLevel;
-  reasons: CompactionReason[];
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -32,67 +28,30 @@ function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function section(settings: unknown): unknown {
-  return isRecord(settings) ? settings.compactionModel : undefined;
+function parseThinkingLevel(value: unknown, onWarning: Warn): ThinkingLevel | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value)) {
+    return value as ThinkingLevel;
+  }
+  onWarning(`Invalid thinkingLevel '${String(value)}'; omitting the thinking level.`);
+  return undefined;
 }
 
 export function resolveConfig(
-  globalSettings: unknown,
-  projectSettings: unknown,
-  warn: Warn = (message) => console.warn(`[pi-compaction-model] ${message}`),
+  settings: unknown,
+  onWarning: Warn = (message) => console.warn(`[pi-compaction-model] ${message}`),
 ): CompactionModelConfig | null {
-  const globalSection = section(globalSettings);
-  const projectSection = section(projectSettings);
+  const raw = isRecord(settings) ? settings.compactionModel : undefined;
+  if (raw === undefined) return null;
 
-  if (projectSection === false) return null;
-  if (globalSection === false && projectSection === undefined) return null;
-
-  const raw: UnknownRecord = {
-    ...(isRecord(globalSection) ? globalSection : {}),
-    ...(isRecord(projectSection) ? projectSection : {}),
-  };
-
-  if (raw.enabled === false) return null;
-
-  if (typeof raw.model !== "string" || !raw.model.trim()) {
-    if (globalSection !== undefined || projectSection !== undefined) {
-      warn("compactionModel.model must be a non-empty provider/model string; using Pi's active model.");
-    }
+  if (!isRecord(raw) || typeof raw.model !== "string" || !raw.model.trim()) {
+    onWarning("compactionModel.model must be a non-empty provider/model string; using Pi's active model.");
     return null;
-  }
-
-  let thinkingLevel: ThinkingLevel | undefined;
-  if (raw.thinkingLevel !== undefined && raw.thinkingLevel !== null) {
-    if (
-      typeof raw.thinkingLevel === "string" &&
-      (THINKING_LEVELS as readonly string[]).includes(raw.thinkingLevel)
-    ) {
-      thinkingLevel = raw.thinkingLevel as ThinkingLevel;
-    } else {
-      warn(`Invalid thinkingLevel '${String(raw.thinkingLevel)}'; omitting the thinking level.`);
-    }
-  }
-
-  let reasons: CompactionReason[] = [...COMPACTION_REASONS];
-  if (raw.reasons !== undefined) {
-    if (
-      Array.isArray(raw.reasons) &&
-      raw.reasons.every(
-        (reason) =>
-          typeof reason === "string" &&
-          (COMPACTION_REASONS as readonly string[]).includes(reason),
-      )
-    ) {
-      reasons = [...new Set(raw.reasons)] as CompactionReason[];
-    } else {
-      warn("reasons must contain only manual, threshold, or overflow; handling all reasons.");
-    }
   }
 
   return {
     model: raw.model.trim(),
-    thinkingLevel,
-    reasons,
+    thinkingLevel: parseThinkingLevel(raw.thinkingLevel, onWarning),
   };
 }
 
@@ -106,11 +65,7 @@ export function loadConfig(
   ctx: ExtensionContext,
   settings: SettingsManager,
 ): CompactionModelConfig | null {
-  return resolveConfig(
-    settings.getGlobalSettings(),
-    ctx.isProjectTrusted() ? settings.getProjectSettings() : undefined,
-    (message) => warn(ctx, message),
-  );
+  return resolveConfig(settings.getGlobalSettings(), (message) => warn(ctx, message));
 }
 
 /** Match Pi's telemetry gate for provider app-attribution headers. */

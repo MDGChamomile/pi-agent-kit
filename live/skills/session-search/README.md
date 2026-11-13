@@ -34,7 +34,7 @@ The parser supports Pi session versions 1 through 3. It treats a missing version
 
 ## Installation
 
-The demo GIF is hosted in the repository's `docs/assets/`, outside this installable directory. The README uses an online image URL so it also works when copied on its own; viewing the demo requires network access.
+The demo GIF is kept in the repository history, outside this installable directory. The README uses an online image URL so it also works when copied on its own; viewing the demo requires network access.
 
 From the repository root, copy this directory into one of Pi's skill locations, for example:
 
@@ -43,7 +43,7 @@ mkdir -p ~/.pi/agent/skills
 cp -R live/skills/session-search ~/.pi/agent/skills/
 ```
 
-Restart Pi after installing it. Pi will expose the skill as `/skill:session-search` when skill commands are enabled.
+Restart Pi after installing it, or use `/reload`. Pi will expose the skill as `/skill:session-search` when skill commands are enabled.
 
 ## Script usage
 
@@ -100,13 +100,19 @@ missing or invalid record timestamps are excluded; without time options they
 are included. Record timestamps without a timezone are read as UTC; the strict
 syntax applies only to CLI boundaries.
 
-Filtering uses entry timestamps, not session headers or filesystem dates. Full
+Filtering uses entry timestamps, not session headers. With a lower bound
+(`--since` or `--days`), a file last modified more than one day before that
+bound is skipped without being opened: sessions are append-only, so it cannot
+hold an entry in range. A file restored or copied with a preserved older
+modification time is therefore missed; update its modification time or search
+without a lower bound. Aggregate `summary.files_skipped_by_mtime` counts these
+files across all projects, and skipped files produce no warnings. Full
 branch ancestry and earlier skill-identity/tool-call relationships are retained
 before filtering. Recall neighbors come only from time-eligible messages.
 Reuse the same time options for find and recall. Fixed boundaries stabilize the
 time range, not session contents or candidate ranks between separate invocations.
 
-### Additional session directories
+### Session directory
 
 The primary directory is selected in this order (empty environment values are ignored):
 
@@ -115,77 +121,16 @@ The primary directory is selected in this order (empty environment values are ig
 3. `PI_CODING_AGENT_DIR` with `/sessions` appended;
 4. `~/.pi/agent/sessions`.
 
-These rules apply to aggregate, `find`, and `recall`. `--sessions-root` replaces the primary directory; it does not require the default directory to exist. If Pi uses `--session-dir` or the `sessionDir` setting in `settings.json`, pass that location as `--sessions-root`: the helper does not read Pi settings or recover Pi's CLI arguments, and does not infer search scope from `PI_SESSION_FILE`. Environment paths expand `~` and `~/` to your home (`~\` also works on Windows); `~other` remains a literal relative directory, as in Pi.
+These rules apply to aggregate, `find`, and `recall`. `--sessions-root` replaces that directory; it does not require the default directory to exist. If Pi uses `--session-dir` or the `sessionDir` setting in `settings.json`, pass that location as `--sessions-root`: the helper does not read Pi settings or recover Pi's CLI arguments, and does not infer search scope from `PI_SESSION_FILE`. Environment paths expand `~` and `~/` to your home (`~\` also works on Windows); `~other` remains a literal relative directory, as in Pi.
 
 ```bash
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
   --sessions-root /path/to/session-store
 ```
 
-Add other directories explicitly; no archive location is assumed:
-
-```bash
-python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
-  --additional-sessions-root /path/to/session-backup \
-  --additional-sessions-root /path/to/another-store
-```
-
-`--additional-sessions-root PATH` is repeatable and additive, not a replacement for the selected primary directory. `~` is expanded; relative paths are resolved from the invocation's working directory. The same cwd, time, event, current-session exclusion, and evidence-consent rules apply across all directories. `--all-projects` selects all projects within those directories, not other storage locations.
-
-Repeated or overlapping directories and file symlink aliases are deduplicated by resolved file path before counting. File symlinks are considered only when their targets resolve inside one of the selected session roots; targets in an explicitly added root remain eligible. Separate copies (including files with the same session ID) and hard links remain separate files. Nested directory symlinks are not followed; a directory symlink explicitly supplied as a root is supported. Missing or non-directory roots and directory traversal failures return a path-free `SESSION_STORAGE_UNAVAILABLE` error (exit code 2), rather than a partial summary. Empty directories are valid. Individual unreadable session files retain the existing warning behavior.
-
-For recurring agent use, configure Pi's storage environment variables or specify your primary and additional directories in your own local instructions. Keep personal paths out of the shared skill; this feature neither moves sessions nor changes Pi's `/resume` storage.
+File symlink aliases are deduplicated by resolved file path before counting. File symlinks are considered only when their targets resolve inside the session directory. `--all-projects` selects all projects within that directory, not other storage locations. Reads use the canonical target found during discovery and accept only regular files. A FIFO cannot stall the scan. Aggregate evidence and warnings show the path found during discovery, including a symlink alias when one was used. Separate copies (including files with the same session ID) and hard links remain separate files. Nested directory symlinks are not followed; a directory symlink explicitly supplied as the root is supported. A missing or non-directory root and directory traversal failures return a path-free `SESSION_STORAGE_UNAVAILABLE` error (exit code 2), rather than a partial summary. Empty directories are valid. Individual unreadable session files retain the existing warning behavior.
 
 Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each aggregate filter.
-
-### Exclude specific session files
-
-Use repeatable `--exclude-session-file PATH` with aggregate, batch, `find`, or
-`recall` to omit explicitly selected files before their headers or bodies are
-opened. It does not select a recall candidate or expand the session roots.
-
-```bash
-python3 ~/.pi/agent/skills/session-search/scripts/session_recall.py find \
-  --term authentication --term cache \
-  --exclude-session-file /path/to/session-store/discussion.jsonl \
-  --exclude-session-file /path/to/session-store/duplicate.jsonl
-```
-
-Paths are expanded and resolved with the helpers' `normalized_path` rules
-(`Path.expanduser().resolve(strict=False)`), including `~` and known `~user`
-homes. Relative paths use the process working directory, **not** `--cwd`.
-Duplicates and symlink aliases share one normalized exclusion. Matching uses
-exact normalized path strings, not session IDs, inode identity, directory
-prefixes, globs, or additional case folding. Separate copies and hard links
-remain eligible unless their own paths are excluded.
-
-`--include-current` disables only the automatic current-session exclusion;
-explicit exclusions still apply. Empty paths,
-NUL-containing paths, and normalization failures return path-free
-`INVALID_ARGUMENT` before discovery. Missing paths, directories, and targets
-not discovered within the selected roots are unmatched, not storage errors.
-Exclusions do not suppress root traversal failures or change symlink-containment
-rules. They prevent file reads, not filesystem metadata access during discovery.
-
-The summary adds these path-free counters (also shared by batch summaries):
-
-- `session_file_exclusions_requested`: distinct normalized paths requested.
-- `explicit_session_files_excluded`: discovered files excluded explicitly,
-  excluding any already counted in `current_session_files_excluded`.
-- `session_file_exclusions_unmatched`: requested paths absent from the discovered
-  file set. A file also excluded automatically as current is matched, not unmatched.
-
-These are file counts **before** header/project filtering, so an explicitly
-excluded file may belong to another project. They are not session-ID or task
-counts. Aggregate `files_discovered` still includes excluded files; recall does
-not add a general discovery count or expose paths. If every file is excluded,
-aggregate and `find` return successful empty results; `recall` retains
-`CANDIDATE_NOT_FOUND` because no candidate is available.
-
-Reuse the same exclusions for find, recall, and continuation. Continuation binds
-the normalized requested set, including unmatched paths. Changes are rejected
-before scanning; order, duplicates, and equivalent aliases do not matter.
-Relative paths must still resolve to the same targets on later invocations.
 
 ## Batch summaries
 
@@ -210,8 +155,8 @@ Each object is limited to 4,096 characters, each array to 32 values, and each
 value to 256 characters. Unknown or duplicate keys and invalid types fail before
 session storage is accessed.
 
-Scope options (`--cwd` or `--all-projects`, `--days` or `--since`/`--until`, additional
-roots, current session inclusion, and `--exclude-session-file`) apply to the whole batch. Every selected body is read and
+Scope options (`--cwd` or `--all-projects`, `--days` or `--since`/`--until`, the session
+directory, and current session inclusion) apply to the whole batch. Every selected body is read and
 parsed once; filters are then evaluated separately. Batch output has `mode:
 "batch"`, shared scan counts in `summary`, and a `batches` array in input order.
 Each item has a one-based `filter_index` and a `summary` with the same counters
@@ -289,7 +234,7 @@ The command emits one JSON object:
 
 In `summary`, `tool_errors` counts matching error events per tool; `tool_error_sessions` counts session files with at least one such event per tool, using the same filters and case-insensitive tool names. Repeated failures of one tool in one file count once in `tool_error_sessions`. Files with identical session IDs still count separately; branches, copies, and retries are not deduplicated into inferred bugs or tasks. `matched_sessions` remains the overall matching-file count, not a per-tool distribution.
 
-Without `--all-projects`, warnings cover only files whose header confirms the selected cwd. As in recall, files with an unreadable header or a different project are skipped without a warning count or path; use `--all-projects` to include their warnings, for example when checking for damaged session files.
+Without `--all-projects`, warnings cover only files whose header confirms the selected cwd. Only an absolute recorded cwd can confirm a project; an empty, relative, `~`, drive-less Windows, or otherwise unusable cwd never matches, because it would resolve against the searcher's location rather than the session's. As in recall, files with an unreadable header, an unconfirmed cwd, or a different project are skipped without a warning count or path; use `--all-projects` to include their warnings, for example when checking for damaged session files.
 
 Malformed JSON rows, including Python integer-conversion and nesting-depth limit failures, are skipped with `invalid_json_line`; an unparseable header is skipped under the scope policy above. These stored-data failures do not become `INVALID_ARGUMENT`. Recall still validates the surviving branch. Escaped lone surrogates remain searchable and are emitted as JSON `\uXXXX` escapes, while ordinary Unicode stays readable. Actual UTF-8 decoding failures are reported as `unreadable_file`.
 

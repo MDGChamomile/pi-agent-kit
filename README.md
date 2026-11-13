@@ -13,7 +13,7 @@ Pi Agent Kit is the public, source-first collection of resources I currently use
 - **Live** resources are currently used and maintained.
 - **Retired** resources are kept in the repository history as references.
 
-The collection follows the [harness-minimalism principles](https://github.com/MDGChamomile/MDGChamomile/blob/main/PRINCIPLE.md) maintained in the MDGChamomile repository. The local [PRINCIPLE.md](PRINCIPLE.md) points to that single source of truth. Read the source, take what is useful, and adapt it to your own workflow; this is not an install-everything Pi package.
+The collection follows the [harness-minimalism principles](https://github.com/MDGChamomile/MDGChamomile/blob/main/PRINCIPLE.md) maintained in the MDGChamomile repository. Read the source, take what is useful, and adapt it to your own workflow; this is not an install-everything Pi package.
 
 ## Start here
 
@@ -25,7 +25,7 @@ The collection follows the [harness-minimalism principles](https://github.com/MD
 
 ### Copy an individual resource
 
-Clone the repository, review the resource and its requirements, and copy or link only the directory you want into the applicable Pi location. Keep the bundled `LICENSE` and any `NOTICE.md` with the resource when copying or redistributing it.
+Clone the repository, review the resource and its requirements, and copy or link only the directory you want into the applicable Pi location. Keep the bundled `LICENSE` with the resource when copying or redistributing it.
 
 For `deep-plan`, a compatible `ask_user` tool is required at decision gates; copying the skill does not install that tool. If you do not already have a compatible extension, the reference implementation can be installed with `pi install npm:pi-ask-user`. See the skill's [requirements](live/skills/deep-plan/SKILL.md#requirement) before adopting it.
 

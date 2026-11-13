@@ -11,7 +11,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from support import cli_args, header, message, run_mode, session_common, session_recall, session_search, write_session
+from support import (
+    cli_args, header, message, run_mode, session_common, session_recall, session_search, skill_envelope, write_session,
+)
 
 
 class TimeRangeTests(unittest.TestCase):
@@ -40,6 +42,14 @@ class TimeRangeTests(unittest.TestCase):
             for i, timestamp in enumerate(timestamps)
         ])
 
+    def test_naive_timestamp_is_treated_as_utc(self):
+        parsed = session_common.parse_timestamp("2026-08-15T00:00:00")
+        self.assertEqual(parsed, self.NOW)
+        self.assertEqual(parsed.tzinfo, timezone.utc)
+
+    def test_extreme_timestamp_is_ignored_without_overflow(self):
+        self.assertIsNone(session_common.parse_timestamp("0001-01-01T00:00:00+14:00"))
+
     def test_bounds_offsets_fractional_seconds_and_one_sided_ranges(self):
         self.write(["2026-08-09T23:59:59.999999Z", self.START,
                     "2026-08-10T09:00:00.000001+09:00", self.END, None, "invalid"])
@@ -61,6 +71,29 @@ class TimeRangeTests(unittest.TestCase):
                          ["needle 1", "needle 2"])
         self.assertEqual(result["scope"]["since"], self.START)
         self.assertEqual(result["scope"]["until"], self.END)
+
+    def test_files_last_modified_well_before_since_are_not_read(self):
+        self.write([self.START])
+        since = datetime(2026, 8, 10, tzinfo=timezone.utc).timestamp()
+        margin = session_common.MTIME_MARGIN_SECONDS
+        for modified, options, read in [
+            (since - margin - 1, ["--since", self.START], False),
+            (since - margin - 1, ["--days", "5"], False),
+            (since - margin, ["--since", self.START], True),
+            (since - margin - 1, ["--until", self.END], True),
+            (since - margin - 1, [], True),
+        ]:
+            os.utime(self.path, (modified, modified))
+            for mode in ("aggregate", "find"):
+                with self.subTest(mode=mode, modified=modified, options=options):
+                    summary = self.output(mode, *options)["summary"]
+                    self.assertEqual(summary["files_selected"], int(read))
+                    self.assertEqual(summary["entries_scanned"], int(read))
+                    if mode == "aggregate":
+                        self.assertEqual(summary["files_skipped_by_mtime"], int(not read))
+
+    def test_unavailable_modification_time_keeps_the_file(self):
+        self.assertTrue(session_common.TimeRange(since=self.NOW).may_include_file(self.root / "missing.jsonl"))
 
     def test_every_supported_fraction_length_has_exact_boundaries(self):
         for fraction in ("1", "12", "123", "1234", "12345", "123456"):
@@ -119,7 +152,7 @@ class TimeRangeTests(unittest.TestCase):
         self.write([self.START, self.END])
         options = ["--since", self.START, "--until", self.END]
         single = self.output("aggregate", *options)
-        original_open = Path.open
+        original_open = session_common.open_session_file
         opened = []
 
         def counted(path, *args, **kwargs):
@@ -127,7 +160,7 @@ class TimeRangeTests(unittest.TestCase):
                 opened.append(path)
             return original_open(path, *args, **kwargs)
 
-        with patch.object(Path, "open", counted):
+        with patch.object(session_common, "open_session_file", counted):
             batch = self.output("aggregate", *options, "--batch-filter", "{}", "--batch-filter", '{"role":["user"]}')
         self.assertEqual(len(opened), 1)
         self.assertEqual(batch["scope"], single["scope"])
@@ -135,9 +168,7 @@ class TimeRangeTests(unittest.TestCase):
 
     def test_prior_identity_and_call_survive_time_filter(self):
         write_session(self.path, header("synthetic", self.root), [
-            message("1", None, "2026-08-01T00:00:00Z", "user",
-                    '<skill name="declared" location="/custom/folder/SKILL.md">\n'
-                    'References are relative to /custom/folder.\n\nbody\n</skill>'),
+            message("1", None, "2026-08-01T00:00:00Z", "user", skill_envelope("declared", "/custom/folder/SKILL.md")),
             message("2", "1", "2026-08-02T00:00:00Z", "assistant", [
                 {"type": "toolCall", "id": "call", "name": "read",
                  "arguments": {"path": "/custom/folder/SKILL.md"}},

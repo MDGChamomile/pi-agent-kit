@@ -10,7 +10,7 @@ compatibility: Requires Pi with an ask_user tool compatible with pi-ask-user.
 
 Move from **Fog → Same Page → Execution Record**.
 
-Use this workflow for one cohesive repository change that can be brought to execution readiness in one session. Scale the interview to the live Fog, not to a minimum question count: an already concrete request may need no discovery questions before the Same Page readback. During Fog and Same Page, work read-only. During record writing, mutation is limited to creating needed parent directories under the selected records root, the final execution-record directory, and its Markdown files; do not modify or overwrite existing files or make any other repository changes. Store records outside the installed skill by default, using the destination precedence in `references/execution-record.md`; an explicit destination for the run takes priority. The record is an execution guide, not authorization; implementation requires a separate explicit user request.
+Use this workflow for one cohesive repository change that can be brought to execution readiness in one session. Scale the interview to the live Fog, not to a minimum question count: an already concrete request may need no discovery questions before the Same Page readback. During Fog and Same Page, work read-only. During record writing, mutation is limited to creating needed parent directories under the selected records root, the new execution-record directory, and its `PLAN.md`; do not modify or overwrite existing files or make any other repository changes. Store records outside the installed skill by default, at the destination in `references/execution-record.md`; an explicit destination for the run takes priority. The record is an execution guide, not authorization; implementation requires a separate explicit user request.
 
 ## Requirement
 
@@ -43,7 +43,7 @@ Once critical prerequisites are settled, use `ask_user` for each currently answe
 
 Resolve prerequisite branches first, then ask the dependent questions they make answerable. Apply the critical-gate rules to a newly exposed critical decision; investigate a newly exposed fact yourself.
 
-Each question closes a live branch whose answer could change behavior, scope, interfaces, risk, execution order, or completion evidence. Question count is not progress. Be complete on live Fog and silent on settled ground: do not ask the user to reconfirm repository evidence, their explicit decisions, or low-impact details that can safely remain execution-time choices. Keep resolved branches closed until new evidence invalidates their basis.
+Each question closes a live branch whose answer could change behavior, scope, interfaces, risk, execution order, or completion evidence. Question count is not progress. Be complete on live Fog and silent on settled ground: do not ask the user to reconfirm repository evidence or their explicit decisions. Do not ask about a low-impact detail that can safely remain an execution-time choice either, but never drop it silently: keep it as a **deferred choice** with the default the executor would take, for the Same Page readback. Keep resolved branches closed until new evidence invalidates their basis.
 
 A branch is resolved only when it is:
 
@@ -65,16 +65,17 @@ Then read back only the understanding execution depends on:
 - representative normal, boundary, and failure behavior where material;
 - confirmed decisions and accepted assumptions;
 - scope, non-goals, and do-not-touch boundaries;
-- deferred prototypes, investigations, external decisions, and verification gates.
+- deferred prototypes, investigations, external decisions, and verification gates;
+- every deferred choice, each with its default, so the user can see what was left to execution time.
 
 State this limit explicitly:
 
 > Same Page means every known in-scope branch has been resolved or explicitly gated. It is not proof that no unknown unknown exists.
 
-If this exact understanding has not already been confirmed, use `ask_user` for one final alignment question. A correction reopens only the affected branches. Same Page confirmation unlocks record writing.
+If this exact understanding has not already been confirmed, use `ask_user` for one final alignment question. A correction reopens only the affected branches. A deferred choice the user wants settled now becomes a decision: resolve it, then read back again. Same Page confirmation unlocks record writing.
 
 ## 4. Write the Execution Record
 
-After Same Page is confirmed, read `references/execution-record.md` and write one execution-record directory. Always create its authoritative `PLAN.md`; add specs and tickets only when the reference's qualitative decomposition rules call for them.
+After Same Page is confirmed, read `references/execution-record.md` and write one execution-record directory containing `PLAN.md`.
 
-Apply the reference's completion and integrity conditions, report the record-directory path, artifact shape, alignment state, readiness, and execution status, then stop without implementing.
+Apply the reference's completion condition, report the record-directory path, alignment state, readiness, and execution status, then stop without implementing.

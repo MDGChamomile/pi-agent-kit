@@ -164,7 +164,7 @@ class RecallContinuationTests(unittest.TestCase):
         token = self.token()
         for change in ({"term": ["different"]}, {"days": 7.0}, {"all_projects": True},
                        {"include_current": True}, {"cwd": str(self.root)},
-                       {"sessions_root": self.project}, {"additional_sessions_root": [self.project]}):
+                       {"sessions_root": self.project}):
             with self.subTest(change=change):
                 args = self.args(token)
                 for key, value in change.items():
@@ -178,12 +178,10 @@ class RecallContinuationTests(unittest.TestCase):
                 self.recall(token)
 
     def test_equivalent_scope_and_terms_are_accepted(self):
-        first = self.recall(None, "--term", "context", "--additional-sessions-root", str(self.project))
+        first = self.recall(None, "--term", "context")
         args = self.args(first["next_continuation"], "--term", "context")
+        # Term ordering does not change effective scope.
         args.term.reverse()
-        args.additional_sessions_root = [self.project, self.root]
-        # Root ordering/aliases and term ordering do not change effective scope.
-        args.sessions_root = self.project
         output = session_recall.recall_output(args, self.NOW)
         self.assertGreater(output["summary"]["messages_returned"], 0)
 

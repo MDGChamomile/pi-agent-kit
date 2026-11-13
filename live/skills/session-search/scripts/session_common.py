@@ -7,6 +7,7 @@ import json
 import math
 import os
 import re
+import stat
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -15,8 +16,10 @@ from typing import Any, BinaryIO, Callable, Iterable, Iterator
 
 MAX_EVIDENCE_CHARS = 300
 MAX_WARNING_ITEMS = 100
+# File times can trail the clock that stamps entries (coarse kernel clock, FAT rounding).
+MTIME_MARGIN_SECONDS = 86400
+MIN_UTC_DATETIME = datetime.min.replace(tzinfo=timezone.utc)
 
-# Mask before truncation so a secret crossing the truncation boundary cannot leak.
 MASK_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"-----BEGIN [^-\n]*PRIVATE KEY-----.*?-----END [^-\n]*PRIVATE KEY-----", re.I | re.S), "[REDACTED_PRIVATE_KEY]"),
     (re.compile(r"\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+", re.I), r"\1 [REDACTED]"),
@@ -65,8 +68,31 @@ def parse_timestamp(value: Any) -> datetime | None:
         return None
 
 
+def as_utc(value: datetime) -> datetime:
+    """Convert value to UTC, interpreting a naive datetime as UTC."""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def format_timestamp(value: datetime | None) -> str | None:
+    return value.isoformat().replace("+00:00", "Z") if value is not None else None
+
+
 def normalized_path(value: str | Path) -> str:
     return str(Path(value).expanduser().resolve(strict=False))
+
+
+def recorded_cwd(value: Any) -> str | None:
+    """Return the header's project path, or None when it cannot identify one.
+
+    Empty, relative, "~", and drive-less Windows paths would otherwise resolve
+    against whoever runs the search rather than the recorded session.
+    """
+    if not isinstance(value, str) or not Path(value).is_absolute():
+        return None
+    try:
+        return normalized_path(value)
+    except (ValueError, OSError, RuntimeError):
+        return None
 
 
 def mask_secrets(value: str) -> str:
@@ -85,6 +111,7 @@ def mask_and_shorten_with_metadata(
     value: str, limit: int = MAX_EVIDENCE_CHARS, queries: Iterable[str] = (),
 ) -> tuple[str, bool]:
     """Return masked evidence and whether normalized masked text was shortened."""
+    # Mask before truncation so a secret crossing the truncation boundary cannot leak.
     masked = re.sub(r"\s+", " ", mask_secrets(value)).strip()
     if limit <= 0:
         return "", bool(masked)
@@ -146,6 +173,9 @@ class WarningCollector:
     @property
     def count(self) -> int:
         return len(self._seen)
+
+    def count_of(self, kind: str) -> int:
+        return self._counts.get(kind, 0)
 
     def output(self, include_items: bool) -> dict[str, Any]:
         result: dict[str, Any] = {
@@ -211,6 +241,12 @@ def ancestor_ids(entry_id: Any, parent_by_id: dict[str, Any]) -> Iterator[str]:
         entry_id = parent_by_id[entry_id]
 
 
+@dataclass(frozen=True)
+class SessionFile:
+    path: Path
+    target: Path
+
+
 @dataclass
 class SessionScan:
     header_valid: bool = False
@@ -218,8 +254,20 @@ class SessionScan:
     complete: bool = False
 
 
+def open_session_file(path: Path) -> BinaryIO:
+    # Non-blocking, so a FIFO without a writer cannot stall the scan.
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0))
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("session is not a regular file")
+        return os.fdopen(fd, "rb")
+    except BaseException:
+        os.close(fd)
+        raise
+
+
 def scan_session(
-    path: Path, target_cwd: str | None, warnings: WarningCollector,
+    file: SessionFile, target_cwd: str | None, warnings: WarningCollector,
     read_entries: Callable[[Path, dict[str, Any], int, Iterator[dict[str, Any]]], None],
 ) -> SessionScan:
     """Pass a selected file's entries to read_entries under the shared warning policy.
@@ -228,22 +276,20 @@ def scan_session(
     confirms target_cwd may add warnings; files with an unreadable header or a
     different project stay undisclosed. version is set once the file is selected.
     """
+    path = file.path
     scan = SessionScan()
     in_scope = target_cwd is None
     try:
         # Decode only the header line before deciding scope. TextIOWrapper can
         # decode body bytes ahead of readline() and hide an in-scope failure.
-        with path.open("rb") as handle:
+        with open_session_file(file.target) as handle:
             header = read_session_header(handle)
             if header is None:
                 if in_scope:
                     warnings.add(path, "invalid_header")
                 return scan
             scan.header_valid = True
-            header_cwd = header.get("cwd")
-            if target_cwd is not None and (
-                not isinstance(header_cwd, str) or normalized_path(header_cwd) != target_cwd
-            ):
+            if target_cwd is not None and recorded_cwd(header.get("cwd")) != target_cwd:
                 return scan
             in_scope = True
             scan.version = session_version(header, path, warnings)
@@ -272,104 +318,56 @@ def add_storage_scope_arguments(parser: argparse.ArgumentParser) -> None:
     scope.add_argument("--cwd", default=os.getcwd(), help="project cwd to match exactly (default: current cwd)")
     parser.add_argument("--include-current", action="store_true", help="include PI_SESSION_FILE (excluded by default)")
     parser.add_argument(
-        "--additional-sessions-root", type=Path, action="append", default=[], metavar="PATH",
-        help="also search this directory recursively; repeat for multiple directories; "
-             "additive to the selected sessions root; all directories must be readable",
-    )
-    parser.add_argument(
         "--sessions-root", type=Path, default=default_sessions_root(), metavar="PATH",
         help="replace the primary sessions directory; default precedence: PI_CODING_AGENT_SESSION_DIR, "
              "PI_CODING_AGENT_DIR/sessions, ~/.pi/agent/sessions",
     )
 
 
-def add_exclusion_argument(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--exclude-session-file", action="append", default=[], metavar="PATH",
-                        help="exclude an exact session file before opening; repeatable; paths resolve from process cwd; "
-                             "overrides --include-current; reports path-free requested/excluded/unmatched counts")
+class CurrentSessionExclusion:
+    """Skip the active session file before it is read, unless --include-current is set."""
 
-
-def normalized_exclusions(values: Iterable[str]) -> frozenset[str]:
-    paths: set[str] = set()
-    for value in values:
-        # Validate before Path('') can silently become the current directory.
-        if not value or "\x00" in value:
-            raise ValueError("session exclusion is invalid")
-        try:
-            paths.add(normalized_path(value))
-        except (ValueError, OSError, RuntimeError) as error:
-            raise ValueError("session exclusion is invalid") from error
-    return frozenset(paths)
-
-
-def exclusion_summary(exclusions: frozenset[str], matched: set[str], excluded_count: int) -> dict[str, int]:
-    # A current-session overlap is matched, but counted only in the automatic counter.
-    return {
-        "session_file_exclusions_requested": len(exclusions),
-        "explicit_session_files_excluded": excluded_count,
-        "session_file_exclusions_unmatched": len(exclusions - matched),
-    }
-
-
-class SessionFileExclusions:
-    """Count pre-read exclusions using each caller's normalized file identity."""
-
-    def __init__(self, exclusions: frozenset[str], include_current: bool) -> None:
-        self.exclusions = exclusions
-        self.include_current = include_current
-        self.current = normalized_path(os.environ["PI_SESSION_FILE"]) if os.environ.get("PI_SESSION_FILE") else None
-        self.matched: set[str] = set()
-        self.excluded_current = 0
-        self.excluded_explicit = 0
+    def __init__(self, include_current: bool) -> None:
+        current = os.environ.get("PI_SESSION_FILE")
+        self.current = normalized_path(current) if current and not include_current else None
+        self.excluded = 0
 
     def excludes(self, path_key: str) -> bool:
-        if path_key in self.exclusions:
-            self.matched.add(path_key)
-        if not self.include_current and self.current and path_key == self.current:
-            self.excluded_current += 1
-            return True
-        if path_key in self.exclusions:
-            self.excluded_explicit += 1
-            return True
-        return False
+        if self.current is None or path_key != self.current:
+            return False
+        self.excluded += 1
+        return True
 
     def summary(self) -> dict[str, int]:
-        return {
-            "current_session_files_excluded": self.excluded_current,
-            **exclusion_summary(self.exclusions, self.matched, self.excluded_explicit),
-        }
+        return {"current_session_files_excluded": self.excluded}
 
 
 def discover_session_files(
-    roots: Iterable[Path], on_outside: Callable[[Path], None] | None = None,
-) -> list[Path]:
-    """Fail visibly on traversal errors; keep only files under an allowed root."""
-    paths: dict[str, Path] = {}
-    allowed_roots: dict[str, Path] = {}
-    for value in roots:
-        root = value.expanduser()
-        key = normalized_path(root)
-        if not root.is_dir():
-            raise RuntimeError("session root is unavailable")
-        allowed_roots.setdefault(key, root)
+    root: Path, on_outside: Callable[[Path], None] | None = None,
+) -> list[SessionFile]:
+    """Fail visibly on traversal errors; keep only files that resolve inside the root."""
+    root = root.expanduser()
+    if not root.is_dir():
+        raise RuntimeError("session root is unavailable")
+    allowed = normalized_path(root)
+    paths: dict[str, SessionFile] = {}
 
     def traversal_error(error: OSError) -> None:
         raise error
 
-    for root in allowed_roots.values():
-        # Unlike Path.rglob, walk's onerror makes inaccessible subtrees visible.
-        # Do not follow nested directory symlinks.
-        for directory, _dirs, files in os.walk(root, onerror=traversal_error):
-            for name in files:
-                if name.endswith(".jsonl"):
-                    path = Path(directory) / name
-                    resolved = Path(normalized_path(path))
-                    if not any(resolved.is_relative_to(allowed) for allowed in allowed_roots):
-                        if on_outside is not None:
-                            on_outside(path)
-                        continue
-                    paths.setdefault(str(resolved), path)
-    return sorted(paths.values())
+    # Unlike Path.rglob, walk's onerror makes inaccessible subtrees visible.
+    # Do not follow nested directory symlinks.
+    for directory, _dirs, files in os.walk(root, onerror=traversal_error):
+        for name in files:
+            if name.endswith(".jsonl"):
+                path = Path(directory) / name
+                resolved = Path(normalized_path(path))
+                if not resolved.is_relative_to(allowed):
+                    if on_outside is not None:
+                        on_outside(path)
+                    continue
+                paths.setdefault(str(resolved), SessionFile(path, resolved))
+    return sorted(paths.values(), key=lambda file: file.path)
 
 
 def cutoff_for_days(
@@ -379,11 +377,8 @@ def cutoff_for_days(
         return None
     if not math.isfinite(days) or days < 0:
         raise ValueError("--days must be a finite non-negative number")
-    current_time = now or datetime.now(timezone.utc)
-    if current_time.tzinfo is None:
-        current_time = current_time.replace(tzinfo=timezone.utc)
     try:
-        return current_time.astimezone(timezone.utc) - timedelta(days=days)
+        return as_utc(now or datetime.now(timezone.utc)) - timedelta(days=days)
     except OverflowError as error:
         raise ValueError("--days exceeds the supported date range") from error
 
@@ -424,9 +419,21 @@ class TimeRange:
                 and (self.since is None or timestamp >= self.since)
                 and (self.until is None or timestamp < self.until))
 
+    def may_include_file(self, path: Path) -> bool:
+        """False only when the file was last modified well before since.
+
+        Sessions are append-only, so such a file holds no entry in range.
+        """
+        if self.since is None:
+            return True
+        try:
+            modified = path.stat().st_mtime
+        except OSError:
+            return True
+        return modified >= self.since.timestamp() - MTIME_MARGIN_SECONDS
+
     def view(self) -> dict[str, str | None]:
-        return {name: value.isoformat().replace("+00:00", "Z") if value is not None else None
-                for name, value in (("since", self.since), ("until", self.until))}
+        return {"since": format_timestamp(self.since), "until": format_timestamp(self.until)}
 
 
 def time_range_for_args(args: argparse.Namespace, now: datetime | None = None) -> TimeRange:
