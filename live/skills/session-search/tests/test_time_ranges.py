@@ -72,6 +72,29 @@ class TimeRangeTests(unittest.TestCase):
         self.assertEqual(result["scope"]["since"], self.START)
         self.assertEqual(result["scope"]["until"], self.END)
 
+    def test_files_last_modified_well_before_since_are_not_read(self):
+        self.write([self.START])
+        since = datetime(2026, 8, 10, tzinfo=timezone.utc).timestamp()
+        margin = session_common.MTIME_MARGIN_SECONDS
+        for modified, options, read in [
+            (since - margin - 1, ["--since", self.START], False),
+            (since - margin - 1, ["--days", "5"], False),
+            (since - margin, ["--since", self.START], True),
+            (since - margin - 1, ["--until", self.END], True),
+            (since - margin - 1, [], True),
+        ]:
+            os.utime(self.path, (modified, modified))
+            for mode in ("aggregate", "find"):
+                with self.subTest(mode=mode, modified=modified, options=options):
+                    summary = self.output(mode, *options)["summary"]
+                    self.assertEqual(summary["files_selected"], int(read))
+                    self.assertEqual(summary["entries_scanned"], int(read))
+                    if mode == "aggregate":
+                        self.assertEqual(summary["files_skipped_by_mtime"], int(not read))
+
+    def test_unavailable_modification_time_keeps_the_file(self):
+        self.assertTrue(session_common.TimeRange(since=self.NOW).may_include_file(self.root / "missing.jsonl"))
+
     def test_every_supported_fraction_length_has_exact_boundaries(self):
         for fraction in ("1", "12", "123", "1234", "12345", "123456"):
             with self.subTest(fraction=fraction):

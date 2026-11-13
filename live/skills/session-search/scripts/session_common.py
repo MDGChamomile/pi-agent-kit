@@ -16,6 +16,8 @@ from typing import Any, BinaryIO, Callable, Iterable, Iterator
 
 MAX_EVIDENCE_CHARS = 300
 MAX_WARNING_ITEMS = 100
+# File times can trail the clock that stamps entries (coarse kernel clock, FAT rounding).
+MTIME_MARGIN_SECONDS = 86400
 MIN_UTC_DATETIME = datetime.min.replace(tzinfo=timezone.utc)
 
 MASK_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -416,6 +418,19 @@ class TimeRange:
         return (timestamp is not None
                 and (self.since is None or timestamp >= self.since)
                 and (self.until is None or timestamp < self.until))
+
+    def may_include_file(self, path: Path) -> bool:
+        """False only when the file was last modified well before since.
+
+        Sessions are append-only, so such a file holds no entry in range.
+        """
+        if self.since is None:
+            return True
+        try:
+            modified = path.stat().st_mtime
+        except OSError:
+            return True
+        return modified >= self.since.timestamp() - MTIME_MARGIN_SECONDS
 
     def view(self) -> dict[str, str | None]:
         return {"since": format_timestamp(self.since), "until": format_timestamp(self.until)}

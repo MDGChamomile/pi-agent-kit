@@ -538,6 +538,7 @@ class ScanCounters:
     files_selected: int = 0
     entries_scanned: int = 0
     entries_eligible: int = 0
+    files_skipped_by_mtime: int = 0
     files_attempted: int = 0
     readable_headers: int = 0
 
@@ -626,6 +627,9 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     for file in paths:
         if file_exclusions.excludes(str(file.target)):
             continue
+        if not time_range.may_include_file(file.target):
+            counters.files_skipped_by_mtime += 1
+            continue
         counters.files_attempted += 1
         file_scan = session_common.scan_session(file, scope_cwd, warnings, read_entries)
         if file_scan.header_valid:
@@ -641,6 +645,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     scan = {
         "files_discovered": len(paths),
         "files_selected": counters.files_selected,
+        "files_skipped_by_mtime": counters.files_skipped_by_mtime,
         **file_exclusions.summary(),
         "entries_scanned": counters.entries_scanned,
         "entries_eligible": counters.entries_eligible,
