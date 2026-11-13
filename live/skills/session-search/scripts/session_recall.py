@@ -249,7 +249,7 @@ def scan_candidates(
     scanned_entries = 0
 
     for path in paths:
-        if file_exclusions.excludes(str(path)):
+        if file_exclusions.excludes(str(path)) or not time_range.may_include_file(path):
             continue
         loaded = read_active_messages(path, target_cwd, args.all_projects, warnings)
         if loaded is None:

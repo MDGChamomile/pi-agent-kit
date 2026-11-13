@@ -100,7 +100,13 @@ missing or invalid record timestamps are excluded; without time options they
 are included. Record timestamps without a timezone are read as UTC; the strict
 syntax applies only to CLI boundaries.
 
-Filtering uses entry timestamps, not session headers or filesystem dates. Full
+Filtering uses entry timestamps, not session headers. With a lower bound
+(`--since` or `--days`), a file last modified more than one day before that
+bound is skipped without being opened: sessions are append-only, so it cannot
+hold an entry in range. A file restored or copied with a preserved older
+modification time is therefore missed; update its modification time or search
+without a lower bound. Aggregate `summary.files_skipped_by_mtime` counts these
+files across all projects, and skipped files produce no warnings. Full
 branch ancestry and earlier skill-identity/tool-call relationships are retained
 before filtering. Recall neighbors come only from time-eligible messages.
 Reuse the same time options for find and recall. Fixed boundaries stabilize the
