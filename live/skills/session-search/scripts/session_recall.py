@@ -108,7 +108,6 @@ def recall_text(entry: dict[str, Any]) -> RecallMessage | None:
     role = message.get("role")
     if not isinstance(role, str) or role not in {"user", "assistant"}:
         return None
-    # text_content deliberately ignores thinking and tool-call blocks.
     text = session_common.text_content(message.get("content"))
     if not text:
         return None
@@ -133,7 +132,6 @@ def retain_recall_entry(entry: dict[str, Any]) -> dict[str, Any]:
         role = message.get("role")
         retained["message"] = {"role": role}
         if role in ("user", "assistant"):
-            # Preserve the full searchable text; output limits apply later.
             retained["message"]["content"] = session_common.text_content(message.get("content"))
     return retained
 

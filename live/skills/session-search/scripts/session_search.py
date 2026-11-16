@@ -115,7 +115,6 @@ def _tool_event(
     base: dict[str, Any], kind: str, tool_name: str, text: str, read_skill: str | None,
     *, is_error: bool = False,
 ) -> dict[str, Any]:
-    """Build shared tool fields; callers retain call/result interpretation."""
     return {
         **base,
         "event": kind,
