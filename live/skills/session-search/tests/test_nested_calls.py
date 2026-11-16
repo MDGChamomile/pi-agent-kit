@@ -8,34 +8,37 @@ from pathlib import Path
 from support import cli_args, header, message, nested_entry, session_search, write_session
 
 
+SESSION = ("synthetic", "synthetic.jsonl")
+
+
 class NestedCallTests(unittest.TestCase):
     def test_nested_skill_attempt_and_error_without_parent_error(self):
         call = {"id": "inner", "name": "read", "arguments": {"path": "/skills/alpha/SKILL.md"},
                 "status": "error", "error": "permission denied"}
-        events = session_search.events_for_entry(nested_entry([call]), {}, True)
-        self.assertEqual([(e["event"], e["tool_name"], e["is_error"]) for e in events], [
+        events = session_search.events_for_entry(nested_entry([call]), *SESSION)
+        self.assertEqual([(e.kind, e.tool_name, e.is_error) for e in events], [
             ("tool_result", "codemode", False),
             ("skill_file_read", "read", False),
             ("tool_error", "read", True),
         ])
-        self.assertEqual(events[-1]["skill_file_read"], "alpha")
-        self.assertIn("permission denied", events[-1]["searchable"])
+        self.assertEqual(events[-1].skill_file_read, "alpha")
+        self.assertIn("permission denied", events[-1].searchable)
 
     def test_success_uses_recorded_skill_identity_and_cwd(self):
         call = {"id": "inner", "name": "read", "arguments": {"path": "custom/SKILL.md"}, "status": "ok"}
         events = session_search.events_for_entry(
-            nested_entry([call]), {}, True, names_by_path={"/project/custom/SKILL.md": "declared"}, cwd="/project",
+            nested_entry([call]), *SESSION, names_by_path={"/project/custom/SKILL.md": "declared"}, cwd="/project",
         )
-        self.assertEqual([e["skill_file_read"] for e in events[1:]], ["declared", "declared"])
-        self.assertEqual(events[-1]["event"], "tool_result")
+        self.assertEqual([e.skill_file_read for e in events[1:]], ["declared", "declared"])
+        self.assertEqual(events[-1].kind, "tool_result")
 
     def test_unfinished_omitted_arguments_and_duplicate_ids(self):
         call = {"id": "inner", "name": "read", "argumentsBytes": 100000, "status": "unfinished"}
-        events = session_search.events_for_entry(nested_entry([call, call, None, {"status": "bad"}], False), {}, True)
+        events = session_search.events_for_entry(nested_entry([call, call, None, {"status": "bad"}], False), *SESSION)
         self.assertEqual(len(events), 2)
-        self.assertEqual(events[-1]["event"], "tool_call")
-        self.assertIsNone(events[-1]["skill_file_read"])
-        self.assertFalse(events[-1]["is_error"])
+        self.assertEqual(events[-1].kind, "tool_call")
+        self.assertIsNone(events[-1].skill_file_read)
+        self.assertFalse(events[-1].is_error)
 
     def test_aggregate_counts_direct_and_nested_calls_once_and_warns(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -61,7 +64,7 @@ class NestedCallTests(unittest.TestCase):
 
     def test_nested_error_evidence_is_masked(self):
         entry = nested_entry([{"id": "inner", "name": "bash", "status": "error", "error": "token=PRIVATE_SECRET"}])
-        events = session_search.events_for_entry(entry, {"file": "synthetic", "session_id": "synthetic"}, True)
+        events = session_search.events_for_entry(entry, *SESSION)
         evidence = session_search.result_view(events[-1], [])
         self.assertNotIn("PRIVATE_SECRET", json.dumps(evidence))
 

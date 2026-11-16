@@ -167,17 +167,17 @@ class SessionSearchTests(unittest.TestCase):
                     self.assertNotIn("same-id", json.dumps(result))
 
     def test_empty_assistant_errors_are_recorded(self):
-        session = {"session_id": "synthetic-session", "file": "/tmp/synthetic-session.jsonl"}
+        session = ("synthetic-session", "/tmp/synthetic-session.jsonl")
         for content in ([], "", [{"type": "thinking", "thinking": "internal reasoning"}]):
             for metadata in ({"stopReason": "error"}, {"isError": True}):
                 with self.subTest(content=content, metadata=metadata):
                     entry = message("e1", None, "2026-08-10T00:00:00Z", "assistant", content, **metadata)
-                    events = session_search.events_for_entry(entry, session, True)
+                    events = session_search.events_for_entry(entry, *session)
                     self.assertEqual(len(events), 1)
-                    self.assertEqual(events[0]["event"], "message")
-                    self.assertTrue(events[0]["is_error"])
-                    self.assertEqual(events[0]["searchable"], "")
-                    self.assertEqual(events[0]["evidence_raw"], "")
+                    self.assertEqual(events[0].kind, "message")
+                    self.assertTrue(events[0].is_error)
+                    self.assertEqual(events[0].searchable, "")
+                    self.assertEqual(events[0].evidence_raw, "")
 
     def test_assistant_error_messages_are_searchable(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -240,7 +240,7 @@ class SessionSearchTests(unittest.TestCase):
         self.assertNotIn("SYNTHETIC_ERROR_SECRET", json.dumps(evidence))
 
     def test_assistant_error_message_alone_does_not_mark_an_error(self):
-        session = {"session_id": "synthetic-session", "file": "/tmp/synthetic-session.jsonl"}
+        session = ("synthetic-session", "/tmp/synthetic-session.jsonl")
         filters = session_search.EventFilters.from_args(session_search.build_parser().parse_args(["--error"]))
         for stop_reason in ("stop", "aborted"):
             with self.subTest(stop_reason=stop_reason):
@@ -248,24 +248,24 @@ class SessionSearchTests(unittest.TestCase):
                     "e1", None, "2026-08-10T00:00:00Z", "assistant", "Partial answer",
                     stopReason=stop_reason, errorMessage="Synthetic diagnostic",
                 )
-                events = session_search.events_for_entry(entry, session, True)
+                events = session_search.events_for_entry(entry, *session)
                 self.assertEqual(len(events), 1)
-                self.assertFalse(events[0]["is_error"])
+                self.assertFalse(events[0].is_error)
                 self.assertFalse(session_search.event_matches(events[0], filters))
 
     def test_non_string_assistant_error_messages_are_ignored(self):
-        session = {"session_id": "synthetic-session", "file": "/tmp/synthetic-session.jsonl"}
+        session = ("synthetic-session", "/tmp/synthetic-session.jsonl")
         for error_message in (None, False, 42, {}, []):
             with self.subTest(error_message=error_message):
                 entry = message(
                     "e1", None, "2026-08-10T00:00:00Z", "assistant", "Partial answer",
                     stopReason="error", errorMessage=error_message,
                 )
-                events = session_search.events_for_entry(entry, session, True)
+                events = session_search.events_for_entry(entry, *session)
                 self.assertEqual(len(events), 1)
-                self.assertTrue(events[0]["is_error"])
-                self.assertEqual(events[0]["searchable"], "Partial answer")
-                self.assertEqual(events[0]["evidence_raw"], "Partial answer")
+                self.assertTrue(events[0].is_error)
+                self.assertEqual(events[0].searchable, "Partial answer")
+                self.assertEqual(events[0].evidence_raw, "Partial answer")
 
     def test_direct_skill_and_file_read_are_separate(self):
         with fixture_tree() as (root, project_a, _, _, _, current):
@@ -283,14 +283,14 @@ class SessionSearchTests(unittest.TestCase):
 
     def test_direct_skill_detection_requires_user_role_and_full_pi_envelope(self):
         envelope = skill_envelope("alpha", "/tmp/skills/alpha/SKILL.md", "Instructions") + "\n\nuser arguments"
-        session = {"session_id": "session", "file": "/tmp/session.jsonl"}
+        session = ("session", "/tmp/session.jsonl")
         generic_user = message("u1", None, "2026-08-10T00:00:00Z", "user", 'Discuss <skill name="alpha">')
         assistant_example = message("a1", None, "2026-08-10T00:00:00Z", "assistant", envelope)
         direct_user = message("u2", None, "2026-08-10T00:00:00Z", "user", envelope)
 
-        self.assertEqual(session_search.events_for_entry(generic_user, session, True)[0]["direct_skills"], [])
-        self.assertEqual(session_search.events_for_entry(assistant_example, session, True)[0]["direct_skills"], [])
-        self.assertEqual(session_search.events_for_entry(direct_user, session, True)[0]["direct_skills"], ["alpha"])
+        self.assertEqual(session_search.events_for_entry(generic_user, *session)[0].direct_skills, [])
+        self.assertEqual(session_search.events_for_entry(assistant_example, *session)[0].direct_skills, [])
+        self.assertEqual(session_search.events_for_entry(direct_user, *session)[0].direct_skills, ["alpha"])
 
     def test_masking_happens_before_output(self):
         with fixture_tree() as (root, project_a, _, _, _, current):
