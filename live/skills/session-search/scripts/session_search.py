@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import functools
 import heapq
 import json
 import posixpath
@@ -95,47 +96,71 @@ class EventFilters:
         return cls.from_values(args.query, args.role, args.tool, args.skill, args.error)
 
 
-def event_matches(event: dict[str, Any], filters: EventFilters) -> bool:
+@dataclass
+class Event:
+    """One message, tool call, or tool result found in a session entry."""
+
+    session_id: str
+    file: str
+    timestamp: Any
+    entry_id: Any
+    role: str
+    kind: str
+    tool_name: str | None
+    is_error: bool
+    direct_skills: list[str]
+    skill_file_read: str | None
+    searchable: str
+    evidence_raw: str
+    on_latest_leaf: bool | None = None
+
+    @property
+    def skill_names(self) -> list[str]:
+        return self.direct_skills or ([self.skill_file_read] if self.skill_file_read else [])
+
+
+# Event with one entry's session, timestamp, ID, and role already filled in.
+EntryEvent = Callable[..., Event]
+
+
+def event_matches(event: Event, filters: EventFilters) -> bool:
     if filters.queries:
-        searchable = event["searchable"].casefold()
+        searchable = event.searchable.casefold()
         if not all(query in searchable for query in filters.queries):
             return False
-    if filters.roles and event["role"].casefold() not in filters.roles:
+    if filters.roles and event.role.casefold() not in filters.roles:
         return False
-    if filters.tools and (not event.get("tool_name") or event["tool_name"].casefold() not in filters.tools):
+    if filters.tools and (not event.tool_name or event.tool_name.casefold() not in filters.tools):
         return False
-    if filters.errors_only and not event.get("is_error", False):
+    if filters.errors_only and not event.is_error:
         return False
-    if filters.skills and not any(name.casefold() in filters.skills for name in event.get("skill_names", [])):
+    if filters.skills and not any(name.casefold() in filters.skills for name in event.skill_names):
         return False
     return True
 
 
 def _tool_event(
-    base: dict[str, Any], kind: str, tool_name: str, text: str, read_skill: str | None,
+    entry_event: EntryEvent, kind: str, tool_name: str, text: str, read_skill: str | None,
     *, is_error: bool = False,
-) -> dict[str, Any]:
-    """Build shared tool fields; callers retain call/result interpretation."""
-    return {
-        **base,
-        "event": kind,
-        "tool_name": tool_name,
-        "is_error": is_error,
-        "skill_names": [read_skill] if read_skill else [],
-        "direct_skills": [],
-        "skill_file_read": read_skill,
-        "searchable": "\n".join(filter(None, [tool_name, text, read_skill])),
-        "evidence_raw": text,
-    }
+) -> Event:
+    return entry_event(
+        kind=kind,
+        tool_name=tool_name,
+        is_error=is_error,
+        direct_skills=[],
+        skill_file_read=read_skill,
+        searchable="\n".join(filter(None, [tool_name, text, read_skill])),
+        evidence_raw=text,
+    )
 
 
 def _call_event(
-    base: dict[str, Any], tool_name: str, arguments: Any, read_skill: str | None, *, include_arguments: bool,
-) -> dict[str, Any]:
+    entry_event: EntryEvent, tool_name: str, arguments: Any, read_skill: str | None, *, include_arguments: bool,
+) -> Event:
     arguments_text = (
         json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str) if include_arguments else ""
     )
-    return _tool_event(base, "skill_file_read" if read_skill else "tool_call", tool_name, arguments_text, read_skill)
+    return _tool_event(entry_event, "skill_file_read" if read_skill else "tool_call", tool_name, arguments_text, read_skill)
 
 
 @dataclass(frozen=True)
@@ -165,7 +190,7 @@ def direct_tool_calls(entry: dict[str, Any], names_by_path: dict[str, str] | Non
     return calls
 
 
-def _message_event(base: dict[str, Any], message: dict[str, Any], role: str) -> dict[str, Any] | None:
+def _message_event(entry_event: EntryEvent, message: dict[str, Any], role: str) -> Event | None:
     text = session_common.text_content(message.get("content"))
     # Provider failures may have no text content; their details live in errorMessage.
     error_message = message.get("errorMessage")
@@ -175,26 +200,24 @@ def _message_event(base: dict[str, Any], message: dict[str, Any], role: str) -> 
     is_error = bool(message.get("isError", False) or message.get("stopReason") == "error")
     if not (text or is_error):
         return None
-    return {
-        **base,
-        "event": "message",
-        "tool_name": None,
-        "is_error": is_error,
-        "skill_names": skills,
-        "direct_skills": skills,
-        "skill_file_read": None,
-        "searchable": "\n".join([text, *skills]),
-        "evidence_raw": text,
-    }
+    return entry_event(
+        kind="message",
+        tool_name=None,
+        is_error=is_error,
+        direct_skills=skills,
+        skill_file_read=None,
+        searchable="\n".join([text, *skills]),
+        evidence_raw=text,
+    )
 
 
 def _nested_call_events(
-    base: dict[str, Any], message: dict[str, Any], names_by_path: dict[str, str] | None, cwd: str,
+    entry_event: EntryEvent, message: dict[str, Any], names_by_path: dict[str, str] | None, cwd: str,
     *, include_arguments: bool,
-) -> list[dict[str, Any]]:
+) -> list[Event]:
     nested = message.get("nestedCalls")
     calls = nested.get("calls") if isinstance(nested, dict) else None
-    events: list[dict[str, Any]] = []
+    events: list[Event] = []
     seen: set[str] = set()
     for call in calls if isinstance(calls, list) else []:
         if not isinstance(call, dict):
@@ -207,13 +230,13 @@ def _nested_call_events(
         arguments = call.get("arguments")
         read_skill = skill_read_name(name, arguments, names_by_path, cwd)
         events.append(_call_event(
-            base, name, arguments, read_skill, include_arguments=include_arguments and isinstance(arguments, dict),
+            entry_event, name, arguments, read_skill, include_arguments=include_arguments and isinstance(arguments, dict),
         ))
         if status != "unfinished":
             error = call.get("error")
             error_text = error if isinstance(error, str) else ""
             events.append(_tool_event(
-                base, "tool_error" if status == "error" else "tool_result",
+                entry_event, "tool_error" if status == "error" else "tool_result",
                 name, error_text, read_skill, is_error=status == "error",
             ))
     return events
@@ -221,15 +244,15 @@ def _nested_call_events(
 
 def events_for_entry(
     entry: dict[str, Any],
-    session: dict[str, str],
-    on_leaf: bool | None,
+    session_id: str,
+    file: str,
     skill_reads_by_call_id: dict[str, str | None] | None = None,
     names_by_path: dict[str, str] | None = None,
     cwd: str = "",
     *,
     include_arguments: bool = True,
     direct_calls: list[DirectToolCall] | None = None,
-) -> list[dict[str, Any]]:
+) -> list[Event]:
     """Build one entry's message, tool-call, tool-result, and nested-call events.
 
     Tool-call arguments are serialized only with include_arguments, because only
@@ -239,22 +262,18 @@ def events_for_entry(
         return []
     message = entry["message"]
     role = str(message.get("role", "unknown"))
-    base = {
-        **session,
-        "timestamp": entry.get("timestamp"),
-        "entry_id": entry.get("id"),
-        "role": role,
-        "on_latest_leaf": on_leaf,
-    }
-    events: list[dict[str, Any]] = []
+    entry_event = functools.partial(
+        Event, session_id=session_id, file=file, timestamp=entry.get("timestamp"), entry_id=entry.get("id"), role=role,
+    )
+    events: list[Event] = []
     if role != "toolResult":
-        message_event = _message_event(base, message, role)
+        message_event = _message_event(entry_event, message, role)
         if message_event is not None:
             events.append(message_event)
     if direct_calls is None:
         direct_calls = direct_tool_calls(entry, names_by_path, cwd)
     for call in direct_calls:
-        events.append(_call_event(base, call.name, call.arguments, call.read_skill, include_arguments=include_arguments))
+        events.append(_call_event(entry_event, call.name, call.arguments, call.read_skill, include_arguments=include_arguments))
     if role == "toolResult":
         tool_name = str(message.get("toolName", "unknown"))
         tool_call_id = message.get("toolCallId")
@@ -264,11 +283,11 @@ def events_for_entry(
             else None
         )
         events.append(_tool_event(
-            base, "tool_error" if message.get("isError") else "tool_result",
+            entry_event, "tool_error" if message.get("isError") else "tool_result",
             tool_name, session_common.text_content(message.get("content")), read_skill,
             is_error=bool(message.get("isError", False)),
         ))
-        events.extend(_nested_call_events(base, message, names_by_path, cwd, include_arguments=include_arguments))
+        events.extend(_nested_call_events(entry_event, message, names_by_path, cwd, include_arguments=include_arguments))
     return events
 
 
@@ -346,17 +365,24 @@ class BranchSkillState:
         return lambda entry_id: entry_id in leaf_path if isinstance(entry_id, str) else None
 
 
-def result_view(event: dict[str, Any], queries: Iterable[str] = ()) -> dict[str, Any]:
-    result = {
-        key: event.get(key)
-        for key in ("session_id", "file", "timestamp", "entry_id", "role", "event", "tool_name", "is_error", "on_latest_leaf")
+def result_view(event: Event, queries: Iterable[str] = ()) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "session_id": event.session_id,
+        "file": event.file,
+        "timestamp": event.timestamp,
+        "entry_id": event.entry_id,
+        "role": event.role,
+        "event": event.kind,
+        "tool_name": event.tool_name,
+        "is_error": event.is_error,
+        "on_latest_leaf": event.on_latest_leaf,
     }
-    if event.get("direct_skills"):
-        result["direct_skills"] = event["direct_skills"]
-    if event.get("skill_file_read"):
-        result["skill_file_read"] = event["skill_file_read"]
-    evidence = event.get("evidence_raw", "")
-    if event.get("event") in ("tool_call", "skill_file_read"):
+    if event.direct_skills:
+        result["direct_skills"] = event.direct_skills
+    if event.skill_file_read:
+        result["skill_file_read"] = event.skill_file_read
+    evidence = event.evidence_raw
+    if event.kind in ("tool_call", "skill_file_read"):
         # Call evidence is JSON. Mask each decoded string before escaping it
         # again, including strings inside nested arguments. Keep search raw.
         evidence = re.sub(
@@ -381,16 +407,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="independent summary-only filter object; repeat up to 8 times; "
                              "keys: query, role, tool, skill (string arrays), error (boolean)")
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help=f"maximum evidence results with --include-evidence (default: {DEFAULT_LIMIT})")
-    evidence = parser.add_mutually_exclusive_group()
-    evidence.add_argument(
+    parser.add_argument(
         "--include-evidence",
         action="store_true",
         help="include masked snippets, session identifiers, and local paths; requires explicit user consent in agent workflows",
-    )
-    evidence.add_argument(
-        "--summary-only",
-        action="store_true",
-        help="explicitly select the path-free summary output (the default)",
     )
     return parser
 
@@ -445,7 +465,7 @@ class EventAggregation:
         self.filters = filters
         self.result_limit = result_limit
         self.include_evidence = include_evidence
-        self.result_heap: list[tuple[datetime, int, dict[str, Any]]] = []
+        self.result_heap: list[tuple[datetime, int, Event]] = []
         self.result_sequence = 0
         self.matched_sessions = 0
         self.matched_entries = 0
@@ -462,7 +482,7 @@ class EventAggregation:
         self.session_matched = False
         self.session_error_tools: set[str] = set()
 
-    def consume(self, events: list[dict[str, Any]], timestamp: datetime | None) -> None:
+    def consume(self, events: list[Event], timestamp: datetime | None) -> None:
         entry_matched = False
         for event in events:
             if not event_matches(event, self.filters):
@@ -474,26 +494,24 @@ class EventAggregation:
                 if not self.session_matched:
                     self.session_matched = True
                     self.matched_sessions += 1
-                self.counters["roles"][event["role"].casefold()] += 1
-            tool_name = event.get("tool_name")
-            if event["event"] in {"tool_call", "skill_file_read"} and tool_name:
+                self.counters["roles"][event.role.casefold()] += 1
+            tool_name = event.tool_name
+            if event.kind in {"tool_call", "skill_file_read"} and tool_name:
                 self.counters["tool_calls"][tool_name.casefold()] += 1
-            if event.get("is_error") and tool_name:
+            if event.is_error and tool_name:
                 tool_key = tool_name.casefold()
                 self.counters["tool_errors"][tool_key] += 1
                 if tool_key not in self.session_error_tools:
                     self.session_error_tools.add(tool_key)
                     self.counters["tool_error_sessions"][tool_key] += 1
-            self.counters["direct_skill_calls"].update(
-                name.casefold() for name in event.get("direct_skills", [])
-            )
-            read_skill = event.get("skill_file_read")
+            self.counters["direct_skill_calls"].update(name.casefold() for name in event.direct_skills)
+            read_skill = event.skill_file_read
             if read_skill:
                 counter = {
                     "skill_file_read": "skill_file_read_attempts",
                     "tool_error": "skill_file_read_errors",
                     "tool_result": "skill_file_read_successes",
-                }.get(event["event"])
+                }.get(event.kind)
                 if counter:
                     self.counters[counter][read_skill.casefold()] += 1
             if self.result_limit:
@@ -507,8 +525,8 @@ class EventAggregation:
 
     def mark_branch(self, path: Path, membership: Callable[[Any], bool | None]) -> None:
         for _timestamp, _sequence, event in self.result_heap:
-            if event["file"] == str(path):
-                event["on_latest_leaf"] = membership(event.get("entry_id"))
+            if event.file == str(path):
+                event.on_latest_leaf = membership(event.entry_id)
 
     def results(self) -> list[dict[str, Any]]:
         return [
@@ -517,7 +535,6 @@ class EventAggregation:
         ]
 
     def summary(self, scan: dict[str, int]) -> dict[str, Any]:
-        evidence_truncated = self.include_evidence and self.matched_events > len(self.result_heap)
         return {
             **scan,
             "matched_sessions": self.matched_sessions,
@@ -526,10 +543,8 @@ class EventAggregation:
             "results_returned": len(self.result_heap),
             "result_limit": self.result_limit,
             "evidence_omitted": not self.include_evidence and self.matched_events > 0,
-            "evidence_truncated": evidence_truncated,
-            "truncated": evidence_truncated,
+            "evidence_truncated": self.include_evidence and self.matched_events > len(self.result_heap),
             **{key: dict(sorted(value.items())) for key, value in self.counters.items()},
-            "skill_file_reads": dict(sorted(self.counters["skill_file_read_attempts"].items())),
         }
 
 
@@ -590,7 +605,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
     ) -> None:
         # Shared counters preserve progress even when a file fails partway through.
         counters.files_selected += 1
-        session = {"session_id": str(header.get("id", "")), "file": str(path)}
+        session_id = str(header.get("id", ""))
         for aggregation in aggregations:
             aggregation.start_session()
         header_cwd = header.get("cwd")
@@ -612,7 +627,7 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
                 continue
             counters.entries_eligible += 1
             events = events_for_entry(
-                entry, session, None, state.skill_reads_by_call_id, state.names_by_path, recorded_cwd,
+                entry, session_id, str(path), state.skill_reads_by_call_id, state.names_by_path, recorded_cwd,
                 include_arguments=include_arguments, direct_calls=calls,
             )
             for aggregation in aggregations:

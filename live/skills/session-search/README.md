@@ -12,6 +12,8 @@ A real Pi run recalls a retry diagnosis from three hand-authored synthetic sessi
 
 The GIF replays actual terminal output with typing and waits accelerated; model responses and helper results are not scripted. The demonstration uses `pi-ask-user` for the consent prompt and an isolated session directory. It shows the recall workflow, not a search-quality or latency benchmark.
 
+The demo GIF is kept in the repository history, outside this installable directory. The README uses an online image URL so it also works when copied on its own; viewing the demo requires network access.
+
 ## Safety model
 
 - Reads session JSONL files without changing them or building an index.
@@ -33,8 +35,6 @@ Session data is inherently sensitive. In an agent workflow, local tool output be
 The parser supports Pi session versions 1 through 3. It treats a missing version as legacy v1 with a warning and skips newer, unsupported versions visibly instead of guessing at their structure.
 
 ## Installation
-
-The demo GIF is kept in the repository history, outside this installable directory. The README uses an online image URL so it also works when copied on its own; viewing the demo requires network access.
 
 From the repository root, copy this directory into one of Pi's skill locations, for example:
 
@@ -62,15 +62,14 @@ Run these examples from the project directory whose sessions you want to search,
 # Count matching events in sessions for the current project (safe default)
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --query timeout
 
-# Explicitly request the same path-free summary mode
-python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --query timeout --summary-only
-
 # Include representative evidence after explicit disclosure approval
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --days 7 --error --tool bash --include-evidence
 
 # Compare direct invocations with SKILL.md reads across all projects
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --all-projects --skill deep-plan
 ```
+
+Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each aggregate filter.
 
 Use `--option=value` for dash-prefixed strings, for example `--query=-inf`,
 `--term=-nan`, or `--cwd=-infinity`. This applies to filters and path options;
@@ -130,8 +129,6 @@ python3 ~/.pi/agent/skills/session-search/scripts/session_search.py \
 
 File symlink aliases are deduplicated by resolved file path before counting. File symlinks are considered only when their targets resolve inside the session directory. `--all-projects` selects all projects within that directory, not other storage locations. Reads use the canonical target found during discovery and accept only regular files. A FIFO cannot stall the scan. Aggregate evidence and warnings show the path found during discovery, including a symlink alias when one was used. Separate copies (including files with the same session ID) and hard links remain separate files. Nested directory symlinks are not followed; a directory symlink explicitly supplied as the root is supported. A missing or non-directory root and directory traversal failures return a path-free `SESSION_STORAGE_UNAVAILABLE` error (exit code 2), rather than a partial summary. Empty directories are valid. Individual unreadable session files retain the existing warning behavior.
 
-Repeated `--query` values use AND logic. Repeated `--role`, `--tool`, and `--skill` values are alternatives within each aggregate filter.
-
 ## Batch summaries
 
 For several independent counts over the same scope, use repeated `--batch-filter`
@@ -166,11 +163,10 @@ index or cache, and filter comparison work still grows with the number of filter
 
 Batches are summary-only: `results` stays empty and `evidence_included` is false.
 Do not combine batch filters with `--include-evidence` or the individual
-`--query`, `--role`, `--tool`, `--skill`, or `--error` flags. `--summary-only` is
-accepted, while `--limit` has no effect on summary output. For evidence, obtain
-the normal disclosure approval and run a bounded single-filter search. Batch
-summaries keep the same evidence-consent boundary and aggregate branch semantics
-as a single search.
+`--query`, `--role`, `--tool`, `--skill`, or `--error` flags. `--limit` has no
+effect on summary output. For evidence, obtain the normal disclosure approval
+and run a bounded single-filter search. Batch summaries keep the same
+evidence-consent boundary and aggregate branch semantics as a single search.
 
 ## Prior-session recall
 
@@ -219,10 +215,6 @@ Tokens do not contain plaintext paths, session IDs, search terms, or conversatio
 
 ## Aggregate output and evidence
 
-For the aggregate CLI, with `--include-evidence`, each snippet stays within 300 characters, including omission markers. The full evidence text is masked before whitespace is collapsed and a window is selected. Common quoted credentials (including spaces and escaped quotes) and complete Cookie/Set-Cookie header values are masked; this remains best-effort, not a guarantee that all sensitive data is removed. Tool-call evidence also masks decoded argument strings before JSON escaping, while search matching retains the original arguments. For long text, the window centers on the earliest remaining query occurrence (case-insensitive, with query whitespace collapsed too), regardless of query order. Distant AND terms need not all appear in that single window; matching still uses the full original searchable event. If no query remains visible—for example, it was masked or matched only tool metadata—or no query was supplied, the snippet uses the masked text's beginning. Hidden values are never restored. Results remain newest first.
-
-Assistant failures are counted by `--error` even when their content is empty. Their `errorMessage` text is searchable alongside any partial response and is subject to the same opt-in evidence and masking rules.
-
 The command emits one JSON object:
 
 | Field | Safe default | With `--include-evidence` |
@@ -232,7 +224,17 @@ The command emits one JSON object:
 | `results` | Empty | Bounded representative evidence, newest first |
 | `warnings` | Deduplicated counts by kind | Up to 100 file-path details |
 
+In `summary`, `evidence_omitted` is true when the safe default withheld evidence for matching events; `evidence_truncated` is true when `--include-evidence` returned fewer results than matched because of `--limit`.
+
 In `summary`, `tool_errors` counts matching error events per tool; `tool_error_sessions` counts session files with at least one such event per tool, using the same filters and case-insensitive tool names. Repeated failures of one tool in one file count once in `tool_error_sessions`. Files with identical session IDs still count separately; branches, copies, and retries are not deduplicated into inferred bugs or tasks. `matched_sessions` remains the overall matching-file count, not a per-tool distribution.
+
+### Evidence snippets
+
+For the aggregate CLI, with `--include-evidence`, each snippet stays within 300 characters, including omission markers. The full evidence text is masked before whitespace is collapsed and a window is selected. Common quoted credentials (including spaces and escaped quotes) and complete Cookie/Set-Cookie header values are masked; this remains best-effort, not a guarantee that all sensitive data is removed. Tool-call evidence also masks decoded argument strings before JSON escaping, while search matching retains the original arguments. For long text, the window centers on the earliest remaining query occurrence (case-insensitive, with query whitespace collapsed too), regardless of query order. Distant AND terms need not all appear in that single window; matching still uses the full original searchable event. If no query remains visible—for example, it was masked or matched only tool metadata—or no query was supplied, the snippet uses the masked text's beginning. Hidden values are never restored. Results remain newest first.
+
+Assistant failures are counted by `--error` even when their content is empty. Their `errorMessage` text is searchable alongside any partial response and is subject to the same opt-in evidence and masking rules.
+
+### Warnings and partial reads
 
 Without `--all-projects`, warnings cover only files whose header confirms the selected cwd. Only an absolute recorded cwd can confirm a project; an empty, relative, `~`, drive-less Windows, or otherwise unusable cwd never matches, because it would resolve against the searcher's location rather than the session's. As in recall, files with an unreadable header, an unconfirmed cwd, or a different project are skipped without a warning count or path; use `--all-projects` to include their warnings, for example when checking for damaged session files.
 
@@ -240,11 +242,17 @@ Malformed JSON rows, including Python integer-conversion and nesting-depth limit
 
 If an individual file fails during reading, aggregate search keeps the events already read, counts that matching file once, and reports `unreadable_file`. These are partial counts, not a complete-file result. Evidence from that file has `on_latest_leaf: null` (unknown), rather than a claim about the latest branch. Files that finish reading retain boolean branch membership for valid IDs. In v2/v3, non-string or missing entry IDs produce `invalid_entry_id`; their events remain searchable, but their branch membership is also `null`. Legacy v1 remains linear and does not require entry IDs.
 
-In `summary`, `evidence_omitted` distinguishes the safe default from `evidence_truncated`; `truncated` is an alias of `evidence_truncated`.
+### Skill invocations and file reads
 
-`--summary-only` explicitly selects the safe default. `--include-evidence` is mutually exclusive with it. A direct skill invocation is counted only for a user message matching Pi's complete skill envelope; this means the recorded message matches Pi's invocation envelope, not that provenance can be distinguished from identical XML pasted manually. Direct calls are reported separately from `SKILL.md` read attempts, successes, and errors. Reads of `SKILL.md` are recognized at any installation location, not only below a directory named `skills`. Relative read paths use the session's recorded cwd; both slash styles are recognized. The containing directory supplies the fallback name. When a prior complete user skill envelope records a name and location in the read's ancestry (v2/v3), that name is used for the read, even if it differs from the directory name. Sibling branches do not share identity observations. Legacy v1 uses prior envelopes in linear file order; missing parent history in v2/v3 supplies no identity. Identity observations before a time filter still apply to later matching reads; tool results retain the identity assigned to their original call. Results use the nearest matching call on their parent chain in v2/v3, or the latest matching call in linear v1 records. Reused IDs on sibling branches stay separate, and a non-skill call with the same ID shadows an earlier skill read.
+A direct skill invocation is counted only for a user message matching Pi's complete skill envelope; this means the recorded message matches Pi's invocation envelope, not that provenance can be distinguished from identical XML pasted manually. Direct calls are reported separately from `SKILL.md` read attempts, successes, and errors.
 
-The helper never opens today's skill files to infer historical names. It does not resolve historical symlinks, renamed paths, `~` home aliases, or retroactively rename earlier reads. Without a prior recorded envelope, a declared frontmatter name that differs from the directory cannot be inferred; the fallback name is a path-based read classification, not proof that Pi loaded a valid skill. A bare `SKILL.md` without a recorded cwd or known envelope cannot be named. The legacy `skill_file_reads` counter remains an alias for attempts. Reading instructions, quoting partial XML, or mentioning a skill is not evidence that the skill was invoked.
+Reads of `SKILL.md` are recognized at any installation location, not only below a directory named `skills`. Relative read paths use the session's recorded cwd; both slash styles are recognized. The containing directory supplies the fallback name.
+
+When a prior complete user skill envelope records a name and location in the read's ancestry (v2/v3), that name is used for the read, even if it differs from the directory name. Sibling branches do not share identity observations. Legacy v1 uses prior envelopes in linear file order; missing parent history in v2/v3 supplies no identity. Identity observations before a time filter still apply to later matching reads; tool results retain the identity assigned to their original call.
+
+Results use the nearest matching call on their parent chain in v2/v3, or the latest matching call in linear v1 records. Reused IDs on sibling branches stay separate, and a non-skill call with the same ID shadows an earlier skill read.
+
+The helper never opens today's skill files to infer historical names. It does not resolve historical symlinks, renamed paths, `~` home aliases, or retroactively rename earlier reads. Without a prior recorded envelope, a declared frontmatter name that differs from the directory cannot be inferred; the fallback name is a path-based read classification, not proof that Pi loaded a valid skill. A bare `SKILL.md` without a recorded cwd or known envelope cannot be named. Reading instructions, quoting partial XML, or mentioning a skill is not evidence that the skill was invoked.
 
 ### Nested tool calls (Pi 0.99+)
 

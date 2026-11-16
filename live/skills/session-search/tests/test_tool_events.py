@@ -13,42 +13,39 @@ from support import header, message, nested_entry, session_search, write_session
 
 class ToolEventTests(unittest.TestCase):
     def test_direct_and_nested_event_shapes_keep_metadata_and_skill_identity(self):
-        session = {"session_id": "session", "file": "session.jsonl"}
+        session = ("session", "session.jsonl")
         for read_skill in (None, "alpha"):
             name = "read" if read_skill else "bash"
             arguments = {"path": "/skills/alpha/SKILL.md"} if read_skill else {"command": "echo marker"}
             arguments_text = '{"path": "/skills/alpha/SKILL.md"}' if read_skill else '{"command": "echo marker"}'
             for status in ("ok", "error"):
-                for on_leaf in (None, False, True):
-                    with self.subTest(skill=read_skill, status=status, on_leaf=on_leaf):
-                        call = {"type": "toolCall", "id": "tool", "name": name, "arguments": arguments}
-                        direct = message("call", None, "2026-09-29T00:00:00Z", "assistant", [call])
-                        result = message("result", "call", "2026-09-29T00:00:00Z", "toolResult", "result text",
-                                         toolCallId="tool", toolName=name, isError=status == "error")
-                        nested = nested_entry([{**call, "status": status, "error": "result text"}])
-                        direct_events = session_search.events_for_entry(direct, session, on_leaf)
-                        result_events = session_search.events_for_entry(
-                            result, session, on_leaf, {"tool": read_skill} if read_skill else {},
-                        )
-                        nested_events = session_search.events_for_entry(nested, session, on_leaf)
-                        call_kind = "skill_file_read" if read_skill else "tool_call"
-                        result_kind = "tool_error" if status == "error" else "tool_result"
-                        cases = [
-                            (direct_events[0], "call", "assistant", call_kind, arguments_text, False),
-                            (result_events[0], "result", "toolResult", result_kind, "result text", status == "error"),
-                            (nested_events[1], "result", "toolResult", call_kind, arguments_text, False),
-                            (nested_events[2], "result", "toolResult", result_kind, "result text", status == "error"),
-                        ]
-                        for event, entry_id, role, kind, text, is_error in cases:
-                            self.assertEqual(event, {
-                                **session, "timestamp": "2026-09-29T00:00:00Z", "entry_id": entry_id,
-                                "role": role, "on_latest_leaf": on_leaf,
-                                "event": kind, "tool_name": name, "is_error": is_error,
-                                "skill_names": [read_skill] if read_skill else [], "direct_skills": [],
-                                "skill_file_read": read_skill,
-                                "searchable": name + "\n" + text + ("\nalpha" if read_skill else ""),
-                                "evidence_raw": text,
-                            })
+                with self.subTest(skill=read_skill, status=status):
+                    call = {"type": "toolCall", "id": "tool", "name": name, "arguments": arguments}
+                    direct = message("call", None, "2026-09-29T00:00:00Z", "assistant", [call])
+                    result = message("result", "call", "2026-09-29T00:00:00Z", "toolResult", "result text",
+                                     toolCallId="tool", toolName=name, isError=status == "error")
+                    nested = nested_entry([{**call, "status": status, "error": "result text"}])
+                    direct_events = session_search.events_for_entry(direct, *session)
+                    result_events = session_search.events_for_entry(
+                        result, *session, {"tool": read_skill} if read_skill else {},
+                    )
+                    nested_events = session_search.events_for_entry(nested, *session)
+                    call_kind = "skill_file_read" if read_skill else "tool_call"
+                    result_kind = "tool_error" if status == "error" else "tool_result"
+                    cases = [
+                        (direct_events[0], "call", "assistant", call_kind, arguments_text, False),
+                        (result_events[0], "result", "toolResult", result_kind, "result text", status == "error"),
+                        (nested_events[1], "result", "toolResult", call_kind, arguments_text, False),
+                        (nested_events[2], "result", "toolResult", result_kind, "result text", status == "error"),
+                    ]
+                    for event, entry_id, role, kind, text, is_error in cases:
+                        self.assertEqual(event, session_search.Event(
+                            session_id="session", file="session.jsonl", timestamp="2026-09-29T00:00:00Z",
+                            entry_id=entry_id, role=role, kind=kind, tool_name=name, is_error=is_error,
+                            direct_skills=[], skill_file_read=read_skill,
+                            searchable=name + "\n" + text + ("\nalpha" if read_skill else ""), evidence_raw=text,
+                        ))
+                        self.assertEqual(event.skill_names, [read_skill] if read_skill else [])
 
     def test_argument_shapes_keep_direct_and_nested_serialization_differences(self):
         cases = [
@@ -64,9 +61,9 @@ class ToolEventTests(unittest.TestCase):
                 call = {"type": "toolCall", "id": "inner", "name": "bash", "status": "unfinished", **fields}
                 direct = message("call", None, "2026-09-29T00:00:00Z", "assistant", [call])
                 for entry, index, expected in [(direct, 0, direct_text), (nested_entry([call]), 1, nested_text)]:
-                    event = session_search.events_for_entry(entry, {}, True)[index]
-                    self.assertEqual(event["evidence_raw"], expected)
-                    self.assertEqual(event["searchable"], "bash" + ("\n" + expected if expected else ""))
+                    event = session_search.events_for_entry(entry, "session", "session.jsonl")[index]
+                    self.assertEqual(event.evidence_raw, expected)
+                    self.assertEqual(event.searchable, "bash" + ("\n" + expected if expected else ""))
 
     def test_argument_omission_skips_serialization_but_keeps_skill_identity(self):
         call = {"type": "toolCall", "id": "inner", "name": "read",
@@ -74,10 +71,10 @@ class ToolEventTests(unittest.TestCase):
         direct = message("call", None, "2026-09-29T00:00:00Z", "assistant", [call])
         with patch.object(session_search.json, "dumps", side_effect=AssertionError("serialized")):
             for entry, index in [(direct, 0), (nested_entry([call]), 1)]:
-                event = session_search.events_for_entry(entry, {}, True, include_arguments=False)[index]
-                self.assertEqual(event["evidence_raw"], "")
-                self.assertEqual(event["searchable"], "read\nalpha")
-                self.assertEqual(event["skill_file_read"], "alpha")
+                event = session_search.events_for_entry(entry, "session", "session.jsonl", include_arguments=False)[index]
+                self.assertEqual(event.evidence_raw, "")
+                self.assertEqual(event.searchable, "read\nalpha")
+                self.assertEqual(event.skill_file_read, "alpha")
 
     def test_quoted_argument_values_are_masked_without_changing_search_matches(self):
         commands = (
