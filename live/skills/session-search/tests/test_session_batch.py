@@ -136,7 +136,7 @@ class SessionBatchTests(unittest.TestCase):
     def test_cli_batch_summary_and_private_input_error(self):
         with fixture_tree() as (root, project, _, _, _, _):
             base = [sys.executable, '-B', str(SCRIPT), '--sessions-root', str(root), '--cwd', str(project)]
-            result = subprocess.run(base + ['--batch-filter', '{"query":["failure"]}', '--summary-only'],
+            result = subprocess.run(base + ['--batch-filter', '{"query":["failure"]}'],
                                     text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)['mode'], 'batch')

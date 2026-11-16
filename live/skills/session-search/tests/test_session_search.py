@@ -94,7 +94,6 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(result["results"], [])
         self.assertTrue(result["summary"]["evidence_omitted"])
         self.assertFalse(result["summary"]["evidence_truncated"])
-        self.assertFalse(result["summary"]["truncated"])
         serialized = json.dumps(result)
         self.assertNotIn(str(project_a), serialized)
         self.assertNotIn(str(primary), serialized)
@@ -275,7 +274,6 @@ class SessionSearchTests(unittest.TestCase):
                     root, project_a, "--include-evidence", "--skill", "alpha"
                 ), now=self.NOW)
         self.assertEqual(result["summary"]["direct_skill_calls"], {"alpha": 1})
-        self.assertEqual(result["summary"]["skill_file_reads"], {"alpha": 1})
         self.assertEqual(result["summary"]["skill_file_read_attempts"], {"alpha": 1})
         self.assertEqual(result["summary"]["skill_file_read_successes"], {"alpha": 1})
         self.assertEqual(result["summary"]["skill_file_read_errors"], {})
@@ -362,25 +360,23 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual([item["summary"]["matched_events"] for item in batch["batches"]],
                          [counts["summary"]["matched_events"], 1])
 
-    def test_limit_summary_only_no_match_and_warning(self):
+    def test_limit_default_summary_no_match_and_warning(self):
         with fixture_tree() as (root, project_a, _, primary, _, current):
             before = primary.stat().st_mtime_ns
             with patch.dict(os.environ, {"PI_SESSION_FILE": str(current)}):
                 limited = session_search.aggregate(self.args(
                     root, project_a, "--include-evidence", "--limit", "1"
                 ), now=self.NOW)
-                summary_only = session_search.aggregate(self.args(root, project_a, "--summary-only"), now=self.NOW)
+                summary = session_search.aggregate(self.args(root, project_a), now=self.NOW)
                 no_match = session_search.aggregate(self.args(root, project_a, "--query", "never-present"), now=self.NOW)
             after = primary.stat().st_mtime_ns
         self.assertEqual(limited["summary"]["results_returned"], 1)
-        self.assertTrue(limited["summary"]["truncated"])
         self.assertTrue(limited["summary"]["evidence_truncated"])
         self.assertFalse(limited["summary"]["evidence_omitted"])
-        self.assertEqual(summary_only["results"], [])
-        self.assertFalse(summary_only["evidence_included"])
-        self.assertTrue(summary_only["summary"]["evidence_omitted"])
-        self.assertFalse(summary_only["summary"]["evidence_truncated"])
-        self.assertFalse(summary_only["summary"]["truncated"])
+        self.assertEqual(summary["results"], [])
+        self.assertFalse(summary["evidence_included"])
+        self.assertTrue(summary["summary"]["evidence_omitted"])
+        self.assertFalse(summary["summary"]["evidence_truncated"])
         self.assertEqual(no_match["summary"]["matched_entries"], 0)
         self.assertGreaterEqual(limited["warnings"]["count"], 1)
         self.assertIn("items", limited["warnings"])
@@ -733,11 +729,6 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(result["summary"]["tool_error_sessions"], {})
         self.assertEqual(result["summary"]["matched_events"], 0)
         self.assertEqual(result["results"], [])
-
-    def test_evidence_and_summary_only_flags_are_mutually_exclusive(self):
-        parser = session_search.build_parser()
-        with self.assertRaises(session_common.InvalidArgumentError):
-            parser.parse_args(["--include-evidence", "--summary-only"])
 
     def test_negative_days_and_limit_are_rejected(self):
         with tempfile.TemporaryDirectory() as temp:

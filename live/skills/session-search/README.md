@@ -62,9 +62,6 @@ Run these examples from the project directory whose sessions you want to search,
 # Count matching events in sessions for the current project (safe default)
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --query timeout
 
-# Explicitly request the same path-free summary mode
-python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --query timeout --summary-only
-
 # Include representative evidence after explicit disclosure approval
 python3 ~/.pi/agent/skills/session-search/scripts/session_search.py --days 7 --error --tool bash --include-evidence
 
@@ -166,11 +163,10 @@ index or cache, and filter comparison work still grows with the number of filter
 
 Batches are summary-only: `results` stays empty and `evidence_included` is false.
 Do not combine batch filters with `--include-evidence` or the individual
-`--query`, `--role`, `--tool`, `--skill`, or `--error` flags. `--summary-only` is
-accepted, while `--limit` has no effect on summary output. For evidence, obtain
-the normal disclosure approval and run a bounded single-filter search. Batch
-summaries keep the same evidence-consent boundary and aggregate branch semantics
-as a single search.
+`--query`, `--role`, `--tool`, `--skill`, or `--error` flags. `--limit` has no
+effect on summary output. For evidence, obtain the normal disclosure approval
+and run a bounded single-filter search. Batch summaries keep the same
+evidence-consent boundary and aggregate branch semantics as a single search.
 
 ## Prior-session recall
 
@@ -240,11 +236,11 @@ Malformed JSON rows, including Python integer-conversion and nesting-depth limit
 
 If an individual file fails during reading, aggregate search keeps the events already read, counts that matching file once, and reports `unreadable_file`. These are partial counts, not a complete-file result. Evidence from that file has `on_latest_leaf: null` (unknown), rather than a claim about the latest branch. Files that finish reading retain boolean branch membership for valid IDs. In v2/v3, non-string or missing entry IDs produce `invalid_entry_id`; their events remain searchable, but their branch membership is also `null`. Legacy v1 remains linear and does not require entry IDs.
 
-In `summary`, `evidence_omitted` distinguishes the safe default from `evidence_truncated`; `truncated` is an alias of `evidence_truncated`.
+In `summary`, `evidence_omitted` is true when the safe default withheld evidence for matching events; `evidence_truncated` is true when `--include-evidence` returned fewer results than matched because of `--limit`.
 
-`--summary-only` explicitly selects the safe default. `--include-evidence` is mutually exclusive with it. A direct skill invocation is counted only for a user message matching Pi's complete skill envelope; this means the recorded message matches Pi's invocation envelope, not that provenance can be distinguished from identical XML pasted manually. Direct calls are reported separately from `SKILL.md` read attempts, successes, and errors. Reads of `SKILL.md` are recognized at any installation location, not only below a directory named `skills`. Relative read paths use the session's recorded cwd; both slash styles are recognized. The containing directory supplies the fallback name. When a prior complete user skill envelope records a name and location in the read's ancestry (v2/v3), that name is used for the read, even if it differs from the directory name. Sibling branches do not share identity observations. Legacy v1 uses prior envelopes in linear file order; missing parent history in v2/v3 supplies no identity. Identity observations before a time filter still apply to later matching reads; tool results retain the identity assigned to their original call. Results use the nearest matching call on their parent chain in v2/v3, or the latest matching call in linear v1 records. Reused IDs on sibling branches stay separate, and a non-skill call with the same ID shadows an earlier skill read.
+A direct skill invocation is counted only for a user message matching Pi's complete skill envelope; this means the recorded message matches Pi's invocation envelope, not that provenance can be distinguished from identical XML pasted manually. Direct calls are reported separately from `SKILL.md` read attempts, successes, and errors. Reads of `SKILL.md` are recognized at any installation location, not only below a directory named `skills`. Relative read paths use the session's recorded cwd; both slash styles are recognized. The containing directory supplies the fallback name. When a prior complete user skill envelope records a name and location in the read's ancestry (v2/v3), that name is used for the read, even if it differs from the directory name. Sibling branches do not share identity observations. Legacy v1 uses prior envelopes in linear file order; missing parent history in v2/v3 supplies no identity. Identity observations before a time filter still apply to later matching reads; tool results retain the identity assigned to their original call. Results use the nearest matching call on their parent chain in v2/v3, or the latest matching call in linear v1 records. Reused IDs on sibling branches stay separate, and a non-skill call with the same ID shadows an earlier skill read.
 
-The helper never opens today's skill files to infer historical names. It does not resolve historical symlinks, renamed paths, `~` home aliases, or retroactively rename earlier reads. Without a prior recorded envelope, a declared frontmatter name that differs from the directory cannot be inferred; the fallback name is a path-based read classification, not proof that Pi loaded a valid skill. A bare `SKILL.md` without a recorded cwd or known envelope cannot be named. The legacy `skill_file_reads` counter remains an alias for attempts. Reading instructions, quoting partial XML, or mentioning a skill is not evidence that the skill was invoked.
+The helper never opens today's skill files to infer historical names. It does not resolve historical symlinks, renamed paths, `~` home aliases, or retroactively rename earlier reads. Without a prior recorded envelope, a declared frontmatter name that differs from the directory cannot be inferred; the fallback name is a path-based read classification, not proof that Pi loaded a valid skill. A bare `SKILL.md` without a recorded cwd or known envelope cannot be named. Reading instructions, quoting partial XML, or mentioning a skill is not evidence that the skill was invoked.
 
 ### Nested tool calls (Pi 0.99+)
 

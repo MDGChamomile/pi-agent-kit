@@ -381,16 +381,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="independent summary-only filter object; repeat up to 8 times; "
                              "keys: query, role, tool, skill (string arrays), error (boolean)")
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help=f"maximum evidence results with --include-evidence (default: {DEFAULT_LIMIT})")
-    evidence = parser.add_mutually_exclusive_group()
-    evidence.add_argument(
+    parser.add_argument(
         "--include-evidence",
         action="store_true",
         help="include masked snippets, session identifiers, and local paths; requires explicit user consent in agent workflows",
-    )
-    evidence.add_argument(
-        "--summary-only",
-        action="store_true",
-        help="explicitly select the path-free summary output (the default)",
     )
     return parser
 
@@ -517,7 +511,6 @@ class EventAggregation:
         ]
 
     def summary(self, scan: dict[str, int]) -> dict[str, Any]:
-        evidence_truncated = self.include_evidence and self.matched_events > len(self.result_heap)
         return {
             **scan,
             "matched_sessions": self.matched_sessions,
@@ -526,10 +519,8 @@ class EventAggregation:
             "results_returned": len(self.result_heap),
             "result_limit": self.result_limit,
             "evidence_omitted": not self.include_evidence and self.matched_events > 0,
-            "evidence_truncated": evidence_truncated,
-            "truncated": evidence_truncated,
+            "evidence_truncated": self.include_evidence and self.matched_events > len(self.result_heap),
             **{key: dict(sorted(value.items())) for key, value in self.counters.items()},
-            "skill_file_reads": dict(sorted(self.counters["skill_file_read_attempts"].items())),
         }
 
 
