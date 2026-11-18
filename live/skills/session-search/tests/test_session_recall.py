@@ -528,8 +528,10 @@ class SessionRecallTests(unittest.TestCase):
                     expected = [session_recall.recall_text(item) for item in chosen]
                     self.assertEqual(loaded, (expected, len(records)))
                     self.assertEqual(warnings.count, 0)
-                    candidate, _ = session_recall.candidate_for_messages(path, loaded[0], ("인증 오류",), session_common.TimeRange())
-                    self.assertIsNotNone(candidate)
+                    candidate = session_recall.candidate_for_messages(
+                        path, loaded[0], ("인증 오류",), session_common.TimeRange(),
+                    )
+                    self.assertIsInstance(candidate, session_recall.Candidate)
 
     def test_reader_preserves_invalid_branch_checks(self):
         cases = {

@@ -200,12 +200,9 @@ def candidate_for_messages(
     time_range: session_common.TimeRange,
     *,
     fingerprint: bool = True,
-) -> tuple[Candidate | None, list[RecallMessage]]:
-    """Return the candidate (None without a match) and the messages inside time_range.
-
-    Find omits the fingerprint; recall needs it to detect a changed candidate.
-    """
-    eligible: list[RecallMessage] = []
+    eligible: list[RecallMessage] | None = None,
+) -> Candidate | None:
+    """Score a session, optionally collecting in-range messages for recall windows."""
     matched_terms: set[str] = set()
     matching_messages = 0
     latest_match = session_common.MIN_UTC_DATETIME
@@ -213,7 +210,8 @@ def candidate_for_messages(
         timestamp = message.timestamp
         if not time_range.contains(timestamp):
             continue
-        eligible.append(message)
+        if eligible is not None:
+            eligible.append(message)
         present = matching_terms(message.text, terms)
         if not present:
             continue
@@ -222,14 +220,14 @@ def candidate_for_messages(
         if timestamp is not None and timestamp > latest_match:
             latest_match = timestamp
     if not matching_messages:
-        return None, eligible
+        return None
     return Candidate(
         path,
         matching_messages,
         len(matched_terms),
         latest_match,
         message_fingerprint(messages) if fingerprint else "",
-    ), eligible
+    )
 
 
 def scan_candidates(
@@ -255,7 +253,7 @@ def scan_candidates(
         messages, scanned = loaded
         files_selected += 1
         scanned_entries += scanned
-        candidate, _eligible = candidate_for_messages(
+        candidate = candidate_for_messages(
             path, messages, terms, time_range, fingerprint=fingerprints,
         )
         if candidate is not None:
@@ -539,8 +537,9 @@ def recall_output(args: argparse.Namespace, now: datetime | None = None) -> dict
     if loaded is None:
         raise CandidateNotFoundError
     messages, _scanned = loaded
-    refreshed, eligible = candidate_for_messages(
-        candidate.path, messages, terms, time_range
+    eligible: list[RecallMessage] = []
+    refreshed = candidate_for_messages(
+        candidate.path, messages, terms, time_range, eligible=eligible,
     )
     if refreshed != candidate:
         raise CandidateNotFoundError
