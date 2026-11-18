@@ -406,6 +406,25 @@ class SessionSearchTests(unittest.TestCase):
         self.assertEqual(result["summary"]["results_returned"], 3)
         self.assertEqual([item["entry_id"] for item in result["results"]], ["e9", "e8", "e7"])
 
+    def test_latest_leaf_is_computed_only_for_files_with_retained_evidence(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for name, timestamp, text in [
+                ("a", "2026-08-14T00:00:00Z", "match"),
+                ("b", "2026-08-13T00:00:00Z", "match"),
+                ("c", "2026-08-15T00:00:00Z", "unrelated"),
+            ]:
+                write_session(root / f"{name}.jsonl", header(name, root), [
+                    message(name, None, timestamp, "user", text),
+                ])
+            args = self.args(root, root, "--query", "match", "--include-evidence", "--limit", "1")
+            with patch.object(session_common, "ancestor_ids", wraps=session_common.ancestor_ids) as ancestors:
+                result = session_search.aggregate(args, now=self.NOW)
+        self.assertEqual(result["summary"]["matched_sessions"], 2)
+        self.assertEqual([event["entry_id"] for event in result["results"]], ["a"])
+        self.assertTrue(result["results"][0]["on_latest_leaf"])
+        ancestors.assert_called_once_with("a", {"a": None})
+
     def test_near_header_utf8_failure_keeps_in_scope_partial_counts(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

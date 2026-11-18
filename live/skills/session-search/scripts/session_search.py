@@ -480,6 +480,7 @@ class EventAggregation:
 
     def start_session(self) -> None:
         self.session_matched = False
+        self.session_has_evidence = False
         self.session_error_tools: set[str] = set()
 
     def consume(self, events: list[Event], timestamp: datetime | None) -> None:
@@ -522,6 +523,9 @@ class EventAggregation:
                     heapq.heappush(self.result_heap, item)
                 elif item[:2] > self.result_heap[0][:2]:
                     heapq.heapreplace(self.result_heap, item)
+                else:
+                    continue
+                self.session_has_evidence = True
 
     def mark_branch(self, path: Path, membership: Callable[[Any], bool | None]) -> None:
         for _timestamp, _sequence, event in self.result_heap:
@@ -633,10 +637,9 @@ def aggregate(args: argparse.Namespace, now: datetime | None = None) -> dict[str
             for aggregation in aggregations:
                 aggregation.consume(events, timestamp)
 
-        if result_limit:
-            membership = state.leaf_membership()
-            for aggregation in aggregations:
-                aggregation.mark_branch(path, membership)
+        for aggregation in aggregations:
+            if aggregation.session_has_evidence:
+                aggregation.mark_branch(path, state.leaf_membership())
 
     scope_cwd = None if args.all_projects else target_cwd
     for file in paths:
